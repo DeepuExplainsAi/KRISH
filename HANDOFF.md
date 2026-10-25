@@ -15,7 +15,7 @@ Rule: update this file at the end of every work session (status table + "Next").
 | 2 | Android WebView plugin (Kotlin, flavors, manifest, Keystore, WorkManager) | WRITTEN, NEVER COMPILED (no JDK here). CI job `android-compile` in .github/workflows/check.yml is the first check |
 | 3 | Live window, upload, confirm gate, STOP, redaction | DONE in code: ui/ builds, 4 store tests pass; native side + layout UNTESTED on device |
 | 4 | History, Lite mode, memory, Projects, Tasks, morning brief | DONE in code (core tested; screens built; DueWorker untested) |
-| 5 | Desktop (Electron) | TODO |
+| 5 | Desktop (Electron): main/preload/lib + ui platform | WRITTEN; lib.cjs helpers tested (7); Electron main/preload NEVER RUN (binary not installed here) |
 | 6a | Tier 0 sandbox (Worker + fflate + QuickJS WASM) | DONE: 7 node tests pass (zip-slip, bomb, loop, memory cap, no host globals). Worker itself never run in a real browser |
 | 6b | Tier 1 Alpine+proot (android full flavor) | TODO |
 | 7 | WebGPU local mode | TODO |

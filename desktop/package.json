@@ -1,0 +1,13 @@
+{
+  "name": "@krish/desktop",
+  "private": true,
+  "version": "0.1.0",
+  "main": "main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "test": "vitest run --passWithNoTests"
+  },
+  "devDependencies": {
+    "electron": "45.0.0"
+  }
+}
