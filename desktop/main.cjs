@@ -60,6 +60,7 @@ function createView() {
   wc.on("did-start-loading", () => emit(true));
   wc.on("did-stop-loading", () => emit(false));
   wc.on("page-title-updated", () => emit(false));
+  wc.on("did-finish-load", applyEmulation);
   win.contentView.addChildView(view);
   view.setVisible(false);
   applyBounds();
@@ -68,7 +69,16 @@ function createView() {
 function applyBounds() {
   if (!view) return;
   view.setBounds(bounds);
-  const wc = view.webContents;
+  applyEmulation();
+}
+
+/**
+ * Device emulation needs a live render widget. On a view that has not loaded a page yet, Electron 45 crashes the whole
+ * app (segfault), so it is applied only once a page exists and again after every load.
+ */
+function applyEmulation() {
+  const wc = view?.webContents;
+  if (!wc || wc.isDestroyed() || !wc.getURL()) return;
   if (desktopLayout) {
     wc.setUserAgent(DESKTOP_UA);
     const scale = Math.min(bounds.width / 1280, bounds.height / 800);
@@ -82,7 +92,7 @@ function applyBounds() {
 // setters, so a hostile page cannot hook our code, read our state or spoof the registry.
 const WORLD = 1004;
 async function call(expression) {
-  const raw = await view.webContents.mainFrame.executeJavaScriptInIsolatedWorld(WORLD, [{ code: lib.wrapCall(PAGE_SCRIPT, expression) }]);
+  const raw = await view.webContents.executeJavaScriptInIsolatedWorld(WORLD, [{ code: lib.wrapCall(PAGE_SCRIPT, expression) }]);
   if (typeof raw !== "string") throw new Error("page did not answer");
   return lib.parseCallResult(raw);
 }
@@ -143,6 +153,18 @@ function runDocker(script, files) {
   });
 }
 
+/** capturePage fails with UnknownVizError for a moment after a reload or a layout change; a short retry covers it. */
+async function capture() {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await view.webContents.capturePage();
+    } catch (e) {
+      if (attempt >= 4) throw e;
+      await new Promise((r) => setTimeout(r, 400));
+    }
+  }
+}
+
 function registerIpc() {
   const trusted = (e) => e.senderFrame && e.senderFrame.url.startsWith(`${UI_ORIGIN}/`);
   const handle = (channel, fn) =>
@@ -174,7 +196,7 @@ function registerIpc() {
   handle("browser:setMode", ({ mode }) => view.setVisible(mode === "live"));
   handle("browser:setDesktopLayout", ({ enabled }) => { desktopLayout = Boolean(enabled); applyBounds(); if (view.webContents.getURL()) view.webContents.reload(); });
   handle("browser:snapshot", async ({ maxWidth, quality }) => {
-    const img = await view.webContents.capturePage();
+    const img = await capture();
     const size = img.getSize();
     const scaled = size.width > maxWidth ? img.resize({ width: maxWidth }) : img;
     return `data:image/jpeg;base64,${scaled.toJPEG(quality).toString("base64")}`;

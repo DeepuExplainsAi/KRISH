@@ -5,7 +5,8 @@
   "main": "main.cjs",
   "scripts": {
     "start": "electron .",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --passWithNoTests",
+    "smoke": "xvfb-run -a node smoke.cjs"
   },
   "devDependencies": {
     "electron": "45.0.0"
