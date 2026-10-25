@@ -3,7 +3,6 @@
 // Drives the running app through the same preload bridge the UI uses. Needs network (loads https://example.com).
 const { spawn } = require("node:child_process");
 const http = require("node:http");
-const path = require("node:path");
 
 const PORT = 9340 + Math.floor(Math.random() * 50);
 const electron = require("electron");
@@ -57,7 +56,12 @@ const CHECKS = `(async () => {
     const ws = new WebSocket(t.webSocketDebuggerUrl);
     const answer = new Promise((res, rej) => {
       ws.onopen = () => ws.send(JSON.stringify({ id: 1, method: "Runtime.evaluate", params: { expression: CHECKS, awaitPromise: true, returnByValue: true } }));
-      ws.onmessage = (m) => { const d = JSON.parse(m.data); if (d.id === 1) d.result.exceptionDetails ? rej(new Error(JSON.stringify(d.result.exceptionDetails))) : res(JSON.parse(d.result.result.value)); };
+      ws.onmessage = (m) => {
+        const d = JSON.parse(m.data);
+        if (d.id !== 1) return;
+        if (d.result.exceptionDetails) rej(new Error(JSON.stringify(d.result.exceptionDetails)));
+        else res(JSON.parse(d.result.result.value));
+      };
       ws.onerror = () => rej(new Error("CDP connection failed"));
     });
     const results = await Promise.race([answer, sleep(90_000).then(() => { throw new Error("smoke timed out"); })]);
