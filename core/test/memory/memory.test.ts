@@ -106,3 +106,18 @@ describe("concurrent writes", () => {
     expect((await h.list()).map((e) => e.label).sort()).toEqual(Array.from({ length: 12 }, (_, i) => `c${i}`).sort());
   });
 });
+
+describe("reads see queued writes", () => {
+  it("History.list() called while log() calls are still pending includes them", async () => {
+    class SlowKV extends MemoryKV {
+      async set(k: string, v: string) {
+        await new Promise((r) => setTimeout(r, 5));
+        return super.set(k, v);
+      }
+    }
+    const h = new History(new SlowKV());
+    void h.log("run", "chip", "one");
+    void h.log("run", "chip", "two");
+    expect((await h.list()).map((e) => e.label)).toEqual(["one", "two"]);
+  });
+});

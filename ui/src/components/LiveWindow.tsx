@@ -18,6 +18,8 @@ export function LiveWindow() {
   const frame = useRef<HTMLDivElement>(null);
   const viewBox = useRef<HTMLDivElement>(null);
   const pinch = useRef<{ d: number; w: number; h: number } | undefined>(undefined);
+  const endGesture = useRef<(() => void) | undefined>(undefined);
+  useEffect(() => () => endGesture.current?.(), []);
 
   // While a confirm / question / secure card is up, the live card collapses to its pill so nothing page-controlled can cover it.
   // Take-over prompts are the exception: the user needs the page to solve a CAPTCHA.
@@ -52,23 +54,34 @@ export function LiveWindow() {
   }
 
   const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+  /** Runs a drag/resize: `move` updates the screen only; the end (up, cancel or unmount) removes listeners and saves once. */
+  const gesture = (pointerId: number, move: (m: PointerEvent) => void) => {
+    const onMove = (m: PointerEvent) => { if (m.pointerId === pointerId) move(m); };
+    const end = (m?: PointerEvent) => {
+      if (m && m.pointerId !== pointerId) return;
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", end);
+      window.removeEventListener("pointercancel", end);
+      endGesture.current = undefined;
+      void app.setWindowRect({});
+    };
+    endGesture.current?.();
+    endGesture.current = end;
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", end);
+    window.addEventListener("pointercancel", end);
+  };
   const drag = (e: React.PointerEvent) => {
     if (size === "full") return;
     const sx = e.clientX - x, sy = e.clientY - y;
-    const move = (m: PointerEvent) =>
-      void app.setWindowRect({ x: clamp(m.clientX - sx, -w + 60, window.innerWidth - 60), y: clamp(m.clientY - sy, 0, window.innerHeight - HEADER) }, false);
-    const up = () => (window.removeEventListener("pointermove", move), window.removeEventListener("pointerup", up), void app.setWindowRect({}));
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
+    gesture(e.pointerId, (m) =>
+      void app.setWindowRect({ x: clamp(m.clientX - sx, -w + 60, window.innerWidth - 60), y: clamp(m.clientY - sy, 0, window.innerHeight - HEADER) }, false));
   };
   const resize = (e: React.PointerEvent) => {
     e.stopPropagation();
     const sx = e.clientX - w, sy = e.clientY - h;
-    const move = (m: PointerEvent) =>
-      void app.setWindowRect({ size: "medium", w: clamp(m.clientX - sx, 140, window.innerWidth - x), h: clamp(m.clientY - sy, 100, window.innerHeight - y) }, false);
-    const up = () => (window.removeEventListener("pointermove", move), window.removeEventListener("pointerup", up), void app.setWindowRect({}));
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
+    gesture(e.pointerId, (m) =>
+      void app.setWindowRect({ size: "medium", w: clamp(m.clientX - sx, 140, window.innerWidth - x), h: clamp(m.clientY - sy, 100, window.innerHeight - y) }, false));
   };
   // Two-finger pinch on the header/frame border resizes (the page itself gets its own touch input).
   const touchDist = (t: React.TouchList) => Math.hypot(t[0]!.clientX - t[1]!.clientX, t[0]!.clientY - t[1]!.clientY);

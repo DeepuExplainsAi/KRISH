@@ -14,7 +14,12 @@ export class Collection<T extends { id: string }> {
     private max = 1000,
   ) {}
 
-  async all(): Promise<T[]> {
+  /** Waits for writes queued before this call, so a read never misses an entry that was already submitted. */
+  all(): Promise<T[]> {
+    return this.serial(() => this.read());
+  }
+
+  private async read(): Promise<T[]> {
     const raw = await this.kv.get(this.key);
     return raw ? (JSON.parse(raw) as T[]) : [];
   }
@@ -27,13 +32,13 @@ export class Collection<T extends { id: string }> {
 
   put(item: T): Promise<void> {
     return this.serial(async () => {
-      const rest = (await this.all()).filter((x) => x.id !== item.id);
+      const rest = (await this.read()).filter((x) => x.id !== item.id);
       await this.save([...rest, item].slice(-this.max));
     });
   }
 
   remove(id: string): Promise<void> {
-    return this.serial(async () => this.save((await this.all()).filter((x) => x.id !== id)));
+    return this.serial(async () => this.save((await this.read()).filter((x) => x.id !== id)));
   }
 
   clear(): Promise<void> {

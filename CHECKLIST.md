@@ -6,19 +6,19 @@ Legend: **RUN** = executed in the build environment with the result observed. **
 
 | Area | How | Result (2026-10-25) |
 |---|---|---|
-| Core logic: provider adapters, fallback (429 + Retry-After, 5xx, timeout, network, invalid JSON, schema-invalid), circuit breaker, daily counter, sensitive-page gating, abort, keys-in-headers, **fetch that ignores AbortSignal** | `npm test -w core` (mocked providers) | pass |
+| Core logic: provider adapters, fallback (429 + Retry-After, 5xx, timeout, network, invalid JSON, schema-invalid), circuit breaker, daily counter, sensitive-page gating, abort, keys-in-headers, **fetch that ignores AbortSignal, hung error body, body-read reset** | `npm test -w core` (mocked providers) | pass |
 | Live model refresh: Gemini filter + pagination, OpenAI-compatible `/models`, `free` only when provider says so, failed refresh keeps cache, auto-fetch exactly once | same | pass |
 | Strict action schema (allowlist, https only, no creds, extra props) | same | pass |
 | Redaction (cookies, tokens, JWTs, key shapes, cards with Luhn, OTP phrases, secret fields) | same | pass |
 | Agent loop: confirm-before-send, secure-input flow (value never reaches model/history), CAPTCHA take-over, off-site and consent confirmations, upload confirm, injection fencing, STOP, Take over/Resume, step limit, stuck handling | same | pass |
-| Memory, history, projects, panels, scheduler math, opt-in brief, **concurrent writes keep every entry** | same | pass |
+| Memory, history, projects, panels, scheduler math, opt-in brief, **concurrent writes keep every entry, reads see queued writes** | same | pass |
 | Page script (observe, type/fill with native setter, click, highlight, stale ids, spoof resistance) | jsdom | pass |
 | App store flows with a fake platform, Lite mode default on low-RAM | `npm test -w ui` | pass |
 | Tier 0 sandbox: zip, unzip, zip-slip, zip bomb, stored-entry size lie, QuickJS script, no host globals, infinite loop, memory cap, print/output limits | `npm test -w ui` (Node, real QuickJS WASM) | pass |
 | Desktop helper logic (https check, fetch validation, expression quoting, secret store, docker flags) | `npm test -w desktop` | pass |
 | **Real Electron 45 main process + preload + WebContentsView**: layout toggle with and without a page (used to segfault), http/file/unknown-channel refusals, fetch refusals, isolated-world observe/read, stale-fingerprint refusal, snapshot, clear site data. Page's own JS sees no `K` | `npm run smoke -w desktop` under Xvfb (12 checks); also confirmed it crashes on the old code | 12/12 pass |
 | **Tier 0 worker in real Chrome** (built bundle): script result, infinite loop interrupted at 5 s, `fetch`/`XMLHttpRequest`/`WebSocket`/`importScripts` undefined | agent-browser | pass |
-| **UI layout in real Chrome at 467x922**: nav at the bottom, live window drag writes storage once per drag (0 during, 1 on release) | agent-browser | pass |
+| **UI layout in real Chrome at 467x922**: nav at the bottom, live window drag writes storage once per drag (0 during, 1 on release or on `pointercancel`; a second pointer and stray moves after cancel are ignored) | agent-browser | pass |
 | TypeScript strict type-check, ESLint | `npm run typecheck`, `npm run lint` | clean |
 | UI production build (default and with `KRISH_LOCAL_MODEL=1`) | `npm run build:ui` | builds; local model code absent from default bundle |
 | Kotlin sources compile for both flavors (Gradle 8.14.3, AGP 8.13.0, Kotlin 2.4.21, JDK 21, SDK 36); re-run 2026-10-25 | `./gradlew compileLiteDebugKotlin compileFullDebugKotlin` | BUILD SUCCESSFUL |

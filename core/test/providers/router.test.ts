@@ -189,3 +189,39 @@ describe("fetch that ignores AbortSignal (Capacitor native POST)", () => {
     expect((r as { e: unknown }).e).toBeInstanceOf(AbortedError);
   });
 });
+
+describe("error classification while reading the body", () => {
+  const hungBody = (status: number) => () =>
+    Promise.resolve({ ok: false, status, headers: new Headers(), text: () => new Promise<string>(() => undefined), json: () => new Promise(() => undefined) } as unknown as Response);
+  const settle = <T,>(p: Promise<T>) =>
+    Promise.race([p.then((v) => ({ v }), (e: unknown) => ({ e })), new Promise<"HUNG">((r) => setTimeout(() => r("HUNG"), 1500))]);
+
+  it("an error response whose body hangs is a timeout, not an auth failure", async () => {
+    const { keys, kv } = await stores(["a"]);
+    const router = new ProviderRouter({ keys, kv, providers: () => [provider("a")], config: { requestTimeoutMs: 40 }, fetch: hungBody(401) });
+    const r = await settle(router.run(msgs, parseAction));
+    expect(r).not.toBe("HUNG");
+    expect(String((r as { e: Error }).e)).toMatch(/timeout|timed out/i);
+    expect(String((r as { e: Error }).e)).not.toMatch(/auth/i);
+  });
+
+  it("STOP during an error response body is an abort", async () => {
+    const { keys, kv } = await stores(["a"]);
+    const router = new ProviderRouter({ keys, kv, providers: () => [provider("a")], fetch: hungBody(401) });
+    const ac = new AbortController();
+    setTimeout(() => ac.abort(), 20);
+    const r = await settle(router.run(msgs, parseAction, { signal: ac.signal }));
+    expect((r as { e: unknown }).e).toBeInstanceOf(AbortedError);
+  });
+
+  it("a connection reset while reading a 200 body is a network error, not bad_json", async () => {
+    const { keys, kv } = await stores(["a", "b"]);
+    const reset = () => Promise.resolve({ ok: true, status: 200, headers: new Headers(), json: () => Promise.reject(new TypeError("terminated")) } as unknown as Response);
+    const router = new ProviderRouter({
+      keys, kv, providers: () => [provider("a"), provider("b")],
+      fetch: (u) => (u.includes("a.test") ? reset() : Promise.resolve(openaiReply(DONE))),
+    });
+    const r = await router.run(msgs, parseAction);
+    expect(r.attempts[0]?.outcome).toBe("network");
+  });
+});

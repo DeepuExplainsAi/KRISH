@@ -22,7 +22,7 @@ Rule: update this file at the end of every work session (status table + "Next").
 | docs | README, BUILD, SECURITY, CREDITS, CHECKLIST, SOURCE-OFFER, LICENSES | DONE |
 
 ## Verified (actually run)
-CHECKLIST.md is authoritative. Counts as of 2026-10-25: core 112, ui 14, desktop 8 unit tests; desktop smoke 12 checks; typecheck, lint, UI build, `cap sync`, `compileLiteDebugKotlin` + `compileFullDebugKotlin` all clean.
+CHECKLIST.md is authoritative. Counts as of 2026-10-25: core 116, ui 14, desktop 8 unit tests; desktop smoke 12 checks; typecheck, lint, UI build, `cap sync`, `compileLiteDebugKotlin` + `compileFullDebugKotlin` all clean.
 
 ## Session log: audit and fixes (2026-10-25)
 Re-checked the previous work against the spec by running it, not by reading the old notes. Found and fixed:
@@ -36,7 +36,8 @@ Re-checked the previous work against the spec by running it, not by reading the 
 8. **Resize handle overlapped the STOP button.** Footer now keeps a right gap.
 9. **Lite mode is on by default on low-RAM devices** (a saved user choice still wins). Test added.
 10. **History cap 5000 -> 2000** (every write rewrites the list; 5000 entries is ~2 MB).
-11. **Docs:** test counts were stale; `docs/SPEC.md` now holds the full spec; CREDITS wording; Playwright deviation and the `npm audit` result are documented in DEPENDENCIES.md; new `desktop/smoke.cjs` (`npm run smoke -w desktop`).
+11. **Independent review round (found 4, all fixed, each with a test that fails on the earlier code):** (a) an error response whose body hung was reported as `auth`, not timeout/abort; (b) `Collection.all()` could overtake queued writes, so the History screen could miss entries; reads now go through the same queue (internal `read()` is used inside jobs to avoid self-deadlock); (c) `pointercancel` left drag/resize listeners installed and the last rect unsaved: one `gesture()` finalizer handles up, cancel and unmount and tracks the initiating pointer id (verified in real Chrome); (d) a connection reset while reading a 200 body was classified `bad_json`; only `SyntaxError` is now.
+12. **Docs:** test counts were stale; `docs/SPEC.md` now holds the full spec; CREDITS wording; Playwright deviation and the `npm audit` result are documented in DEPENDENCIES.md; new `desktop/smoke.cjs` (`npm run smoke -w desktop`).
 
 Checked and fine: no secrets/eval/telemetry/addJavascriptInterface in the repo; Alpine and proot checksums match; manifest permissions; CSP; `.gitignore`.
 

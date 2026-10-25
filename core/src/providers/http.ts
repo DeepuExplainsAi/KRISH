@@ -54,11 +54,14 @@ export async function request(
       }),
       gaveUp,
     ]);
+    // Cancellation wins over anything the response said or failed to say.
+    const cancelled = () => timedOut || call.signal?.aborted === true;
     if (!res.ok) {
-      const snippet = redactText((await Promise.race([res.text(), gaveUp]).catch(() => "")).slice(0, 200));
+      const body = await Promise.race([res.text(), gaveUp]).catch(() => "");
+      if (cancelled()) throw new Error("cancelled"); // classified by the outer handler
       throw new ProviderError(
         classifyStatus(res.status),
-        `HTTP ${res.status}: ${snippet}`,
+        `HTTP ${res.status}: ${redactText(body.slice(0, 200))}`,
         res.status,
         parseRetryAfter(res.headers.get("retry-after")),
       );
@@ -66,7 +69,7 @@ export async function request(
     try {
       return await Promise.race([res.json(), gaveUp]);
     } catch (e) {
-      if (timedOut || call.signal?.aborted) throw e; // classified by the outer handler
+      if (cancelled() || !(e instanceof SyntaxError)) throw e; // a body that cannot be read is not "bad JSON"
       throw new ProviderError("bad_json", "provider returned a non-JSON body");
     }
   } catch (e) {
