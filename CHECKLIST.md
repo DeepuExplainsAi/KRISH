@@ -1,0 +1,54 @@
+# Checklist: what was verified, and what was not
+
+Legend: **RUN** = executed in the build environment with the result observed. **STATIC** = checked by reading output/config. **NOT RUN** = never executed; may be wrong.
+
+## Verified (RUN)
+
+| Area | How | Result (2026-10-25) |
+|---|---|---|
+| Core logic: provider adapters, fallback (429 + Retry-After, 5xx, timeout, network, invalid JSON, schema-invalid), circuit breaker, daily counter, sensitive-page gating, abort, keys-in-headers | `npm test -w core` (mocked providers) | pass |
+| Live model refresh: Gemini filter + pagination, OpenAI-compatible `/models`, `free` only when provider says so, failed refresh keeps cache, auto-fetch exactly once | same | pass |
+| Strict action schema (allowlist, https only, no creds, extra props) | same | pass |
+| Redaction (cookies, tokens, JWTs, key shapes, cards with Luhn, OTP phrases, secret fields) | same | pass |
+| Agent loop: confirm-before-send, secure-input flow (value never reaches model/history), CAPTCHA take-over, off-site and consent confirmations, upload confirm, injection fencing, STOP, Take over/Resume, step limit, stuck handling | same | pass |
+| Memory, history, projects, panels, scheduler math, opt-in brief | same | pass |
+| Page script (observe, type/fill with native setter, click, highlight, stale ids, spoof resistance) | jsdom | pass |
+| App store flows with a fake platform | `npm test -w ui` | pass |
+| Tier 0 sandbox: zip, unzip, zip-slip, zip bomb, QuickJS script, no host globals, infinite loop, memory cap | `npm test -w ui` (Node, real QuickJS WASM) | pass |
+| Desktop helper logic (https check, fetch validation, expression quoting, secret store, docker flags) | `npm test -w desktop` | pass |
+| TypeScript strict type-check, ESLint | `npm run typecheck`, `npm run lint` | clean |
+| UI production build (default and with `KRISH_LOCAL_MODEL=1`) | `npm run build:ui` | builds; local model code absent from default bundle |
+| Kotlin sources compile for both flavors (Gradle 8.14.3, AGP 8.13.0, Kotlin 2.4.21, JDK 21, SDK 36) | `./gradlew compileLiteDebugKotlin compileFullDebugKotlin` | BUILD SUCCESSFUL |
+| `TarGz.kt` extracts the real Alpine rootfs identically to GNU tar (83 files, 335 symlinks, contents equal) | kotlinc + diff | identical |
+| Merged manifest permissions | inspected merged manifests | only INTERNET and POST_NOTIFICATIONS (WorkManager extras removed) |
+
+## NOT RUN: needs a real device or display (please test)
+
+1. **Everything on an Android device.** The APK was not installed or launched.
+2. Agent WebView: loading sites, `evaluateJavascript` round trip, element highlight, live-window positioning under the UI, drag/pinch/resize feel, Mini snapshot mode.
+3. File upload into a web page (real tap + `onShowFileChooser` answer): the riskiest mechanism; some sites may reject it.
+4. Android Keystore plugin (`KrishSecurePlugin`): encrypt/decrypt round trip.
+5. WorkManager notifications (`DueWorker`) and the POST_NOTIFICATIONS opt-in on Android 13+.
+6. **Tier 1 (proot + Alpine) has never been executed.** Android may block executing the bundled binaries on some OS builds (the code reports this and Tier 0 keeps working).
+7. Electron main process, preload, `WebContentsView`, desktop-layout emulation, `safeStorage`, file dialogs, `debugger.setFileInputFiles` upload, Docker tier.
+8. Real provider calls (no keys were used). Request shapes follow public API docs and mocks only; confirm Gemini and each OpenAI-compatible host.
+9. Optional WebGPU model (`KRISH_LOCAL_MODEL=1`): never loaded; needs a WebGPU-capable device.
+10. Tier 0 Worker in a real browser/WebView (tests ran the same code in Node; the worker wrapper that strips globals and posts results was not run).
+11. `ci/workflows/*.yml` were never executed by GitHub (the push token lacked `workflow` scope).
+12. Accessibility, RTL, small screens, landscape.
+
+## Known limitations
+
+- Tier 1 cannot disable network (proot). Mitigated by mandatory confirmation. See SECURITY.md.
+- Redaction and sensitive-page detection are heuristics.
+- `phone-control/` is an empty stub (phase 2).
+- Payments/wallet, Google OAuth email/Drive, cloud background execution and password saving are out of scope and not present.
+- Scheduled tasks notify; they do not run unattended.
+- Binaries committed on purpose: `android/gradle/wrapper/gradle-wrapper.jar` (standard Gradle wrapper), `android/app/src/full/jniLibs/arm64-v8a/*.so` and the Alpine rootfs tarball (pinned, checksummed, licensed; see `SOURCE-OFFER.md`).
+
+## Reproduce the "no extras" claims
+
+```sh
+grep -rniE "analytics|telemetry|crashlytics|sentry|firebase|admob|google-services" --include=*.{ts,tsx,kt,gradle,json,xml,cjs} . --exclude-dir=node_modules --exclude-dir=build | grep -v package-lock
+grep -rn "addJavascriptInterface" android/app/src   # expect: only the comment in AgentWebView.kt
+```

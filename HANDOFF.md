@@ -10,24 +10,25 @@ Rule: update this file at the end of every work session (status table + "Next").
 ## Status
 | Step | Scope | State |
 |---|---|---|
-| 1 | Core: providers, fallback, model refresh, action schema, redaction, tests | DONE (56 tests) |
-| 1b | Core: agent loop, policy/confirm gate, history, memory, projects, panels, scheduler, brief | DONE (80 tests total) |
-| 2 | Android WebView plugin (Kotlin, flavors, manifest, Keystore, WorkManager) | WRITTEN, NEVER COMPILED (no JDK here). CI job `android-compile` in .github/workflows/check.yml is the first check |
-| 3 | Live window, upload, confirm gate, STOP, redaction | DONE in code: ui/ builds, 4 store tests pass; native side + layout UNTESTED on device |
-| 4 | History, Lite mode, memory, Projects, Tasks, morning brief | DONE in code (core tested; screens built; DueWorker untested) |
-| 5 | Desktop (Electron): main/preload/lib + ui platform | WRITTEN; lib.cjs helpers tested (7); Electron main/preload NEVER RUN (binary not installed here) |
-| 6a | Tier 0 sandbox (Worker + fflate + QuickJS WASM) | DONE: 7 node tests pass (zip-slip, bomb, loop, memory cap, no host globals). Worker itself never run in a real browser |
-| 6b | Tier 1 Alpine+proot (android full flavor) | WRITTEN. TarGz.kt VERIFIED against real Alpine rootfs (JDK+kotlinc here, identical to GNU tar). proot never executed (needs arm64 device) |
-| 7 | WebGPU local mode | TODO |
-| docs | README, SECURITY, DEPENDENCIES, CREDITS, CHECKLIST, BUILD, workflow | TODO |
+| 1 | Core: providers, fallback, model refresh, action schema, redaction | DONE, tested |
+| 1b | Core: agent loop, policy gate, memory, history, projects, panels, scheduler, brief | DONE, tested |
+| 2 | Android plugins (WebView, files, Keystore, WorkManager), flavors, manifest | DONE; Kotlin COMPILES, both debug APKs assemble; never run on a device |
+| 3 | UI: live window, chat, prompts (confirm/secure/takeover), all screens | DONE; builds; store tested; layout/touch untested |
+| 4 | History, Lite mode, memory, Projects, Tasks, morning brief | DONE |
+| 5 | Desktop (Electron) | WRITTEN; helpers tested; Electron never run |
+| 6a | Tier 0 sandbox | DONE, tested in Node |
+| 6b | Tier 1 Alpine+proot | WRITTEN; TarGz verified; proot never executed |
+| 7 | WebGPU local mode | DONE behind build flag KRISH_LOCAL_MODEL=1; never loaded |
+| docs | README, BUILD, SECURITY, CREDITS, CHECKLIST, SOURCE-OFFER, LICENSES | DONE |
 
 ## Verified (actually run)
-- core page script (core/page-script/krish-page.js) tested under jsdom (90 tests total)
-- core: `npm test` (80 pass), `npm run typecheck`, `npm run lint` clean (2026-10-25)
+See CHECKLIST.md (authoritative). Summary: 94 core + 11 ui + 7 desktop tests, typecheck, lint, ui build, Gradle Kotlin compile + assembleLiteDebug/assembleFullDebug (lite 5.0 MB, full 9.4 MB).
 
-## Untested / unverified
-- everything Android (Kotlin never compiled), Electron, UI
-- android/gradle/wrapper/gradle-wrapper.jar is a generated binary (Gradle standard); kept, document in CHECKLIST
+## Remaining ideas (not required for v1)
+- Run on a device and work through CHECKLIST.md "NOT RUN".
+- Move ci/workflows/*.yml to .github/workflows/ (needs token with workflow scope).
+- Phase 2: phone-control module (stub only).
+- A real e2e test of file upload and the live-window layout on hardware.
 
 ## Gotchas
 - Shell is `sh`: `mkdir -p a/{b,c}` does NOT brace-expand. Use separate args.
@@ -35,7 +36,5 @@ Rule: update this file at the end of every work session (status table + "Next").
 - QuickJS `setMemoryLimit` does not bound growth reliably -> wasm Memory.grow cap in sandbox/tasks.ts (capWasmMemory).
 - Sandbox RAM is ~480MB: do not run big test allocations.
 
-## Next
-- ui/ (React+Vite): `npm run build:ui` is referenced by CI and not yet defined; screens: Home, Chat+LiveWindow, Panels, Projects, Tasks, History, Providers, Settings, Security
-- ui/src/platform/*.ts: adapters mapping Capacitor plugins (KrishBrowser, KrishFiles, KrishSecure, KrishSystem) to core ports (PageDriver, KeyStore, KVStore)
-- Then UI (ui/), desktop, sandbox, docs. Android/Electron cannot be compiled in this sandbox: mark everything unverified in CHECKLIST.md
+## Restart here
+`npm ci && npm test && npm run typecheck && npm run lint`, then read CHECKLIST.md. To rebuild Android in this sandbox: JDK 21 at /opt/jdk and SDK at /opt/android/sdk may be gone; see BUILD.md. Sandbox has ~480MB RAM: add swap and set org.gradle.jvmargs=-Xmx420m before ./gradlew, then restore -Xmx1536m.

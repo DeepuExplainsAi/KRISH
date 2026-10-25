@@ -46,8 +46,7 @@ class AgentWebView(context: Context, private val pageScript: String, private val
             domStorageEnabled = true
             allowFileAccess = false
             allowContentAccess = false
-            @Suppress("DEPRECATION") allowFileAccessFromFileURLs = false
-            @Suppress("DEPRECATION") allowUniversalAccessFromFileURLs = false
+            disableFileUrlAccess(this)
             safeBrowsingEnabled = true
             mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW
             mediaPlaybackRequiresUserGesture = true
@@ -61,6 +60,12 @@ class AgentWebView(context: Context, private val pageScript: String, private val
         CookieManager.getInstance().setAcceptThirdPartyCookies(this, false)
         webViewClient = Client()
         webChromeClient = Chrome()
+    }
+
+    @Suppress("DEPRECATION")
+    private fun disableFileUrlAccess(s: android.webkit.WebSettings) {
+        s.allowFileAccessFromFileURLs = false
+        s.allowUniversalAccessFromFileURLs = false
     }
 
     private inner class Client : WebViewClient() {

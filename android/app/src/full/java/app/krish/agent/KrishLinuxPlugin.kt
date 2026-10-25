@@ -126,7 +126,7 @@ class KrishLinuxPlugin : Plugin() {
     }
 
     private companion object {
-        const val ROOTFS_ASSET = "linux/alpine-minirootfs-3.24.3-aarch64.tar.gz"
+        const val ROOTFS_ASSET = "linux/alpine-minirootfs-3.24.3-aarch64.tgz.bin"
         const val ROOTFS_SHA256 = "4d3f80afaebd447c5591a63a73bde380a149fe8b2d85488cafabb2ff97551f50"
         const val TIMEOUT_S = 30L
         const val MAX_OUTPUT = 20_000
