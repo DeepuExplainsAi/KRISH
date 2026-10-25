@@ -2,6 +2,7 @@
   "name": "krish",
   "private": true,
   "version": "0.1.0",
+  "type": "module",
   "description": "Original cross-platform personal agent (source only).",
   "workspaces": ["core"],
   "scripts": {

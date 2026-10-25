@@ -1,0 +1,165 @@
+import { describe, expect, it } from "vitest";
+import { ProviderRouter, AllProvidersFailedError } from "../../src/providers/router";
+import { AbortedError } from "../../src/providers/types";
+import { parseAction } from "../../src/schema/actions";
+import { json, mockFetch, openaiReply, provider, stores } from "../helpers";
+
+const DONE = '{"type":"done","summary":"ok"}';
+const msgs = [{ role: "user" as const, content: "hi" }];
+
+async function setup(handlers: Parameters<typeof mockFetch>[0], providers = [provider("a"), provider("b")], cfg = {}) {
+  const { fn, calls } = mockFetch(handlers);
+  const s = await stores(providers.map((p) => p.id));
+  let t = 1_000_000;
+  const router = new ProviderRouter({ ...s, fetch: fn, providers: () => providers, now: () => t, config: cfg });
+  return { router, calls, advance: (ms: number) => (t += ms), ...s };
+}
+
+describe("ProviderRouter fallback", () => {
+  it("uses first provider when healthy", async () => {
+    const { router } = await setup({ "a.test": () => openaiReply(DONE), "b.test": () => openaiReply("x") });
+    const r = await router.run(msgs, parseAction);
+    expect(r.providerId).toBe("a");
+  });
+
+  it("falls back on 429 and honors Retry-After cooldown", async () => {
+    const { router, calls, advance } = await setup({
+      "a.test": () => json({}, 429, { "retry-after": "120" }),
+      "b.test": () => openaiReply(DONE),
+    });
+    expect((await router.run(msgs, parseAction)).providerId).toBe("b");
+    const aCalls = () => calls.filter((c) => c.url.includes("a.test")).length;
+    expect(aCalls()).toBe(1);
+    await router.run(msgs, parseAction); // a in cooldown: not called
+    expect(aCalls()).toBe(1);
+    advance(121_000);
+    await router.run(msgs, parseAction); // cooldown over: a tried again
+    expect(aCalls()).toBe(2);
+  });
+
+  it("falls back on 5xx", async () => {
+    const { router } = await setup({ "a.test": () => json({}, 503), "b.test": () => openaiReply(DONE) });
+    const r = await router.run(msgs, parseAction);
+    expect(r.attempts.map((a) => a.outcome)).toEqual(["server", "ok"]);
+  });
+
+  it("falls back on network error", async () => {
+    const { router } = await setup({
+      "a.test": () => {
+        throw new TypeError("offline");
+      },
+      "b.test": () => openaiReply(DONE),
+    });
+    expect((await router.run(msgs, parseAction)).providerId).toBe("b");
+  });
+
+  it("falls back on timeout", async () => {
+    const hang = (_u: string, init?: RequestInit) =>
+      new Promise<Response>((_, rej) => init?.signal?.addEventListener("abort", () => rej(new Error("aborted"))));
+    const { router } = await setup({ "a.test": hang, "b.test": () => openaiReply(DONE) }, undefined, { requestTimeoutMs: 20 });
+    const r = await router.run(msgs, parseAction);
+    expect(r.attempts[0]?.outcome).toBe("timeout");
+    expect(r.providerId).toBe("b");
+  });
+
+  it("falls back on invalid JSON body and on schema-invalid output", async () => {
+    const { router } = await setup({
+      "a.test": () => new Response("<html>oops</html>", { status: 200 }),
+      "b.test": () => openaiReply(DONE),
+    });
+    expect((await router.run(msgs, parseAction)).attempts[0]?.outcome).toBe("bad_json");
+
+    const second = await setup({
+      "a.test": () => openaiReply('{"type":"rm_rf"}'),
+      "b.test": () => openaiReply(DONE),
+    });
+    const r = await second.router.run(msgs, parseAction);
+    expect(r.attempts[0]?.outcome).toBe("bad_json");
+    expect(r.providerId).toBe("b");
+  });
+
+  it("tries the fallback model on the same provider first", async () => {
+    const seen: string[] = [];
+    const { router } = await setup(
+      {
+        "a.test": (_u, init) => {
+          const model = JSON.parse(String(init?.body)).model as string;
+          seen.push(model);
+          return model === "m1" ? json({}, 500) : openaiReply(DONE);
+        },
+      },
+      [provider("a", { fallbackModel: "m2" })],
+    );
+    const r = await router.run(msgs, parseAction);
+    expect(seen).toEqual(["m1", "m2"]);
+    expect(r.model).toBe("m2");
+  });
+
+  it("opens the circuit after repeated failures", async () => {
+    const { router, calls, advance } = await setup(
+      { "a.test": () => json({}, 500), "b.test": () => openaiReply(DONE) },
+      undefined,
+      { circuitThreshold: 2, circuitOpenMs: 60_000 },
+    );
+    await router.run(msgs, parseAction);
+    await router.run(msgs, parseAction);
+    const n = calls.filter((c) => c.url.includes("a.test")).length;
+    await router.run(msgs, parseAction);
+    expect(calls.filter((c) => c.url.includes("a.test")).length).toBe(n);
+    advance(61_000);
+    await router.run(msgs, parseAction);
+    expect(calls.filter((c) => c.url.includes("a.test")).length).toBe(n + 1);
+  });
+
+  it("enforces the local daily limit and counts usage", async () => {
+    const { router } = await setup(
+      { "a.test": () => openaiReply(DONE), "b.test": () => openaiReply(DONE) },
+      [provider("a", { dailyLimit: 1 }), provider("b")],
+    );
+    expect((await router.run(msgs, parseAction)).providerId).toBe("a");
+    expect((await router.run(msgs, parseAction)).providerId).toBe("b");
+    expect(await router.usageToday("a")).toBe(1);
+  });
+
+  it("skips providers not allowed on sensitive pages", async () => {
+    const { router, calls } = await setup(
+      { "a.test": () => openaiReply(DONE), "b.test": () => openaiReply(DONE) },
+      [provider("a"), provider("b", { allowSensitive: true })],
+    );
+    const r = await router.run(msgs, parseAction, { sensitive: true });
+    expect(r.providerId).toBe("b");
+    expect(calls.some((c) => c.url.includes("a.test"))).toBe(false);
+  });
+
+  it("throws when every provider fails or none can be used", async () => {
+    const { router } = await setup({ "a.test": () => json({}, 500), "b.test": () => json({}, 429) });
+    await expect(router.run(msgs, parseAction)).rejects.toBeInstanceOf(AllProvidersFailedError);
+    const none = await setup({}, [provider("a", { enabled: false })]);
+    await expect(none.router.run(msgs, parseAction)).rejects.toBeInstanceOf(AllProvidersFailedError);
+  });
+
+  it("does not fall back when the user aborts", async () => {
+    const ac = new AbortController();
+    const { router, calls } = await setup({
+      "a.test": () => {
+        ac.abort();
+        throw new TypeError("x");
+      },
+      "b.test": () => openaiReply(DONE),
+    });
+    await expect(router.run(msgs, parseAction, { signal: ac.signal })).rejects.toBeInstanceOf(AbortedError);
+    expect(calls.some((c) => c.url.includes("b.test"))).toBe(false);
+  });
+
+  it("sends keys in headers, never in URLs", async () => {
+    const g = provider("g", { kind: "gemini", baseUrl: "https://g.test", defaultModel: "gemini-x" });
+    const { router, calls } = await setup(
+      { "g.test": () => json({ candidates: [{ content: { parts: [{ text: DONE }] } }] }) },
+      [g],
+    );
+    await router.run(msgs, parseAction);
+    const c = calls[0]!;
+    expect(c.url).not.toContain("key-g");
+    expect((c.init?.headers as Record<string, string>)["x-goog-api-key"]).toBe("key-g");
+  });
+});

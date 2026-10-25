@@ -10,7 +10,8 @@ Rule: update this file at the end of every work session (status table + "Next").
 ## Status
 | Step | Scope | State |
 |---|---|---|
-| 1 | Core: providers, fallback, model refresh, action schema, tests | IN PROGRESS |
+| 1 | Core: providers, fallback, model refresh, action schema, redaction, tests | DONE (56 tests) |
+| 1b | Core: agent loop, policy/confirm gate, history, memory | IN PROGRESS |
 | 2 | Android WebView plugin | TODO |
 | 3 | Live window, upload, confirm gate, STOP, redaction | TODO (redaction in core) |
 | 4 | History, Lite mode, memory, Projects, Tasks, morning brief | TODO |
@@ -20,7 +21,7 @@ Rule: update this file at the end of every work session (status table + "Next").
 | docs | README, SECURITY, DEPENDENCIES, CREDITS, CHECKLIST, BUILD, workflow | TODO |
 
 ## Verified (actually run)
-- nothing yet
+- core: `npm test` (56 pass), `npm run typecheck`, `npm run lint` clean (2026-10-25)
 
 ## Untested / unverified
 - everything Android, Electron, UI
