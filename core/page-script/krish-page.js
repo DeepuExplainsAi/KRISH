@@ -47,7 +47,11 @@
     if (tag === "input" && d.type === "submit") d.text = d.text || e.value;
     if (e.href) d.href = e.href;
     if (e.getAttribute("autocomplete")) d.autocomplete = e.getAttribute("autocomplete");
+    var title = e.getAttribute("title");
+    if (title) d.title = clean(title).slice(0, 200);
+    if ((tag === "button" && e.type === "submit" && e.form) || (tag === "input" && (e.type === "submit" || e.type === "image"))) d.submits = true;
     if (e.disabled) d.disabled = true;
+    d.fp = fingerprint(e);
     return d;
   }
 
@@ -76,9 +80,18 @@
     return JSON.stringify({ url: location.href, title: document.title, text: pageText(), elements: out });
   }
 
-  function get(id) {
+  // Identity of an element as the gate saw it. Recomputed from the live node at action time and compared with the
+  // value from the approved observation, so a page that swaps entries in its (page-reachable) registry is refused.
+  function fingerprint(e) {
+    var tag = e.tagName.toLowerCase();
+    var text = clean(e.innerText != null ? e.innerText : e.textContent).slice(0, 60);
+    return [tag, e.getAttribute("type") || "", e.getAttribute("aria-label") || "", e.getAttribute("name") || "", e.getAttribute("title") || "", text, e.href || "", e.form ? "f" : ""].join("|");
+  }
+
+  function get(id, fp) {
     var e = state.els[id];
     if (!e || !e.isConnected) throw new Error("element " + id + " is gone; observe again");
+    if (fp !== undefined && fp !== null && fingerprint(e) !== fp) throw new Error("element " + id + " changed since it was observed; observe again");
     return e;
   }
 
@@ -121,14 +134,14 @@
       var e = get(id);
       return clean(e.innerText != null ? e.innerText : e.textContent).slice(0, MAX_TEXT);
     },
-    click: function (id) {
-      var e = get(id);
+    click: function (id, fp) {
+      var e = get(id, fp);
       if (e.scrollIntoView) e.scrollIntoView({ block: "center" });
       e.click();
       return "ok";
     },
-    type: function (id, text, submit) {
-      var e = get(id);
+    type: function (id, text, submit, fp) {
+      var e = get(id, fp);
       e.focus();
       setValue(e, text);
       if (submit) {
@@ -139,23 +152,27 @@
       return "ok";
     },
     // Used for both model-requested paste and native secret fill. Value is passed by native code only.
-    fill: function (id, value) {
-      var e = get(id);
+    fill: function (id, value, fp) {
+      var e = get(id, fp);
       e.focus();
       setValue(e, value);
       return "ok";
     },
     highlight: highlight,
     // Center of the element in CSS px (for native trusted taps, e.g. file choosers that need a user gesture).
-    rect: function (id) {
-      var e = get(id);
+    rect: function (id, fp) {
+      var e = get(id, fp);
       if (e.scrollIntoView) e.scrollIntoView({ block: "center" });
       var r = e.getBoundingClientRect();
       return JSON.stringify({ x: r.left + r.width / 2, y: r.top + r.height / 2, innerWidth: window.innerWidth });
     },
     // Clicking a file input opens the native chooser; native code answers it with the user-picked file.
-    openFileChooser: function (id) {
-      var e = get(id);
+    // The verified DOM node itself (desktop attaches the picked file through the debugger).
+    element: function (id, fp) {
+      return get(id, fp);
+    },
+    openFileChooser: function (id, fp) {
+      var e = get(id, fp);
       if (!(e.tagName === "INPUT" && e.type === "file")) throw new Error("element " + id + " is not a file input");
       e.click();
       return "ok";

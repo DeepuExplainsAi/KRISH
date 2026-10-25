@@ -19,8 +19,9 @@ describe("desktop lib", () => {
   });
 
   it("page expressions quote values and require integer ids", () => {
-    expect(lib.expr.type(2, 'he said "hi"\n', true)).toBe('K.type(2,"he said \\"hi\\"\\n",true)');
-    expect(lib.expr.fill(1, "');alert(1);//")).toBe('K.fill(1,"\');alert(1);//")');
+    expect(lib.expr.type(2, 'he said "hi"\n', true, "fp|1")).toBe('K.type(2,"he said \\"hi\\"\\n",true,"fp|1")');
+    expect(lib.expr.fill(1, "');alert(1);//")).toBe('K.fill(1,"\');alert(1);//",null)');
+    expect(lib.expr.click(3, 'x");evil(//')).toBe('K.click(3,"x\\");evil(//")');
     expect(() => lib.expr.click("1);evil(")).toThrow();
     expect(() => lib.expr.click(-1)).toThrow();
     expect(lib.expr.read(undefined)).toBe("K.read(null)");
@@ -53,7 +54,7 @@ describe("desktop lib", () => {
       mkdirSync: () => {},
     };
     const ss = { available: true, isEncryptionAvailable() { return this.available; }, encryptString: (s: string) => Buffer.from(`enc:${s}`), decryptString: (b: Buffer) => b.toString().slice(4) };
-    const store = lib.createSecretStore({ dir: "/d", safeStorage: ss, fs });
+    const store = lib.createSecretStore({ dir: "/d", safeStorage: ss, fs, platform: "darwin" });
     store.set("p1", "SECRET");
     expect([...disk.values()].join("")).not.toContain("SECRET");
     expect(store.get("p1")).toBe("SECRET");
@@ -61,6 +62,15 @@ describe("desktop lib", () => {
     expect(store.get("p1")).toBeUndefined();
     ss.available = false;
     expect(() => store.set("p1", "SECRET")).toThrow(/refusing/);
+  });
+
+  it("linux: refuses the basic_text backend, accepts a real keyring", () => {
+    const fs = { readFileSync: () => { throw new Error("ENOENT"); }, writeFileSync: () => {}, mkdirSync: () => {} };
+    const mk = (backend: string) => ({ isEncryptionAvailable: () => true, getSelectedStorageBackend: () => backend, encryptString: (s: string) => Buffer.from(s), decryptString: (b: Buffer) => b.toString() });
+    for (const bad of ["basic_text", "unknown"]) {
+      expect(() => lib.createSecretStore({ dir: "/d", safeStorage: mk(bad), fs, platform: "linux" }).set("k", "v")).toThrow(/refusing/);
+    }
+    expect(() => lib.createSecretStore({ dir: "/d", safeStorage: mk("gnome_libsecret"), fs, platform: "linux" }).set("k", "v")).not.toThrow();
   });
 
   it("docker args: offline, unprivileged, no pulls", () => {

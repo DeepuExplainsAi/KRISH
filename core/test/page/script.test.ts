@@ -7,9 +7,9 @@ const script = readFileSync(resolve(process.cwd(), "page-script/krish-page.js"),
 type K = {
   observe(): string;
   read(id?: number): string;
-  click(id: number): string;
-  type(id: number, t: string, submit?: boolean): string;
-  fill(id: number, v: string): string;
+  click(id: number, fp?: string | null): string;
+  type(id: number, t: string, submit?: boolean, fp?: string | null): string;
+  fill(id: number, v: string, fp?: string | null): string;
   highlight(id?: number | null): string;
   openFileChooser(id: number): string;
   rect(id: number): string;
@@ -116,5 +116,28 @@ describe("page script", () => {
       "use strict";
       (k() as unknown as Record<string, unknown>).click = () => "pwned";
     }).toThrow();
+  });
+
+  it("reports effective submit behavior and the element fingerprint", () => {
+    const o = obs();
+    const go = o.elements.find((e) => e.text === "Go")!;
+    expect(go.submits).toBe(true);
+    expect(typeof go.fp).toBe("string");
+    document.body.insertAdjacentHTML("beforeend", '<form><button>Continue</button></form>');
+    const cont = obs().elements.find((e) => e.text === "Continue")!;
+    expect(cont.submits).toBe(true); // no type attribute, still submits
+  });
+
+  it("refuses an element the page swapped into the registry after observation", () => {
+    const o = obs();
+    const q = o.elements.find((e) => e.name === "q")!;
+    const state = (window as unknown as { __krishState: { els: Element[] } }).__krishState;
+    const pw = document.getElementById("pw")!;
+    state.els[q.id as number] = pw; // hostile page rewrites the registry entry
+    expect(() => k().fill(q.id as number, "x", q.fp as string)).toThrow(/changed since/);
+    expect((pw as HTMLInputElement).value).toBe("");
+    // untouched elements still work with their own fingerprint
+    const docs = o.elements.find((e) => e.text === "Docs")!;
+    expect(k().click(docs.id as number, docs.fp as string)).toBe("ok");
   });
 });

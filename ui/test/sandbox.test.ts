@@ -34,6 +34,30 @@ describe("Tier 0 sandbox", () => {
     expect(() => safeName("C:\\x")).toThrow();
   });
 
+  it("refuses stored zip entries that lie about their size", async () => {
+    const stored = zipSync({ "x.bin": [new Uint8Array(3 * 1024 * 1024), { level: 0 }] });
+    const dv = new DataView(stored.buffer, stored.byteOffset);
+    for (let i = 0; i < stored.length - 4; i++) if (dv.getUint32(i, true) === 0x02014b50) dv.setUint32(i + 24, 0, true); // originalSize = 0
+    const saved = LIMITS.maxTotalBytes;
+    LIMITS.maxTotalBytes = 1024 * 1024;
+    try {
+      await expect(run("unzip", "{}", { "s.zip": stored })).rejects.toThrow(/too large/);
+    } finally {
+      LIMITS.maxTotalBytes = saved;
+    }
+  });
+
+  it("bounds print output and aliased output strings", async () => {
+    await expect(run("script", 'var s="x".repeat(40000); for(var i=0;i<100;i++) print(s);')).rejects.toThrow(/print output limit/);
+    const saved = LIMITS.maxOutputBytes;
+    LIMITS.maxOutputBytes = 100_000;
+    try {
+      await expect(run("script", 'var s="x".repeat(50000); for(var i=0;i<20;i++) output["f"+i]=s;')).rejects.toThrow(/too large/);
+    } finally {
+      LIMITS.maxOutputBytes = saved;
+    }
+  });
+
   it("runs JS in QuickJS with files in and files out", async () => {
     const r = await run("script", 'print("hi"); output["up.txt"] = files["a.txt"].toUpperCase(); 1+1', { "a.txt": enc.encode("abc") });
     expect(r.output).toBe("hi\n2");

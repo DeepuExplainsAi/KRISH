@@ -59,7 +59,7 @@ export interface AgentUI {
   /** Plain question to the user. undefined = cancelled. */
   ask(question: string, signal: AbortSignal): Promise<string | undefined>;
   /** Native masked input card. The APP (never the model) puts the value into the page. */
-  askSecure(req: { kind: SecureKind; title: string }, signal: AbortSignal): Promise<string | undefined>;
+  askSecure(req: { kind: SecureKind; title: string; site: string; field: string }, signal: AbortSignal): Promise<string | undefined>;
   /** CAPTCHA / sensitive page: user acts in the live view. Resolves when the user taps Resume. */
   takeOver(reason: string, signal: AbortSignal): Promise<void>;
   pickFile(signal: AbortSignal): Promise<SelectedFile | undefined>;

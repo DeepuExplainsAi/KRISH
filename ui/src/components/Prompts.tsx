@@ -34,6 +34,8 @@ export function PromptCard({ p }: { p: Prompt }) {
     <form className="card" onSubmit={(e) => { e.preventDefault(); done(text); }}>
       <h4>{secure ? "Action required" : "Question"}</h4>
       <p>{secure ? p.title : p.question}</p>
+      {secure && <p className="muted">Goes into <b>{p.field}</b> on <b>{p.site}</b>. Not sent to the AI.</p>}
+      {!secure && <p className="muted">Your answer is sent to the AI. Do not type passwords or codes here.</p>}
       <input
         autoFocus
         type={secure ? "password" : "text"}

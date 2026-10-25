@@ -1,3 +1,4 @@
+import { getDomain } from "tldts";
 import { DEFAULTS } from "../config/defaults";
 import { secretKind } from "../privacy/redact";
 import type { Action } from "../schema/actions";
@@ -14,15 +15,14 @@ const COSMETIC = re(DEFAULTS.patterns.cosmeticClick);
 const CONSENT = re(DEFAULTS.patterns.consentClick);
 const RISKY = re(DEFAULTS.patterns.riskyClick);
 
-const MULTI_PART_TLDS = new Set(["co.uk", "org.uk", "ac.uk", "gov.uk", "com.au", "co.in", "co.jp", "com.br", "co.nz", "com.sg"]);
-
-/** Approximate registrable domain (no public-suffix list; small multi-part allowlist). */
+/**
+ * Registrable domain from the Public Suffix List INCLUDING private suffixes, so victim.github.io and
+ * attacker.github.io are different sites. IP addresses and unknown hosts compare by full hostname.
+ */
 export function siteOf(url: string): string | undefined {
   try {
-    const labels = new URL(url).hostname.toLowerCase().split(".");
-    if (labels.length <= 2) return labels.join(".");
-    const lastTwo = labels.slice(-2).join(".");
-    return labels.slice(MULTI_PART_TLDS.has(lastTwo) ? -3 : -2).join(".");
+    const host = new URL(url).hostname.toLowerCase();
+    return getDomain(host, { allowPrivateDomains: true }) ?? host;
   } catch {
     return undefined;
   }
@@ -33,7 +33,13 @@ export const sameSite = (a: string, b: string) => {
   return sa !== undefined && sa === siteOf(b);
 };
 
-const labelOf = (e: PageElement) => (e.label ?? e.text ?? e.name ?? e.placeholder ?? "").replace(/\s+/g, " ").trim();
+const norm = (s: string | undefined) => (s ?? "").replace(/\s+/g, " ").trim();
+/** Every visible-meaning label of a control. Pages control these, so a risky word in ANY of them counts. */
+const labelsOf = (e: PageElement) => [e.label, e.text, e.title].map(norm).filter(Boolean);
+
+/** Sandbox tasks write files if declared, if the tool always writes, or if a script touches `output`. Never trust the claim alone. */
+export const sandboxWrites = (a: Extract<Action, { type: "run_sandbox_task" }>) =>
+  a.writesFiles || a.tool === "zip" || a.tool === "unzip" || a.tool === "shell" || /\boutput\b/.test(a.code);
 
 export interface GateContext {
   obs: PageObservation;
@@ -52,6 +58,12 @@ export function gate(action: Action, ctx: GateContext): Gate {
     return { verdict: "block", reason: `no element [${action.elementId}] on this page; read the page again` };
   }
   const host = new URL(ctx.obs.url).hostname;
+
+  // The page may have moved to another site by redirect or script, not by an action we approved.
+  const passive = action.type === "read" || action.type === "wait" || action.type === "ask_user" || action.type === "done" || action.type === "navigate";
+  if (!passive && !sameSite(ctx.obs.url, ctx.homeUrl)) {
+    return { verdict: "confirm", request: { kind: "navigate", title: "The page moved to another site. Continue here?", preview: ctx.obs.url } };
+  }
 
   switch (action.type) {
     case "navigate":
@@ -75,15 +87,18 @@ export function gate(action: Action, ctx: GateContext): Gate {
 
     case "click": {
       if (!el) return { verdict: "allow" };
-      const label = labelOf(el);
+      const labels = labelsOf(el);
+      const label = labels[0] ?? "";
+      const all = labels.join(" ");
       if (el.href && !sameSite(new URL(el.href, ctx.obs.url).href, ctx.homeUrl)) {
-        return { verdict: "confirm", request: { kind: "navigate", title: "Leave this site?", preview: el.href } };
+        return { verdict: "confirm", request: { kind: "navigate", title: "Leave this site?", preview: new URL(el.href, ctx.obs.url).href } };
       }
-      if (CONSENT.test(label)) {
+      if (CONSENT.test(all)) {
         return { verdict: "confirm", request: { kind: "consent", title: "Grant consent or permission?", preview: label } };
       }
-      if (COSMETIC.test(label)) return { verdict: "allow" };
-      if (el.type === "submit" || RISKY.test(label)) {
+      const submits = Boolean(el.submits) || el.type === "submit";
+      if (!submits && labels.length > 0 && labels.every((l) => COSMETIC.test(l))) return { verdict: "allow" };
+      if (submits || RISKY.test(all)) {
         const draft = ctx.drafts.length ? `\n\n${ctx.drafts.join("\n---\n")}` : "";
         return { verdict: "confirm", request: { kind: "send", title: `"${label || "Submit"}" on ${host}?`, preview: `Click "${label || "Submit"}"${draft}` } };
       }
@@ -94,8 +109,8 @@ export function gate(action: Action, ctx: GateContext): Gate {
       return { verdict: "allow" }; // confirmed after the user picks the file (needs the file name)
 
     case "run_sandbox_task":
-      return action.writesFiles || action.tool === "shell"
-        ? { verdict: "confirm", request: { kind: "sandbox", title: action.tool === "shell" ? "Run this command in the Linux sandbox?" : "Run task that writes files?", preview: `${action.tool}:\n${action.code}` } }
+      return sandboxWrites(action)
+        ? { verdict: "confirm", request: { kind: "sandbox", title: action.tool === "shell" ? "Run this command in the Linux sandbox?" : "Run task that creates or changes sandbox files?", preview: `${action.tool}:\n${action.code}` } }
         : { verdict: "allow" };
 
     case "read":

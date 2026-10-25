@@ -14,12 +14,13 @@ Legend: **RUN** = executed in the build environment with the result observed. **
 | Memory, history, projects, panels, scheduler math, opt-in brief | same | pass |
 | Page script (observe, type/fill with native setter, click, highlight, stale ids, spoof resistance) | jsdom | pass |
 | App store flows with a fake platform | `npm test -w ui` | pass |
-| Tier 0 sandbox: zip, unzip, zip-slip, zip bomb, QuickJS script, no host globals, infinite loop, memory cap | `npm test -w ui` (Node, real QuickJS WASM) | pass |
+| Tier 0 sandbox: zip, unzip, zip-slip, zip bomb, stored-entry size lie, QuickJS script, no host globals, infinite loop, memory cap, print/output limits | `npm test -w ui` (Node, real QuickJS WASM) | pass |
 | Desktop helper logic (https check, fetch validation, expression quoting, secret store, docker flags) | `npm test -w desktop` | pass |
 | TypeScript strict type-check, ESLint | `npm run typecheck`, `npm run lint` | clean |
 | UI production build (default and with `KRISH_LOCAL_MODEL=1`) | `npm run build:ui` | builds; local model code absent from default bundle |
 | Kotlin sources compile for both flavors (Gradle 8.14.3, AGP 8.13.0, Kotlin 2.4.21, JDK 21, SDK 36) | `./gradlew compileLiteDebugKotlin compileFullDebugKotlin` | BUILD SUCCESSFUL |
 | `TarGz.kt` extracts the real Alpine rootfs identically to GNU tar (83 files, 335 symlinks, contents equal) | kotlinc + diff | identical |
+| Independent review of the safety rules (static) and fixes | 12 findings; 11 fixed in code with tests that fail on the old code (policy, loop, page script, sandbox limits, keyring check, upload binding, layout). #1 is partly open on Android (see SECURITY.md gaps 0, 0b) | fixed as described |
 | Merged manifest permissions | inspected merged manifests | only INTERNET and POST_NOTIFICATIONS (WorkManager extras removed) |
 
 ## NOT RUN: needs a real device or display (please test)
@@ -36,6 +37,12 @@ Legend: **RUN** = executed in the build environment with the result observed. **
 10. Tier 0 Worker in a real browser/WebView (tests ran the same code in Node; the worker wrapper that strips globals and posts results was not run).
 11. `ci/workflows/*.yml` were never executed by GitHub (the push token lacked `workflow` scope).
 12. Accessibility, RTL, small screens, landscape.
+
+## Review findings that are only partly addressed
+
+- Android has no isolated JavaScript world: the page script shares the page's JS realm (SECURITY.md gap 0). Desktop uses an isolated world.
+- Network-level enforcement of "stay on the opened site" is not possible with `shouldOverrideUrlLoading`; the policy asks before acting on a page that left the approved site (gap 0b).
+- Layout fix (native view bounds from the real `.view` box, collapse while prompts are open) and the Android upload binding are code-reviewed only.
 
 ## Known limitations
 

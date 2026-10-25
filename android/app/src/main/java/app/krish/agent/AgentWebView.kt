@@ -32,7 +32,7 @@ class AgentWebView(context: Context, private val pageScript: String, private val
     interface Listener {
         fun onPage(url: String, title: String, loading: Boolean)
         /** Page asked for a file chooser. Return the user-selected Uri, or null to cancel. */
-        fun takePendingUpload(): Uri?
+        fun takePendingUpload(origin: String): Uri?
     }
 
     /** When false, touches fall through to the app UI underneath (hidden / snapshot mode). */
@@ -73,8 +73,10 @@ class AgentWebView(context: Context, private val pageScript: String, private val
         override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean =
             request.url.scheme != "https"
 
-        override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) =
+        override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
+            PickedFiles.disarm() // any navigation cancels a pending upload authorization
             listener.onPage(url, view.title.orEmpty(), true)
+        }
 
         override fun onPageFinished(view: WebView, url: String) {
             if (desktopLayout) view.evaluateJavascript(DESKTOP_VIEWPORT_JS, null)
@@ -95,7 +97,8 @@ class AgentWebView(context: Context, private val pageScript: String, private val
             params: FileChooserParams,
         ): Boolean {
             // The chooser only ever answers with a file the user picked in the system picker for this task.
-            val uri = listener.takePendingUpload()
+            val u = android.net.Uri.parse(webView.url.orEmpty())
+            val uri = listener.takePendingUpload("${u.scheme}://${u.authority}")
             callback.onReceiveValue(if (uri != null) arrayOf(uri) else null)
             return true
         }

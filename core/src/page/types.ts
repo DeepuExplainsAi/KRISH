@@ -10,6 +10,11 @@ export interface PageElement {
   value?: string;
   href?: string;
   autocomplete?: string;
+  title?: string;
+  /** Opaque identity of the element at observation time; echoed back on actions so swapped elements are refused. */
+  fp?: string;
+  /** True when activating it submits a form (effective type, not just the attribute). */
+  submits?: boolean;
   disabled?: boolean;
 }
 

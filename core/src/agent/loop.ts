@@ -6,7 +6,7 @@ import { AbortedError } from "../providers/types";
 import { AllProvidersFailedError, type ProviderRouter } from "../providers/router";
 import { parseAction, type Action } from "../schema/actions";
 import { AgentController, raceStop, StoppedError } from "./controller";
-import { gate, siteOf } from "./policy";
+import { gate, sandboxWrites, siteOf } from "./policy";
 import type { AgentStatus, AgentUI, ChipState, PageDriver, Sandbox } from "./ports";
 import { SYSTEM_PROMPT } from "./prompt";
 
@@ -40,6 +40,9 @@ interface Turn {
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n)}…` : s);
 /** Stops data from closing its own delimiter block. */
 const fence = (tag: string, body: string) => `<${tag}>\n${body.replace(/<\/?(PAGE_DATA|RESULT_DATA|MEMORY|USER_TASK|USER_REPLY)>/gi, "")}\n</${tag}>`;
+
+/** A normal question must never collect a secret: it goes to the AI and into history. */
+const SECRET_ASK = /\b(password|passcode|passphrase|otp|one[- ]time|verification code|2fa|cvv|cvc|card number|pin)\b/i;
 
 const kindOfSecret = (k: SecretKind | undefined): "password" | "otp" | undefined =>
   k === "password" ? "password" : k === "otp" || k === "card" ? "otp" : undefined;
@@ -126,7 +129,7 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
       }
       case "run_sandbox_task": {
         if (!deps.sandbox) return "sandbox unavailable";
-        const out = await deps.sandbox.run({ tool: a.tool, code: a.code, writesFiles: a.writesFiles }, signal);
+        const out = await deps.sandbox.run({ tool: a.tool, code: a.code, writesFiles: sandboxWrites(a) }, signal);
         return clip(redactText(out), lim.sandboxOutputMaxChars);
       }
       case "wait":
@@ -141,22 +144,32 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
 
   async function askUser(a: Extract<Action, { type: "ask_user" }>, obs: PageObservation): Promise<string> {
     if (!a.secure) {
+      if (SECRET_ASK.test(a.question)) return "blocked: never ask for a secret in a normal question; use ask_user with secure input on the field";
       const reply = await raceStop(ui.ask(a.question, signal), signal);
       if (reply === undefined) return "user cancelled the question";
-      userReply = reply;
+      userReply = redactText(reply);
       return "user replied (see USER_REPLY)";
     }
     if (a.secure.kind === "captcha") {
       await raceStop(ui.takeOver("CAPTCHA: please solve it, then tap Resume", signal), signal);
       return "user handled the CAPTCHA";
     }
-    const field =
-      obs.elements.find((e) => e.id === a.secure?.elementId) ??
-      obs.elements.find((e) => kindOfSecret(secretKind(e)) !== undefined);
-    if (!field) return "no secret field found on this page";
-    const value = await raceStop(ui.askSecure({ kind: a.secure.kind, title: a.question }, signal), signal);
+    // An explicit id must resolve exactly and be a secret field; there is no silent fallback to another element.
+    const requested = a.secure.elementId;
+    const field = requested !== undefined ? obs.elements.find((e) => e.id === requested) : obs.elements.find((e) => kindOfSecret(secretKind(e)) !== undefined);
+    if (!field) return "no matching field on this page; read the page again";
+    if (kindOfSecret(secretKind(field)) === undefined) return "blocked: that field is not a secret field";
+    const value = await raceStop(
+      ui.askSecure({ kind: a.secure.kind, title: a.question, site: new URL(obs.url).hostname, field: clip(field.label ?? field.name ?? field.placeholder ?? field.tag, 60) }, signal),
+      signal,
+    );
     if (value === undefined) return "user cancelled secure input";
-    await driver.fillSecret(field.id, value); // value is never stored, logged or sent to a model
+    try {
+      await driver.fillSecret(field.id, value); // value is never stored, logged or sent to a model
+    } catch {
+      // Page-originated error text could echo the value (a hostile page can hook setters), so it is never passed on.
+      return "could not fill the field; the page may have changed. Try again or ask the user to take over";
+    }
     return "the user entered the value; it was filled into the page (not visible to you)";
   }
 
@@ -171,7 +184,7 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
       const text = formatObservation(obs);
       const turns = history.slice(-DEFAULTS.agent.historyWindow).map((t, i) => `${i + 1}. ${t.action}\n   -> ${fence("RESULT_DATA", t.result)}`);
       const prompt = [
-        fence("USER_TASK", opts.task),
+        fence("USER_TASK", redactText(opts.task)),
         opts.memory ? fence("MEMORY", opts.memory) : "",
         userReply ? fence("USER_REPLY", userReply) : "",
         turns.length ? `Previous steps:\n${turns.join("\n")}` : "",
@@ -209,7 +222,7 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
 
       const label = describe(action, obs);
       const id = chip(label, action.type === "ask_user" && action.secure ? "action_required" : "running");
-      const actionText = JSON.stringify(action.type === "type" || action.type === "paste" ? { ...action, text: clip(action.text, 200) } : action);
+      const actionText = redactText(JSON.stringify(action.type === "type" || action.type === "paste" ? { ...action, text: clip(action.text, 200) } : action));
 
       if (action.type === "done") {
         chip(label, "done", id);
@@ -227,7 +240,7 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
         } else if (verdict.verdict === "confirm" && !(await raceStop(ui.confirm(verdict.request, signal), signal))) {
           result = "user declined this action; ask what to change or finish";
         } else {
-          if (verdict.verdict === "confirm" && verdict.request.kind === "navigate" && action.type === "navigate") homeUrl = action.url;
+          if (verdict.verdict === "confirm" && verdict.request.kind === "navigate") homeUrl = verdict.request.preview; // previews of navigate confirmations are URLs
           result = await execute(action, obs);
         }
       } catch (e) {

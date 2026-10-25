@@ -18,11 +18,12 @@ export interface BrowserHost {
   open(url: string): Promise<void>;
   observe(): Promise<PageObservation>;
   read(elementId?: number): Promise<string>;
-  click(elementId: number): Promise<void>;
-  type(elementId: number, text: string, submit?: boolean): Promise<void>;
+  /** `fp` is the element fingerprint from the observation the user/gate approved; the host refuses if the live node differs. */
+  click(elementId: number, fp?: string): Promise<void>;
+  type(elementId: number, text: string, submit?: boolean, fp?: string): Promise<void>;
   /** Fills a field natively. Used for paste and secure input; nothing is returned. */
-  fill(elementId: number, value: string): Promise<void>;
-  upload(elementId: number, fileToken: string): Promise<void>;
+  fill(elementId: number, value: string, fp?: string): Promise<void>;
+  upload(elementId: number, fileToken: string, fp?: string): Promise<void>;
   highlight(elementId?: number): Promise<void>;
   setBounds(b: Bounds): Promise<void>;
   setMode(mode: "live" | "hidden"): Promise<void>;

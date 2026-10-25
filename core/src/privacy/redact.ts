@@ -77,6 +77,10 @@ export function redactElement(el: PageElement): PageElement {
   if (secretKind(el)) delete out.value;
   else if (out.value !== undefined) out.value = redactText(out.value);
   if (out.text) out.text = redactText(out.text);
+  if (out.label) out.label = redactText(out.label);
+  if (out.placeholder) out.placeholder = redactText(out.placeholder);
+  if (out.name) out.name = redactText(out.name);
+  if (out.title) out.title = redactText(out.title);
   if (out.href) out.href = redactText(out.href);
   return out;
 }

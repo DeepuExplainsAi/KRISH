@@ -16,18 +16,23 @@ export function LiveWindow() {
   const mini = size === "mini";
   const snapshotMode = mini && s.deviceLowRam;
   const frame = useRef<HTMLDivElement>(null);
+  const viewBox = useRef<HTMLDivElement>(null);
   const pinch = useRef<{ d: number; w: number; h: number } | undefined>(undefined);
 
-  const pill = s.windowMinimized;
+  // While a confirm / question / secure card is up, the live card collapses to its pill so nothing page-controlled can cover it.
+  // Take-over prompts are the exception: the user needs the page to solve a CAPTCHA.
+  const blocking = s.prompts.some((p) => p.type !== "takeover");
+  const pill = s.windowMinimized || blocking;
   const open = s.windowOpen;
 
-  // Keep the native view aligned with the card.
+  // Native browser pixels sit above all app UI, so they must cover ONLY the .view box (never header, footer or prompts).
   useEffect(() => {
-    if (!open) return void app.platform.browser.setMode("hidden");
-    if (pill || snapshotMode) {
+    const show = open && !pill && !snapshotMode;
+    if (!show) {
       void app.platform.browser.setMode("hidden");
     } else {
-      void app.platform.browser.setBounds({ x, y: y + HEADER, width: w, height: Math.max(40, h - HEADER) });
+      const r = viewBox.current?.getBoundingClientRect();
+      if (r) void app.platform.browser.setBounds({ x: r.left, y: r.top, width: Math.max(40, r.width), height: Math.max(40, r.height) });
       void app.platform.browser.setMode("live");
     }
     app.syncSnapshots(open && !pill && snapshotMode);
@@ -82,7 +87,7 @@ export function LiveWindow() {
         <button onPointerDown={(e) => e.stopPropagation()} onClick={() => app.minimizeWindow(true)} aria-label="Minimize">–</button>
         <button onPointerDown={(e) => e.stopPropagation()} onClick={app.closeWindow} aria-label="Close">✕</button>
       </div>
-      <div className="view">
+      <div className="view" ref={viewBox}>
         {snapshotMode && s.snapshot && <img src={s.snapshot} alt="Browser snapshot" />}
         {!live && <p className="muted">No page yet. Ask the agent to open a site.</p>}
       </div>

@@ -22,6 +22,7 @@ const parseCallResult = (raw) => {
 };
 
 const quote = (s) => JSON.stringify(String(s));
+const fpArg = (fp) => (typeof fp === "string" ? quote(fp) : "null");
 const int = (n) => {
   if (!Number.isInteger(n) || n < 0) throw new Error("bad element id");
   return n;
@@ -31,9 +32,9 @@ const int = (n) => {
 const expr = {
   observe: () => "K.observe()",
   read: (id) => `K.read(${id == null ? "null" : int(id)})`,
-  click: (id) => `K.click(${int(id)})`,
-  type: (id, text, submit) => `K.type(${int(id)},${quote(text)},${Boolean(submit)})`,
-  fill: (id, value) => `K.fill(${int(id)},${quote(value)})`,
+  click: (id, fp) => `K.click(${int(id)},${fpArg(fp)})`,
+  type: (id, text, submit, fp) => `K.type(${int(id)},${quote(text)},${Boolean(submit)},${fpArg(fp)})`,
+  fill: (id, value, fp) => `K.fill(${int(id)},${quote(value)},${fpArg(fp)})`,
   highlight: (id) => `K.highlight(${id == null ? "null" : int(id)})`,
 };
 
@@ -77,7 +78,14 @@ class FileTokens {
  * Secret store backed by the OS keychain through Electron safeStorage (Keychain / DPAPI / libsecret).
  * If the OS cannot encrypt, writes are refused: secrets are never stored in plaintext.
  */
-function createSecretStore({ dir, safeStorage, fs }) {
+function createSecretStore({ dir, safeStorage, fs, platform = process.platform }) {
+  // On Linux, Electron can report encryption "available" while using a fixed, built-in password (basic_text). That is not a keychain.
+  const usable = () => {
+    if (!safeStorage.isEncryptionAvailable()) return false;
+    if (platform !== "linux") return true;
+    const backend = typeof safeStorage.getSelectedStorageBackend === "function" ? safeStorage.getSelectedStorageBackend() : "unknown";
+    return backend !== "basic_text" && backend !== "unknown";
+  };
   const file = path.join(dir, "secrets.json");
   const load = () => {
     try {
@@ -96,7 +104,7 @@ function createSecretStore({ dir, safeStorage, fs }) {
       return v ? safeStorage.decryptString(Buffer.from(v, "base64")) : undefined;
     },
     set(key, value) {
-      if (!safeStorage.isEncryptionAvailable()) throw new Error("OS keychain unavailable; refusing to store the key");
+      if (!usable()) throw new Error("OS keychain unavailable (on Linux install gnome-keyring or KWallet); refusing to store the key");
       const o = load();
       o[key] = safeStorage.encryptString(value).toString("base64");
       save(o);

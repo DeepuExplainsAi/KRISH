@@ -78,21 +78,33 @@ function applyBounds() {
   }
 }
 
+// All automation runs in an ISOLATED WORLD: it shares the DOM with the page but not its JavaScript globals, prototypes or
+// setters, so a hostile page cannot hook our code, read our state or spoof the registry.
+const WORLD = 1004;
 async function call(expression) {
-  const raw = await view.webContents.executeJavaScript(lib.wrapCall(PAGE_SCRIPT, expression), true);
+  const raw = await view.webContents.mainFrame.executeJavaScriptInIsolatedWorld(WORLD, [{ code: lib.wrapCall(PAGE_SCRIPT, expression) }]);
+  if (typeof raw !== "string") throw new Error("page did not answer");
   return lib.parseCallResult(raw);
 }
 
-/** Answers a file input with a user-picked file via the in-process debugger (no debugging port is opened). */
-async function uploadFile(elementId, filePath) {
+/**
+ * Answers a file input with a user-picked file. The element is resolved by id AND fingerprint in the isolated world
+ * (page-script registry lives there, not in the page), checked to be a file input, then handed to the in-process debugger.
+ */
+async function uploadFile(elementId, fp, filePath) {
+  // Unguessable per-call marker: a page cannot pre-mark a decoy input to win the selector below.
+  const nonce = crypto.randomBytes(16).toString("hex");
+  await call(`(function(){var e=K.element(${Number(elementId)},${typeof fp === "string" ? JSON.stringify(fp) : "null"});if(!(e.tagName==="INPUT"&&e.type==="file"))throw new Error("not a file input");e.setAttribute("data-krish-upload",${JSON.stringify(nonce)});return "ok";})()`);
   const dbg = view.webContents.debugger;
   dbg.attach("1.3");
   try {
-    const { result } = await dbg.sendCommand("Runtime.evaluate", { expression: `window.__krishState && window.__krishState.els[${Number(elementId)}]` });
-    if (!result.objectId) throw new Error("element is gone; observe again");
-    await dbg.sendCommand("DOM.setFileInputFiles", { files: [filePath], objectId: result.objectId });
+    const { root } = await dbg.sendCommand("DOM.getDocument", { depth: 0 });
+    const { nodeId } = await dbg.sendCommand("DOM.querySelector", { nodeId: root.nodeId, selector: `input[type="file"][data-krish-upload="${nonce}"]` });
+    if (!nodeId) throw new Error("element is gone; observe again");
+    await dbg.sendCommand("DOM.setFileInputFiles", { files: [filePath], nodeId });
   } finally {
     dbg.detach();
+    await call(`(function(){var n=document.querySelectorAll('[data-krish-upload=${JSON.stringify(nonce)}]');for(var i=0;i<n.length;i++)n[i].removeAttribute('data-krish-upload');return "ok";})()`).catch(() => undefined);
   }
 }
 
@@ -151,11 +163,13 @@ function registerIpc() {
   handle("browser:open", async ({ url }) => { if (!lib.isHttps(url)) throw new Error("only https URLs are allowed"); await view.webContents.loadURL(url); });
   handle("browser:observe", () => call(lib.expr.observe()));
   handle("browser:read", ({ elementId }) => call(lib.expr.read(elementId)));
-  handle("browser:click", ({ elementId }) => call(lib.expr.click(elementId)).then(() => undefined));
-  handle("browser:type", ({ elementId, text, submit }) => call(lib.expr.type(elementId, text, submit)).then(() => undefined));
-  handle("browser:fill", ({ elementId, value }) => call(lib.expr.fill(elementId, value)).then(() => undefined));
+  handle("browser:click", ({ elementId, fp }) => call(lib.expr.click(elementId, fp)).then(() => undefined));
+  handle("browser:type", ({ elementId, text, submit, fp }) => call(lib.expr.type(elementId, text, submit, fp)).then(() => undefined));
+  handle("browser:fill", ({ elementId, value, fp }) =>
+    // Page-originated error text is never returned from a fill: it could echo the value.
+    call(lib.expr.fill(elementId, value, fp)).then(() => undefined, () => { throw new Error("could not fill the field"); }));
   handle("browser:highlight", ({ elementId }) => call(lib.expr.highlight(elementId)).then(() => undefined));
-  handle("browser:upload", ({ elementId, token }) => uploadFile(elementId, tokens.get(token)));
+  handle("browser:upload", ({ elementId, fp, token }) => uploadFile(elementId, fp, tokens.get(token)));
   handle("browser:setBounds", (b) => { bounds = { x: Math.round(b.x), y: Math.round(b.y), width: Math.max(1, Math.round(b.width)), height: Math.max(1, Math.round(b.height)) }; applyBounds(); });
   handle("browser:setMode", ({ mode }) => view.setVisible(mode === "live"));
   handle("browser:setDesktopLayout", ({ enabled }) => { desktopLayout = Boolean(enabled); applyBounds(); if (view.webContents.getURL()) view.webContents.reload(); });

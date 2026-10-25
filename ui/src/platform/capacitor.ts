@@ -8,10 +8,10 @@ interface Browser {
   open(a: { url: string }): Promise<void>;
   observe(): Promise<{ value: string }>;
   read(a: { elementId?: number }): Promise<{ value: string }>;
-  click(a: { elementId: number }): Promise<void>;
-  type(a: { elementId: number; text: string; submit?: boolean }): Promise<void>;
-  fill(a: { elementId: number; value: string }): Promise<void>;
-  upload(a: { elementId: number; token: string }): Promise<void>;
+  click(a: { elementId: number; fp?: string }): Promise<void>;
+  type(a: { elementId: number; text: string; submit?: boolean; fp?: string }): Promise<void>;
+  fill(a: { elementId: number; value: string; fp?: string }): Promise<void>;
+  upload(a: { elementId: number; token: string; fp?: string }): Promise<void>;
   highlight(a: { elementId?: number }): Promise<void>;
   setBounds(a: Bounds): Promise<void>;
   setMode(a: { mode: string }): Promise<void>;
@@ -68,10 +68,10 @@ export function createCapacitorPlatform(): Platform {
     open: (url) => B.open({ url }),
     observe: async () => JSON.parse((await B.observe()).value) as PageObservation,
     read: async (elementId) => (await B.read({ elementId })).value,
-    click: (elementId) => B.click({ elementId }),
-    type: (elementId, text, submit) => B.type({ elementId, text, submit }),
-    fill: (elementId, value) => B.fill({ elementId, value }),
-    upload: (elementId, token) => B.upload({ elementId, token }),
+    click: (elementId, fp) => B.click({ elementId, fp }),
+    type: (elementId, text, submit, fp) => B.type({ elementId, text, submit, fp }),
+    fill: (elementId, value, fp) => B.fill({ elementId, value, fp }),
+    upload: (elementId, token, fp) => B.upload({ elementId, token, fp }),
     highlight: (elementId) => B.highlight({ elementId }),
     setBounds: (b) => B.setBounds(b),
     setMode: (mode) => B.setMode({ mode }),

@@ -24,6 +24,9 @@ Rule: update this file at the end of every work session (status table + "Next").
 ## Verified (actually run)
 See CHECKLIST.md (authoritative). Summary: 94 core + 11 ui + 7 desktop tests, typecheck, lint, ui build, Gradle Kotlin compile + assembleLiteDebug/assembleFullDebug (lite 5.0 MB, full 9.4 MB).
 
+## Security review round (done)
+Independent static review found 12 issues; 11 fixed with tests that fail on the old code (policy.test.ts, loop.test.ts, script.test.ts swap test, sandbox limits). Partly open: Android has no isolated JS world; no network-level site allowlist (SECURITY.md gaps 0, 0b).
+
 ## Remaining ideas (not required for v1)
 - Run on a device and work through CHECKLIST.md "NOT RUN".
 - Move ci/workflows/*.yml to .github/workflows/ (needs token with workflow scope).

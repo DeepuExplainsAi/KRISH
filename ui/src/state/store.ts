@@ -40,7 +40,7 @@ export type Screen = "home" | "chat" | "panels" | "projects" | "tasks" | "histor
 export type Prompt =
   | { id: number; type: "confirm"; req: ConfirmRequest; resolve: (ok: boolean) => void }
   | { id: number; type: "ask"; question: string; resolve: (v: string | undefined) => void }
-  | { id: number; type: "secure"; kind: SecureKind; title: string; resolve: (v: string | undefined) => void }
+  | { id: number; type: "secure"; kind: SecureKind; title: string; site: string; field: string; resolve: (v: string | undefined) => void }
   | { id: number; type: "takeover"; reason: string; resolve: () => void };
 
 export interface ChatItem {
@@ -293,8 +293,8 @@ export class AppStore {
         wait<boolean>((resolve) => this.prompt((id) => ({ id, type: "confirm", req, resolve })), signal, false),
       ask: (question, signal) =>
         wait<string | undefined>((resolve) => this.prompt((id) => ({ id, type: "ask", question, resolve })), signal, undefined),
-      askSecure: ({ kind, title }, signal) =>
-        wait<string | undefined>((resolve) => this.prompt((id) => ({ id, type: "secure", kind, title, resolve })), signal, undefined),
+      askSecure: ({ kind, title, site, field }, signal) =>
+        wait<string | undefined>((resolve) => this.prompt((id) => ({ id, type: "secure", kind, title, site, field, resolve })), signal, undefined),
       takeOver: (reason, signal) => {
         this.openWindow();
         void this.platform.browser.setMode("live");
@@ -332,19 +332,21 @@ export class AppStore {
   // ---- running the agent ----
   private driver(): PageDriver {
     const b = this.platform.browser;
+    let fps = new Map<number, string | undefined>();
     return {
       observe: async () => {
         const o = await b.observe();
+        fps = new Map(o.elements.map((e) => [e.id, e.fp]));
         if (this.state.settings.screenshots) o.screenshotDataUrl = await b.snapshot(768, 60).catch(() => undefined);
         return o;
       },
       navigate: (url) => b.open(url),
       read: (id) => b.read(id),
-      click: (id) => b.click(id),
-      type: (id, text, submit) => b.type(id, text, submit),
-      paste: (id, text) => b.fill(id, text),
-      upload: (id, f: SelectedFile) => b.upload(id, f.token),
-      fillSecret: (id, value) => b.fill(id, value),
+      click: (id) => b.click(id, fps.get(id)),
+      type: (id, text, submit) => b.type(id, text, submit, fps.get(id)),
+      paste: (id, text) => b.fill(id, text, fps.get(id)),
+      upload: (id, f: SelectedFile) => b.upload(id, f.token, fps.get(id)),
+      fillSecret: (id, value) => b.fill(id, value, fps.get(id)),
       highlight: (id) => b.highlight(id),
     };
   }

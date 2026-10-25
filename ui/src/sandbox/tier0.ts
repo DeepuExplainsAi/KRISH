@@ -13,7 +13,10 @@ export class Tier0Sandbox implements Sandbox {
   constructor(private makeWorker: () => Worker = () => new Worker(new URL("./worker.ts", import.meta.url), { type: "module" })) {}
 
   addFile(name: string, bytes: Uint8Array) {
-    this.files[safeName(name)] = bytes;
+    const n = safeName(name);
+    const others = Object.entries(this.files).filter(([k]) => k !== n).reduce((s, [, b]) => s + b.length, 0);
+    if (others + bytes.length > LIMITS.maxTotalBytes) throw new Error("sandbox storage limit reached; remove some files");
+    this.files[n] = bytes;
   }
   list = () => Object.entries(this.files).map(([name, b]) => ({ name, size: b.length }));
   clear() {
@@ -32,6 +35,9 @@ export class Tier0Sandbox implements Sandbox {
         done(() => {
           const r = e.data;
           if (!r.ok) return reject(new Error(r.error));
+          const incoming = Object.values(r.files).reduce((n, b) => n + b.length, 0);
+          const kept = Object.entries(this.files).filter(([n]) => !(n in r.files)).reduce((n, [, b]) => n + b.length, 0);
+          if (incoming + kept > LIMITS.maxTotalBytes) return reject(new Error("sandbox storage limit reached; remove some files"));
           for (const [n, d] of Object.entries(r.files)) this.files[n] = d;
           const names = Object.keys(r.files);
           resolve(names.length ? `${r.output}\n(new files in sandbox: ${names.join(", ")})` : r.output);

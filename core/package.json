@@ -9,6 +9,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "tldts": "7.4.19",
     "zod": "4.6.7"
   },
   "devDependencies": {

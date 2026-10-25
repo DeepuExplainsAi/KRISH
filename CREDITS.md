@@ -21,6 +21,7 @@ article. Their apps, binaries and private APIs were not examined. All names, UI,
 |---|---|---|---|
 | React, react-dom | 19.3.1 | MIT | UI |
 | Zod | 4.6.7 | MIT | core |
+| tldts | 7.4.19 | MIT (`LICENSES/tldts-MIT.txt`) | core |
 | fflate | 0.8.3 | MIT (`LICENSES/fflate-MIT.txt`) | Tier 0 zip |
 | quickjs-emscripten-core + @jitl/quickjs-singlefile-browser-release-sync | 0.32.0 | MIT (`LICENSES/quickjs-emscripten-MIT.txt`); QuickJS itself is MIT | Tier 0 scripts |
 | Capacitor | 8.5.3 | MIT | Android |

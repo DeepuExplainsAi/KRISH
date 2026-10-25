@@ -17,7 +17,7 @@ No backend server. You bring your own API keys. Everything the agent does is vis
 | `ui/` | React + Vite app: Home, Chat with live browser window, Panels, Projects, Tasks, History, Providers, Settings, Security. Tier 0 sandbox. |
 | `android/` | Capacitor + Kotlin plugins. Hardened agent WebView, Keystore secrets, WorkManager, file picker. Flavors `lite` and `full`. |
 | `desktop/` | Electron shell: agent browser in a separate sandboxed `WebContentsView`, OS-keychain secrets, optional Docker tier. |
-| `LICENSES/`, `CREDITS.md`, `SOURCE-OFFER.md` | Licenses and attribution. |
+| `LICENSES/`, `CREDITS.md`, `SOURCE-OFFER.md`, `DEPENDENCIES.md` | Licenses, attribution, and why each dependency exists. |
 
 ## How safety works (short)
 

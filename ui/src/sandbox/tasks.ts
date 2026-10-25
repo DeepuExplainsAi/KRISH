@@ -20,6 +20,9 @@ export const LIMITS = {
   wasmMemoryCapBytes: 96 * 1024 * 1024,
   scriptTimeoutMs: 5000,
   maxOutputChars: 20_000,
+  maxPrintBytes: 64 * 1024,
+  maxOutputFiles: 50,
+  maxOutputBytes: 20 * 1024 * 1024,
   maxTextFileBytes: 2 * 1024 * 1024,
 };
 
@@ -78,7 +81,8 @@ function unzipTask(input: TaskInput): TaskOutput {
       if (f.name.endsWith("/")) return false;
       safeName(f.name);
       count += 1;
-      total += f.originalSize;
+      // Stored entries are copied at their COMPRESSED size, so the declared originalSize alone cannot be trusted.
+      total += Math.max(f.size, f.originalSize);
       if (count > LIMITS.maxEntries) throw new Error("too many entries");
       if (total > LIMITS.maxTotalBytes) throw new Error("archive expands too large");
       return true;
@@ -125,8 +129,12 @@ async function scriptTask(input: TaskInput): Promise<TaskOutput> {
   try {
     const text: Record<string, string> = {};
     for (const [n, d] of Object.entries(input.files)) if (d.length <= LIMITS.maxTextFileBytes) text[n] = dec.decode(d);
+    let printedBytes = 0;
     const print = vm.newFunction("print", (...args) => {
-      printed.push(args.map((a) => String(vm.dump(a))).join(" "));
+      const line = args.map((a) => String(vm.dump(a))).join(" ");
+      printedBytes += line.length + 1;
+      if (printedBytes > LIMITS.maxPrintBytes) throw new Error("print output limit reached");
+      printed.push(line);
     });
     vm.setProp(vm.global, "print", print);
     print.dispose();
@@ -134,6 +142,13 @@ async function scriptTask(input: TaskInput): Promise<TaskOutput> {
     const res = vm.unwrapResult(vm.evalCode(input.code, "task.js"));
     const value = vm.dump(res);
     res.dispose();
+    // Bound the guest object BEFORE it is copied to the host: many keys can alias one large guest string.
+    const check = vm.unwrapResult(
+      vm.evalCode(`(function(){var k=Object.keys(output),t=0;if(k.length>${LIMITS.maxOutputFiles})return -1;for(var i=0;i<k.length;i++){var v=output[k[i]];if(typeof v==="string")t+=v.length+k[i].length;}return t;})()`),
+    );
+    const guestBytes = vm.getNumber(check);
+    check.dispose();
+    if (guestBytes < 0 || guestBytes > LIMITS.maxOutputBytes) throw new Error("script output too large");
     const outObj = vm.dump(vm.unwrapResult(vm.evalCode("JSON.stringify(output)"))) as string;
     const files: Files = {};
     for (const [n, v] of Object.entries(JSON.parse(outObj) as Record<string, unknown>)) {
@@ -150,7 +165,10 @@ async function scriptTask(input: TaskInput): Promise<TaskOutput> {
   }
 }
 
+const sum = (f: Files) => Object.values(f).reduce((n, b) => n + b.length, 0);
+
 export async function runTask(input: TaskInput): Promise<TaskOutput> {
   const r = await (input.tool === "zip" ? zipTask(input) : input.tool === "unzip" ? unzipTask(input) : scriptTask(input));
+  if (sum(r.files) > LIMITS.maxOutputBytes) throw new Error("task output too large");
   return { ...r, output: r.output.slice(0, LIMITS.maxOutputChars) };
 }

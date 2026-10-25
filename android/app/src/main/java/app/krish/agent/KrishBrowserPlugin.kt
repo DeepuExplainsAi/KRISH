@@ -50,7 +50,7 @@ class KrishBrowserPlugin : Plugin(), AgentWebView.Listener {
         notifyListeners("page", JSObject().put("url", url).put("title", title).put("loading", loading))
     }
 
-    override fun takePendingUpload(): Uri? = PickedFiles.pendingUpload.also { PickedFiles.pendingUpload = null }
+    override fun takePendingUpload(origin: String): Uri? = PickedFiles.take(origin)
 
     /** Runs a page-API expression and resolves the call with { value }. */
     private fun page(call: PluginCall, expr: () -> String) = ui(call) { v ->
@@ -59,6 +59,9 @@ class KrishBrowserPlugin : Plugin(), AgentWebView.Listener {
             r.onFailure { call.reject(it.message ?: "page error") }
         }
     }
+
+    /** Element fingerprint from the approved observation (JS string literal, or null). */
+    private fun fp(call: PluginCall) = call.getString("fp")?.let { JSONObject.quote(it) } ?: "null"
 
     private fun num(call: PluginCall) = call.getInt("elementId") ?: throw IllegalArgumentException("elementId required")
 
@@ -70,25 +73,31 @@ class KrishBrowserPlugin : Plugin(), AgentWebView.Listener {
 
     @PluginMethod fun observe(call: PluginCall) = page(call) { "K.observe()" }
     @PluginMethod fun read(call: PluginCall) = page(call) { "K.read(${call.getInt("elementId") ?: "null"})" }
-    @PluginMethod fun click(call: PluginCall) = page(call) { "K.click(${num(call)})" }
+    @PluginMethod fun click(call: PluginCall) = page(call) { "K.click(${num(call)},${fp(call)})" }
     @PluginMethod fun highlight(call: PluginCall) = page(call) { "K.highlight(${call.getInt("elementId") ?: "null"})" }
 
     @PluginMethod fun type(call: PluginCall) =
-        page(call) { "K.type(${num(call)},${JSONObject.quote(call.getString("text").orEmpty())},${call.getBoolean("submit") ?: false})" }
+        page(call) { "K.type(${num(call)},${JSONObject.quote(call.getString("text").orEmpty())},${call.getBoolean("submit") ?: false},${fp(call)})" }
 
     /** Used for paste and for secure input. The value is only embedded in the call; nothing is logged or returned. */
-    @PluginMethod fun fill(call: PluginCall) =
-        page(call) { "K.fill(${num(call)},${JSONObject.quote(call.getString("value").orEmpty())})" }
+    @PluginMethod fun fill(call: PluginCall) = ui(call) { v ->
+        // Page-originated error text is never returned from a fill: a hostile page could echo the value in it.
+        v.call("K.fill(${num(call)},${JSONObject.quote(call.getString("value").orEmpty())},${fp(call)})") { r ->
+            r.onSuccess { call.resolve() }
+            r.onFailure { call.reject("could not fill the field") }
+        }
+    }
 
     /** Answers the page's file chooser with a user-picked file by sending a real tap on the input. */
     @PluginMethod fun upload(call: PluginCall) {
         val uri = call.getString("token")?.let { PickedFiles.get(it) } ?: return call.reject("unknown file token")
         ui(call) { v ->
             val id = num(call)
-            v.call("K.rect($id)") { r ->
+            v.call("K.rect($id,${fp(call)})") { r ->
                 r.onSuccess { json ->
                     val o = JSONObject(JSONTokener(json).nextValue().toString())
-                    PickedFiles.pendingUpload = uri
+                    // One-shot, bound to this page's origin, expires quickly; cleared on navigation, STOP and site-data clearing.
+                    PickedFiles.arm(uri, Uri.parse(v.url.orEmpty()).let { "${it.scheme}://${it.authority}" })
                     v.tapCss(o.getDouble("x"), o.getDouble("y"), o.getDouble("innerWidth"))
                     call.resolve()
                 }
@@ -135,7 +144,7 @@ class KrishBrowserPlugin : Plugin(), AgentWebView.Listener {
         call.resolve(JSObject().put("value", img ?: ""))
     }
 
-    @PluginMethod fun stopLoading(call: PluginCall) = ui(call) { it.stopLoading(); call.resolve() }
+    @PluginMethod fun stopLoading(call: PluginCall) = ui(call) { PickedFiles.disarm(); it.stopLoading(); call.resolve() }
 
     @PluginMethod fun clearSiteData(call: PluginCall) = ui(call) { it.clearSiteData(); PickedFiles.clear(); call.resolve() }
 

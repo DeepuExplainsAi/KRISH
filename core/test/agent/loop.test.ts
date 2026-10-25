@@ -104,6 +104,65 @@ describe("runAgent", () => {
     expect(prompts.join("\n")).not.toContain("S3cretPw!");
   });
 
+  it("secure input: refuses a non-secret target and never falls back to another field", async () => {
+    const asked: unknown[] = [];
+    const { router } = await harness([
+      A({ type: "ask_user", question: "Enter your password", secure: { kind: "password", elementId: 2 } }), // ordinary text box
+      A({ type: "ask_user", question: "Enter your password", secure: { kind: "password", elementId: 99 } }), // does not exist
+      A({ type: "done", summary: "ok" }),
+    ]);
+    const { driver, secrets } = fakeDriver({ [home]: { elements: [el(1, { type: "password" }), el(2, { type: "text", label: "Search" })] } }, home);
+    const { ui } = fakeUI({ askSecure: async (r) => (asked.push(r), "pw") });
+    await runAgent({ task: "t" }, { driver, router, ui, controller: new AgentController() });
+    expect(asked).toEqual([]);
+    expect(secrets).toEqual([]);
+  });
+
+  it("secure prompt names the real site and field", async () => {
+    const asked: { site: string; field: string }[] = [];
+    const { router } = await harness([A({ type: "ask_user", question: "Enter it", secure: { kind: "password", elementId: 1 } }), A({ type: "done", summary: "ok" })]);
+    const { driver } = fakeDriver({ [home]: { elements: [el(1, { type: "password", label: "Account password" })] } }, home);
+    const { ui } = fakeUI({ askSecure: async (r) => (asked.push(r as never), "pw") });
+    await runAgent({ task: "t" }, { driver, router, ui, controller: new AgentController() });
+    expect(asked).toEqual([expect.objectContaining({ site: "site.test", field: "Account password" })]);
+  });
+
+  it("a hostile page cannot smuggle the secure value out through a fill error", async () => {
+    const { router, prompts } = await harness([
+      A({ type: "ask_user", question: "Enter your password", secure: { kind: "password", elementId: 1 } }),
+      A({ type: "done", summary: "ok" }),
+    ]);
+    const { driver } = fakeDriver({ [home]: { elements: [el(1, { type: "password" })] } }, home);
+    driver.fillSecret = async (_id, value) => { throw new Error(`setter exploded: ${value}`); };
+    const { ui, events } = fakeUI({ askSecure: async () => "S3cretPw!" });
+    await runAgent({ task: "t" }, { driver, router, ui, controller: new AgentController() });
+    expect(JSON.stringify(events) + prompts.join("\n")).not.toContain("S3cretPw!");
+  });
+
+  it("a normal question may not collect a secret", async () => {
+    const asked: string[] = [];
+    const { router } = await harness([A({ type: "ask_user", question: "What is your bank password?" }), A({ type: "done", summary: "ok" })]);
+    const { driver } = fakeDriver({ [home]: {} }, home);
+    const { ui } = fakeUI({ ask: async (q) => (asked.push(q), "x") });
+    await runAgent({ task: "t" }, { driver, router, ui, controller: new AgentController() });
+    expect(asked).toEqual([]);
+  });
+
+  it("secrets in the task, replies, element labels and earlier model text never reach later prompts", async () => {
+    const { router, prompts } = await harness([
+      A({ type: "type", elementId: 1, text: "my token is Bearer abcdefghijklmnopqrstuvwxyz0123456789" }),
+      A({ type: "ask_user", question: "Which one?" }),
+      A({ type: "done", summary: "ok" }),
+    ]);
+    const { driver } = fakeDriver({ [home]: { elements: [el(1, { tag: "textarea", label: "Verification code: 123456" })] } }, home);
+    const { ui } = fakeUI({ ask: async () => "use Bearer zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz9999" });
+    await runAgent({ task: "send it, key Bearer qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq1111" }, { driver, router, ui, controller: new AgentController() });
+    const all = prompts.join("\n");
+    for (const leak of ["123456", "abcdefghijklmnopqrstuvwxyz0123456789", "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz9999", "qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq1111"]) {
+      expect(all).not.toContain(leak);
+    }
+  });
+
   it("CAPTCHA triggers take over, not a model action", async () => {
     const { router } = await harness([A({ type: "ask_user", question: "captcha", secure: { kind: "captcha" } }), A({ type: "done", summary: "ok" })]);
     const { driver } = fakeDriver({ [home]: {} }, home);
