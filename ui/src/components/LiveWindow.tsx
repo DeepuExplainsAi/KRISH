@@ -28,14 +28,18 @@ export function LiveWindow() {
   // Native browser pixels sit above all app UI, so they must cover ONLY the .view box (never header, footer or prompts).
   useEffect(() => {
     const show = open && !pill && !snapshotMode;
+    app.syncSnapshots(open && !pill && snapshotMode);
     if (!show) {
       void app.platform.browser.setMode("hidden");
-    } else {
+      return;
+    }
+    // At most one native bounds call per frame while dragging or resizing.
+    const frameId = requestAnimationFrame(() => {
       const r = viewBox.current?.getBoundingClientRect();
       if (r) void app.platform.browser.setBounds({ x: r.left, y: r.top, width: Math.max(40, r.width), height: Math.max(40, r.height) });
       void app.platform.browser.setMode("live");
-    }
-    app.syncSnapshots(open && !pill && snapshotMode);
+    });
+    return () => cancelAnimationFrame(frameId);
   }, [app, open, pill, snapshotMode, x, y, w, h]);
 
   if (!open) return null;
@@ -52,8 +56,8 @@ export function LiveWindow() {
     if (size === "full") return;
     const sx = e.clientX - x, sy = e.clientY - y;
     const move = (m: PointerEvent) =>
-      void app.setWindowRect({ x: clamp(m.clientX - sx, -w + 60, window.innerWidth - 60), y: clamp(m.clientY - sy, 0, window.innerHeight - HEADER) });
-    const up = () => (window.removeEventListener("pointermove", move), window.removeEventListener("pointerup", up));
+      void app.setWindowRect({ x: clamp(m.clientX - sx, -w + 60, window.innerWidth - 60), y: clamp(m.clientY - sy, 0, window.innerHeight - HEADER) }, false);
+    const up = () => (window.removeEventListener("pointermove", move), window.removeEventListener("pointerup", up), void app.setWindowRect({}));
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
   };
@@ -61,8 +65,8 @@ export function LiveWindow() {
     e.stopPropagation();
     const sx = e.clientX - w, sy = e.clientY - h;
     const move = (m: PointerEvent) =>
-      void app.setWindowRect({ size: "medium", w: clamp(m.clientX - sx, 140, window.innerWidth - x), h: clamp(m.clientY - sy, 100, window.innerHeight - y) });
-    const up = () => (window.removeEventListener("pointermove", move), window.removeEventListener("pointerup", up));
+      void app.setWindowRect({ size: "medium", w: clamp(m.clientX - sx, 140, window.innerWidth - x), h: clamp(m.clientY - sy, 100, window.innerHeight - y) }, false);
+    const up = () => (window.removeEventListener("pointermove", move), window.removeEventListener("pointerup", up), void app.setWindowRect({}));
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
   };
@@ -73,12 +77,13 @@ export function LiveWindow() {
     if (e.touches.length !== 2 || !pinch.current) return;
     const k = touchDist(e.touches) / pinch.current.d;
     const max = WINDOW_PRESETS.full(window.innerWidth, window.innerHeight);
-    void app.setWindowRect({ size: "medium", w: clamp(pinch.current.w * k, 140, max.w), h: clamp(pinch.current.h * k, 100, max.h) });
+    void app.setWindowRect({ size: "medium", w: clamp(pinch.current.w * k, 140, max.w), h: clamp(pinch.current.h * k, 100, max.h) }, false);
   };
+  const onTouchEnd = () => { if (pinch.current) { pinch.current = undefined; void app.setWindowRect({}); } };
 
   const live = s.running || s.page.url !== "";
   return (
-    <div ref={frame} className={`live ${size}`} style={{ left: x, top: y, width: w, height: h }} onTouchStart={onTouchStart} onTouchMove={onTouchMove}>
+    <div ref={frame} className={`live ${size}`} style={{ left: x, top: y, width: w, height: h }} onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd} onTouchCancel={onTouchEnd}>
       <div className="live-head" onPointerDown={drag}>
         <span className="title">{s.page.loading ? "Loading…" : s.page.title || s.page.url || "Browser"}</span>
         {SIZES.map(([k, label]) => (

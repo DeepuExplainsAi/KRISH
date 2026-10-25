@@ -246,8 +246,11 @@ export class AppStore {
   openWindow = () => this.set({ windowOpen: true, windowMinimized: false });
   closeWindow = () => this.set({ windowOpen: false });
   minimizeWindow = (v: boolean) => this.set({ windowMinimized: v });
-  async setWindowRect(w: Partial<Settings["window"]>) {
-    await this.saveSettings({ window: { ...this.state.settings.window, ...w } });
+  /** `persist: false` is for drag/resize frames: update the screen only, and write storage once on release. */
+  async setWindowRect(w: Partial<Settings["window"]>, persist = true) {
+    const settings = { ...this.state.settings, window: { ...this.state.settings.window, ...w } };
+    this.set({ settings });
+    if (persist) await this.platform.kv.set(SETTINGS_KEY, JSON.stringify(settings));
   }
   async setWindowSize(size: WindowSize) {
     const { w, h } = WINDOW_PRESETS[size](window.innerWidth, window.innerHeight);
