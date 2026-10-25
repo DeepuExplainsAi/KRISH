@@ -5,6 +5,7 @@ import {
   type SecureKind, type SelectedFile, type Sandbox,
 } from "@krish/core";
 import type { Platform } from "../platform";
+import { Tier0Sandbox } from "../sandbox/tier0";
 
 export type WindowSize = "mini" | "medium" | "large" | "full";
 
@@ -84,7 +85,10 @@ export class AppStore {
   private seq = 0;
   private unPage?: () => void;
   private snapTimer?: ReturnType<typeof setInterval>;
-  sandbox?: Sandbox;
+  /** Tier 0 is always on. Tier 1 / Docker replace it per task when enabled (see sandbox/). */
+  readonly tier0 = new Tier0Sandbox();
+  sandbox: Sandbox = this.tier0;
+  sandboxFiles: { name: string; size: number }[] = [];
 
   readonly memory: Memory;
   readonly history: History;
@@ -337,6 +341,28 @@ export class AppStore {
     this.set({ paused: false, status: "running" });
   }
   clearChat = () => this.set({ items: [] });
+
+  // ---- sandbox files (system picker in, system picker out) ----
+  async addSandboxFile() {
+    const picked = await this.platform.files.pick();
+    if (!picked) return;
+    try {
+      this.tier0.addFile(picked.name, await this.platform.files.read(picked.token));
+      this.sandboxFiles = this.tier0.list();
+      this.set({});
+    } catch (e) {
+      this.notify(e instanceof Error ? e.message : "Could not read that file");
+    }
+  }
+  async saveSandboxFile(name: string) {
+    const bytes = this.tier0.files[name];
+    if (bytes) await this.platform.files.save(name, bytes);
+  }
+  removeSandboxFile(name: string) {
+    delete this.tier0.files[name];
+    this.sandboxFiles = this.tier0.list();
+    this.set({});
+  }
 
   // ---- schedules ----
   async rearmSchedules() {

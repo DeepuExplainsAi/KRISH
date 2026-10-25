@@ -14,6 +14,14 @@ export function Settings() {
       <label><input type="checkbox" checked={st.desktopLayout} onChange={toggle("desktopLayout")} /> Desktop layout in the browser window (1280×800)</label>
       <h3>Sandbox</h3>
       <p className="muted">Tier 0 (isolated Web Worker: zip, unzip, text, small scripts, no network) is always on.</p>
+      <h4>Sandbox files</h4>
+      <ul className="list">
+        {app.sandboxFiles.map((f) => (
+          <li key={f.name}><span>{f.name} · {f.size} B</span>
+            <span className="row"><button onClick={() => void app.saveSandboxFile(f.name)}>Save…</button><button onClick={() => app.removeSandboxFile(f.name)}>✕</button></span></li>
+        ))}
+      </ul>
+      <button onClick={() => void app.addSandboxFile()}>Add file…</button>
       <label>
         <input type="checkbox" checked={st.linuxSandbox && s.linuxAvailable} disabled={!s.linuxAvailable} onChange={toggle("linuxSandbox")} /> Linux sandbox (Tier 1)
       </label>

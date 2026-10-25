@@ -16,7 +16,8 @@ Rule: update this file at the end of every work session (status table + "Next").
 | 3 | Live window, upload, confirm gate, STOP, redaction | DONE in code: ui/ builds, 4 store tests pass; native side + layout UNTESTED on device |
 | 4 | History, Lite mode, memory, Projects, Tasks, morning brief | DONE in code (core tested; screens built; DueWorker untested) |
 | 5 | Desktop (Electron) | TODO |
-| 6 | Tier 0 / Tier 1 sandbox | TODO |
+| 6a | Tier 0 sandbox (Worker + fflate + QuickJS WASM) | DONE: 7 node tests pass (zip-slip, bomb, loop, memory cap, no host globals). Worker itself never run in a real browser |
+| 6b | Tier 1 Alpine+proot (android full flavor) | TODO |
 | 7 | WebGPU local mode | TODO |
 | docs | README, SECURITY, DEPENDENCIES, CREDITS, CHECKLIST, BUILD, workflow | TODO |
 
@@ -27,6 +28,12 @@ Rule: update this file at the end of every work session (status table + "Next").
 ## Untested / unverified
 - everything Android (Kotlin never compiled), Electron, UI
 - android/gradle/wrapper/gradle-wrapper.jar is a generated binary (Gradle standard); kept, document in CHECKLIST
+
+## Gotchas
+- Shell is `sh`: `mkdir -p a/{b,c}` does NOT brace-expand. Use separate args.
+- git push token lacks `workflow` scope: workflows live in `ci/workflows/`; move to `.github/workflows/` (BUILD.md explains).
+- QuickJS `setMemoryLimit` does not bound growth reliably -> wasm Memory.grow cap in sandbox/tasks.ts (capWasmMemory).
+- Sandbox RAM is ~480MB: do not run big test allocations.
 
 ## Next
 - ui/ (React+Vite): `npm run build:ui` is referenced by CI and not yet defined; screens: Home, Chat+LiveWindow, Panels, Projects, Tasks, History, Providers, Settings, Security

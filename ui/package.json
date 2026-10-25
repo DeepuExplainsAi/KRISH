@@ -11,12 +11,15 @@
   },
   "dependencies": {
     "@capacitor/core": "8.5.3",
+    "@jitl/quickjs-singlefile-browser-release-sync": "0.32.0",
     "@krish/core": "*",
     "fflate": "0.8.3",
+    "quickjs-emscripten-core": "0.32.0",
     "react": "19.3.1",
     "react-dom": "19.3.1"
   },
   "devDependencies": {
+    "@jitl/quickjs-singlefile-cjs-release-sync": "0.32.0",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "@vitejs/plugin-react": "6.1.2",
