@@ -14,7 +14,7 @@ Rule: update this file at the end of every work session (status table + "Next").
 | 1b | Core: agent loop, policy/confirm gate, history, memory, projects, panels, scheduler, brief | DONE (80 tests total) |
 | 2 | Android WebView plugin (Kotlin, flavors, manifest, Keystore, WorkManager) | WRITTEN, NEVER COMPILED (no JDK here). CI job `android-compile` in .github/workflows/check.yml is the first check |
 | 3 | Live window, upload, confirm gate, STOP, redaction | DONE in code: ui/ builds, 4 store tests pass; native side + layout UNTESTED on device |
-| 4 | History, Lite mode, memory, Projects, Tasks, morning brief | TODO |
+| 4 | History, Lite mode, memory, Projects, Tasks, morning brief | DONE in code (core tested; screens built; DueWorker untested) |
 | 5 | Desktop (Electron) | TODO |
 | 6 | Tier 0 / Tier 1 sandbox | TODO |
 | 7 | WebGPU local mode | TODO |
