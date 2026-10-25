@@ -1,0 +1,63 @@
+import type { FetchLike, KeyStore, KVStore, PageObservation, SelectedFile } from "@krish/core";
+
+export interface PageEvent {
+  url: string;
+  title: string;
+  loading: boolean;
+}
+
+export interface Bounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** The agent's embedded browser. Implemented natively on each platform. */
+export interface BrowserHost {
+  open(url: string): Promise<void>;
+  observe(): Promise<PageObservation>;
+  read(elementId?: number): Promise<string>;
+  click(elementId: number): Promise<void>;
+  type(elementId: number, text: string, submit?: boolean): Promise<void>;
+  /** Fills a field natively. Used for paste and secure input; nothing is returned. */
+  fill(elementId: number, value: string): Promise<void>;
+  upload(elementId: number, fileToken: string): Promise<void>;
+  highlight(elementId?: number): Promise<void>;
+  setBounds(b: Bounds): Promise<void>;
+  setMode(mode: "live" | "hidden"): Promise<void>;
+  setDesktopLayout(enabled: boolean): Promise<void>;
+  snapshot(maxWidth: number, quality: number): Promise<string>;
+  stopLoading(): Promise<void>;
+  clearSiteData(): Promise<void>;
+  onPage(cb: (e: PageEvent) => void): () => void;
+}
+
+export interface DeviceInfo {
+  lowRam: boolean;
+  totalMemMb: number;
+  /** True only in the Android "full" flavor / desktop. */
+  linuxSandbox: boolean;
+  dockerAvailable?: boolean;
+}
+
+export interface Platform {
+  kind: "android" | "desktop" | "web";
+  /** Non-secret app data (redacted history, memory, settings). */
+  kv: KVStore;
+  /** API keys: Android Keystore / OS keychain. */
+  keys: KeyStore;
+  fetch: FetchLike;
+  browser: BrowserHost;
+  files: {
+    pick(): Promise<SelectedFile | undefined>;
+    read(token: string, maxBytes?: number): Promise<Uint8Array>;
+    save(name: string, bytes: Uint8Array, mime?: string): Promise<boolean>;
+  };
+  system: {
+    deviceInfo(): Promise<DeviceInfo>;
+    requestNotifications(): Promise<boolean>;
+    scheduleDue(id: string, at: number, title: string): Promise<void>;
+    cancelDue(id: string): Promise<void>;
+  };
+}

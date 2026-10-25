@@ -5,12 +5,15 @@
   "type": "module",
   "description": "Original cross-platform personal agent (source only).",
   "workspaces": [
-    "core"
+    "core",
+    "ui"
   ],
   "scripts": {
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "build:ui": "npm run build -w ui",
+    "dev:ui": "npm run dev -w ui"
   },
   "devDependencies": {
     "@capacitor/android": "8.5.3",
