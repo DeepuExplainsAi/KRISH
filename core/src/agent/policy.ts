@@ -94,8 +94,8 @@ export function gate(action: Action, ctx: GateContext): Gate {
       return { verdict: "allow" }; // confirmed after the user picks the file (needs the file name)
 
     case "run_sandbox_task":
-      return action.writesFiles
-        ? { verdict: "confirm", request: { kind: "sandbox", title: "Run task that writes files?", preview: `${action.tool}:\n${action.code}` } }
+      return action.writesFiles || action.tool === "shell"
+        ? { verdict: "confirm", request: { kind: "sandbox", title: action.tool === "shell" ? "Run this command in the Linux sandbox?" : "Run task that writes files?", preview: `${action.tool}:\n${action.code}` } }
         : { verdict: "allow" };
 
     case "read":

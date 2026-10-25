@@ -135,6 +135,16 @@ describe("runAgent", () => {
     expect(log).toEqual(["click 1", "click 2"]); // navigation declined; "Not now" auto-allowed; consent approved
   });
 
+  it("shell tasks always need confirmation, even when they claim not to write files", async () => {
+    const { router } = await harness([A({ type: "run_sandbox_task", tool: "shell", code: "ls", writesFiles: false }), A({ type: "done", summary: "x" })]);
+    const { driver } = fakeDriver({ [home]: {} }, home);
+    const ran: string[] = [];
+    const { ui, confirms } = fakeUI();
+    await runAgent({ task: "t" }, { driver, router, ui, controller: new AgentController(), sandbox: { run: async (t) => (ran.push(t.code), "out") } });
+    expect(confirms[0]).toMatchObject({ kind: "sandbox", preview: expect.stringContaining("ls") });
+    expect(ran).toEqual(["ls"]);
+  });
+
   it("upload: picks a file, then confirms by name", async () => {
     const { router } = await harness([A({ type: "upload_selected_file", elementId: 1 }), A({ type: "done", summary: "x" })]);
     const { driver, log } = fakeDriver({ [home]: { elements: [el(1, { type: "file" })] } }, home);

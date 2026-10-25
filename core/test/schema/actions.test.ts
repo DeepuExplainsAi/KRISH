@@ -12,6 +12,7 @@ describe("parseAction", () => {
       { type: "paste", elementId: 2, text: "long text" },
       { type: "upload_selected_file", elementId: 4 },
       { type: "run_sandbox_task", tool: "unzip", code: "", writesFiles: true },
+      { type: "run_sandbox_task", tool: "shell", code: "ls", writesFiles: false },
       { type: "wait", ms: 500 },
       { type: "ask_user", question: "Who?" },
       { type: "ask_user", question: "Code?", secure: { kind: "otp", elementId: 2 } },

@@ -10,6 +10,7 @@ class MainActivity : BridgeActivity() {
         registerPlugin(KrishFilesPlugin::class.java)
         registerPlugin(KrishSecurePlugin::class.java)
         registerPlugin(KrishSystemPlugin::class.java)
+        linuxPlugins().forEach { registerPlugin(it) }
         super.onCreate(savedInstanceState)
     }
 }

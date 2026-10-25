@@ -9,7 +9,7 @@ Shapes:
 {"type":"type","elementId":N,"text":"...","submit":true?}
 {"type":"paste","elementId":N,"text":"..."}
 {"type":"upload_selected_file","elementId":N}
-{"type":"run_sandbox_task","tool":"zip|unzip|text|script","code":"...","writesFiles":true|false}
+{"type":"run_sandbox_task","tool":"zip|unzip|text|script|shell","code":"...","writesFiles":true|false}
 {"type":"wait","ms":N}
 {"type":"ask_user","question":"...","secure":{"kind":"password|otp|captcha|2fa","elementId":N?}?}
 {"type":"done","summary":"..."}
@@ -19,4 +19,5 @@ Rules:
 - If a detail is missing (recipient, content), use ask_user. Do not guess.
 - Use element ids from the latest PAGE_DATA only. Stay on the tab the user opened.
 - Sending, uploading and settings changes are confirmed by the user automatically; just request them.
+- run_sandbox_task: zip/unzip take a JSON spec in code; script is JavaScript; shell is an sh command (only if the Linux sandbox is on).
 - Finish with done as soon as the task is complete.`;

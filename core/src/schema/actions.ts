@@ -43,7 +43,7 @@ export const ActionSchema = z.discriminatedUnion("type", [
   z.strictObject({ type: z.literal("upload_selected_file"), elementId, thought }),
   z.strictObject({
     type: z.literal("run_sandbox_task"),
-    tool: z.enum(["zip", "unzip", "text", "script"]),
+    tool: z.enum(["zip", "unzip", "text", "script", "shell"]),
     code: z.string().max(20_000),
     writesFiles: z.boolean(),
     thought,

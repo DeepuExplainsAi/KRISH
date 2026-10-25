@@ -54,6 +54,10 @@ export interface Platform {
     read(token: string, maxBytes?: number): Promise<Uint8Array>;
     save(name: string, bytes: Uint8Array, mime?: string): Promise<boolean>;
   };
+  /** Tier 1 (Android full flavor: proot+Alpine) or the desktop Docker tier. Absent when unavailable. */
+  linux?: {
+    run(script: string, files: Record<string, Uint8Array>): Promise<{ output: string; files: Record<string, Uint8Array> }>;
+  };
   system: {
     deviceInfo(): Promise<DeviceInfo>;
     requestNotifications(): Promise<boolean>;

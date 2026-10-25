@@ -58,6 +58,12 @@ export function createDesktopPlatform(bridge: Bridge): Platform {
       read: async (token, maxBytes) => new Uint8Array(await inv<Uint8Array>("files:read", { token, maxBytes })),
       save: (name, bytes) => inv<boolean>("files:save", { name, bytes }),
     },
+    linux: {
+      run: async (script, files) => {
+        const r = await inv<{ output: string; files: Record<string, Uint8Array> }>("shell:run", { script, files });
+        return { output: r.output, files: Object.fromEntries(Object.entries(r.files).map(([n, b]) => [n, new Uint8Array(b)])) };
+      },
+    },
     system: {
       deviceInfo: () => inv<DeviceInfo>("system:deviceInfo"),
       requestNotifications: async () => true,

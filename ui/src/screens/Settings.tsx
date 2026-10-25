@@ -23,7 +23,7 @@ export function Settings() {
       </ul>
       <button onClick={() => void app.addSandboxFile()}>Add file…</button>
       <label>
-        <input type="checkbox" checked={st.linuxSandbox && s.linuxAvailable} disabled={!s.linuxAvailable} onChange={toggle("linuxSandbox")} /> Linux sandbox (Tier 1)
+        <input type="checkbox" checked={st.linuxSandbox && s.linuxAvailable} disabled={!s.linuxAvailable} onChange={toggle("linuxSandbox")} /> Linux sandbox (Tier 1 on Android full, Docker on desktop). Every command asks first.
       </label>
       {!s.linuxAvailable && <p className="muted">{s.deviceLowRam ? "Disabled: this device has low RAM." : "Not included in this build (use the full flavor)."}</p>}
       <h3>Experimental</h3>

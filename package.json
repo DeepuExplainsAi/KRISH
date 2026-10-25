@@ -6,7 +6,8 @@
   "description": "Original cross-platform personal agent (source only).",
   "workspaces": [
     "core",
-    "ui"
+    "ui",
+    "desktop"
   ],
   "scripts": {
     "typecheck": "npm run typecheck --workspaces --if-present",

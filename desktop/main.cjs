@@ -195,7 +195,7 @@ function registerIpc() {
   handle("system:deviceInfo", async () => ({
     lowRam: os.totalmem() < 3 * 1024 ** 3,
     totalMemMb: Math.round(os.totalmem() / 1024 ** 2),
-    linuxSandbox: false,
+    linuxSandbox: await dockerPresent(), // desktop: container tier available only if Docker and the image already exist
     dockerAvailable: await dockerPresent(),
   }));
   // Desktop schedules fire only while the app is open (no background service). Notifications need no extra permission.

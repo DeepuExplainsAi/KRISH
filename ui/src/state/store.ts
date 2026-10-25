@@ -87,7 +87,20 @@ export class AppStore {
   private snapTimer?: ReturnType<typeof setInterval>;
   /** Tier 0 is always on. Tier 1 / Docker replace it per task when enabled (see sandbox/). */
   readonly tier0 = new Tier0Sandbox();
-  sandbox: Sandbox = this.tier0;
+  /** shell -> Tier 1 / Docker (only when enabled and available); everything else -> Tier 0. Files are shared. */
+  sandbox: Sandbox = {
+    run: async (task, signal) => {
+      if (task.tool !== "shell") return this.tier0.run(task, signal);
+      const { linux } = this.platform;
+      if (!linux || !this.state.settings.linuxSandbox || !this.state.linuxAvailable) {
+        return "Linux sandbox is off or unavailable. Ask the user to enable it in Settings, or use another tool.";
+      }
+      const r = await linux.run(task.code, { ...this.tier0.files });
+      for (const [n, d] of Object.entries(r.files)) this.tier0.addFile(n, d);
+      this.sandboxFiles = this.tier0.list();
+      return r.output;
+    },
+  };
   sandboxFiles: { name: string; size: number }[] = [];
 
   readonly memory: Memory;

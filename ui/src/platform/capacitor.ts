@@ -30,6 +30,9 @@ interface Secure {
   set(a: { key: string; value: string }): Promise<void>;
   delete(a: { key: string }): Promise<void>;
 }
+interface Linux {
+  run(a: { script: string; files: Record<string, string> }): Promise<{ output: string; files: Record<string, string> }>;
+}
 interface System {
   deviceInfo(): Promise<DeviceInfo>;
   requestNotifications(): Promise<{ granted: boolean }>;
@@ -49,6 +52,7 @@ export function createCapacitorPlatform(): Platform {
   const F = registerPlugin<Files>("KrishFiles");
   const S = registerPlugin<Secure>("KrishSecure");
   const Sys = registerPlugin<System>("KrishSystem");
+  const L = registerPlugin<Linux>("KrishLinux");
 
   const kv: KVStore = {
     get: async (k) => localStorage.getItem(`krish:${k}`) ?? undefined,
@@ -93,6 +97,13 @@ export function createCapacitorPlatform(): Platform {
       },
       read: async (token, maxBytes) => fromBase64((await F.readFile({ token, maxBytes })).base64),
       save: async (name, bytes, mime) => (await F.saveFile({ name, mime, base64: toBase64(bytes) })).saved,
+    },
+    linux: {
+      run: async (script, files) => {
+        const enc = Object.fromEntries(Object.entries(files).map(([n, b]) => [n, toBase64(b)]));
+        const r = await L.run({ script, files: enc });
+        return { output: r.output, files: Object.fromEntries(Object.entries(r.files).map(([n, b]) => [n, fromBase64(b)])) };
+      },
     },
     system: {
       deviceInfo: () => Sys.deviceInfo(),

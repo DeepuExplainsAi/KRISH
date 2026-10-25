@@ -17,7 +17,7 @@ Rule: update this file at the end of every work session (status table + "Next").
 | 4 | History, Lite mode, memory, Projects, Tasks, morning brief | DONE in code (core tested; screens built; DueWorker untested) |
 | 5 | Desktop (Electron): main/preload/lib + ui platform | WRITTEN; lib.cjs helpers tested (7); Electron main/preload NEVER RUN (binary not installed here) |
 | 6a | Tier 0 sandbox (Worker + fflate + QuickJS WASM) | DONE: 7 node tests pass (zip-slip, bomb, loop, memory cap, no host globals). Worker itself never run in a real browser |
-| 6b | Tier 1 Alpine+proot (android full flavor) | TODO |
+| 6b | Tier 1 Alpine+proot (android full flavor) | WRITTEN. TarGz.kt VERIFIED against real Alpine rootfs (JDK+kotlinc here, identical to GNU tar). proot never executed (needs arm64 device) |
 | 7 | WebGPU local mode | TODO |
 | docs | README, SECURITY, DEPENDENCIES, CREDITS, CHECKLIST, BUILD, workflow | TODO |
 

@@ -23,7 +23,7 @@ export interface PageDriver {
 }
 
 export interface SandboxTask {
-  tool: "zip" | "unzip" | "text" | "script";
+  tool: "zip" | "unzip" | "text" | "script" | "shell";
   code: string;
   writesFiles: boolean;
 }
