@@ -163,7 +163,8 @@ export class AppStore {
     const [s, p, info] = await Promise.all([
       this.platform.kv.get(SETTINGS_KEY), this.platform.kv.get(PROVIDERS_KEY), this.platform.system.deviceInfo(),
     ]);
-    const settings = { ...DEFAULT_SETTINGS, ...(s ? JSON.parse(s) : {}) } as Settings;
+    // First run on a low-RAM device starts in Lite mode; once the user has saved settings their choice wins.
+    const settings = { ...DEFAULT_SETTINGS, liteMode: info.lowRam, ...(s ? JSON.parse(s) : {}) } as Settings;
     // Tier 1 is disabled on low-RAM devices regardless of the saved flag.
     if (info.lowRam) settings.linuxSandbox = false;
     this.unPage = this.platform.browser.onPage((page) => this.set({ page }));

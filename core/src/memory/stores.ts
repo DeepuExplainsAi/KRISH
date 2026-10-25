@@ -96,7 +96,8 @@ export interface HistoryEntry {
 export class History {
   private items: Collection<HistoryEntry>;
   constructor(kv: KVStore, private now = Date.now) {
-    this.items = new Collection(kv, "history", 5000);
+    // Every write rewrites the whole list, so the cap keeps that cheap on low-end phones.
+    this.items = new Collection(kv, "history", 2000);
   }
   async log(runId: string, kind: HistoryEntry["kind"], label: string, detail?: string, state?: string) {
     await this.items.put({

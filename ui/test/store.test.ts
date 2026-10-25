@@ -94,4 +94,21 @@ describe("AppStore", () => {
     expect(store.getState().settings.linuxSandbox).toBe(false);
     expect(store.getState().linuxAvailable).toBe(false);
   });
+
+  it("starts in Lite mode on a low-RAM device, but never overrides a saved choice", async () => {
+    const low = setup([]);
+    low.platform.system.deviceInfo = async () => ({ lowRam: true, totalMemMb: 1024, linuxSandbox: false });
+    await low.store.init();
+    expect(low.store.getState().settings.liteMode).toBe(true);
+
+    const chosen = setup([]);
+    chosen.platform.system.deviceInfo = async () => ({ lowRam: true, totalMemMb: 1024, linuxSandbox: false });
+    await chosen.platform.kv.set("settings", JSON.stringify({ liteMode: false }));
+    await chosen.store.init();
+    expect(chosen.store.getState().settings.liteMode).toBe(false);
+
+    const normal = setup([]);
+    await normal.store.init();
+    expect(normal.store.getState().settings.liteMode).toBe(false);
+  });
 });

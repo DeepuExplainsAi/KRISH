@@ -2,7 +2,7 @@
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--fg); }
 .boot { padding: 2rem; }
-.app { display: flex; flex-direction: column; height: 100dvh; padding: var(--safe-area-inset-top, 0) var(--safe-area-inset-right, 0) var(--safe-area-inset-bottom, 0) var(--safe-area-inset-left, 0); }
+.app { display: flex; flex-direction: column; height: 100dvh; padding: var(--safe-area-inset-top, env(safe-area-inset-top, 0px)) var(--safe-area-inset-right, env(safe-area-inset-right, 0px)) var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)) var(--safe-area-inset-left, env(safe-area-inset-left, 0px)); }
 header { display: flex; gap: .5rem; align-items: center; padding: .5rem .75rem; border-bottom: 1px solid var(--line); }
 header strong { flex: 1; letter-spacing: .04em; }
 main { flex: 1; min-height: 0; overflow: auto; padding: .75rem; }
