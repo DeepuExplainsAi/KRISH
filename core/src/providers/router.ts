@@ -1,4 +1,4 @@
-import { DEFAULTS } from "../config/defaults";
+import { DEFAULTS, type RouterConfig } from "../config/defaults";
 import type { KeyStore, KVStore } from "../storage";
 import { adapters } from "./models";
 import {
@@ -17,7 +17,7 @@ export interface RouterDeps {
   /** Returns providers in the user's order. */
   providers: () => ProviderConfig[];
   now?: () => number;
-  config?: Partial<typeof DEFAULTS.router>;
+  config?: Partial<RouterConfig>;
 }
 
 export interface Attempt {
@@ -60,7 +60,7 @@ const dayKey = (id: string, ms: number) => {
 
 export class ProviderRouter {
   private health = new Map<string, Health>();
-  private readonly cfg: typeof DEFAULTS.router;
+  private readonly cfg: RouterConfig;
   private readonly now: () => number;
 
   constructor(private deps: RouterDeps) {

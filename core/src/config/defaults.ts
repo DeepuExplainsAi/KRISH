@@ -47,3 +47,7 @@ export const DEFAULTS = {
       "\\b(send|submit|post|publish|tweet|reply|share|delete|remove|pay|buy|purchase|place order|subscribe|unsubscribe|confirm|transfer|save changes|update (profile|settings)|deactivate)\\b",
   },
 } as const;
+
+type Widen<T> = { -readonly [K in keyof T]: T[K] extends number ? number : T[K] };
+export type AgentLimits = Widen<typeof DEFAULTS.agent>;
+export type RouterConfig = Widen<typeof DEFAULTS.router>;

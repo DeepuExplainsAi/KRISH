@@ -26,7 +26,7 @@ const httpsUrl = z.string().max(2048).refine(isHttpsUrl, "must be an https URL w
 const elementId = z.number().int().nonnegative();
 const thought = z.string().max(300).optional();
 
-export const SecureKind = z.enum(["password", "otp", "captcha", "2fa"]);
+export const SecureKindSchema = z.enum(["password", "otp", "captcha", "2fa"]);
 
 export const ActionSchema = z.discriminatedUnion("type", [
   z.strictObject({ type: z.literal("navigate"), url: httpsUrl, thought }),
@@ -52,7 +52,7 @@ export const ActionSchema = z.discriminatedUnion("type", [
   z.strictObject({
     type: z.literal("ask_user"),
     question: z.string().min(1).max(500),
-    secure: z.strictObject({ kind: SecureKind, elementId: elementId.optional() }).optional(),
+    secure: z.strictObject({ kind: SecureKindSchema, elementId: elementId.optional() }).optional(),
     thought,
   }),
   z.strictObject({ type: z.literal("done"), summary: z.string().max(2000), thought }),
