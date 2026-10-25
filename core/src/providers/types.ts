@@ -1,4 +1,4 @@
-export type ProviderKind = "gemini" | "openai-compat";
+export type ProviderKind = "gemini" | "openai-compat" | "webgpu-local";
 
 export interface ModelInfo {
   id: string;

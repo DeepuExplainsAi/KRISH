@@ -13,6 +13,7 @@
     "@capacitor/core": "8.5.3",
     "@jitl/quickjs-singlefile-browser-release-sync": "0.32.0",
     "@krish/core": "*",
+    "@mlc-ai/web-llm": "0.2.86",
     "fflate": "0.8.3",
     "quickjs-emscripten-core": "0.32.0",
     "react": "19.3.1",

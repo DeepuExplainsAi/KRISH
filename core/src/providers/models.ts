@@ -1,4 +1,5 @@
 import { geminiAdapter } from "./gemini";
+import { localAdapter } from "./local";
 import { openaiCompatAdapter } from "./openaiCompat";
 import type { Adapter, FetchLike, ModelInfo, ProviderConfig, ProviderKind } from "./types";
 import { DEFAULTS } from "../config/defaults";
@@ -6,6 +7,7 @@ import { DEFAULTS } from "../config/defaults";
 export const adapters: Record<ProviderKind, Adapter> = {
   gemini: geminiAdapter,
   "openai-compat": openaiCompatAdapter,
+  "webgpu-local": localAdapter,
 };
 
 export interface RefreshDeps {

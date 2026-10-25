@@ -13,3 +13,4 @@ export * from "./agent/controller";
 export * from "./agent/loop";
 export * from "./memory/stores";
 export * from "./memory/schedule";
+export * from "./providers/local";

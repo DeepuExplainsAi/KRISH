@@ -125,9 +125,10 @@ export class ProviderRouter {
     const attempts: Attempt[] = [];
     for (const p of this.deps.providers()) {
       if (opts.signal?.aborted) throw new AbortedError();
-      const apiKey = await this.deps.keys.get(p.id);
-      const blocked = await this.blockedReason(p, opts, Boolean(apiKey));
-      if (blocked || !apiKey) {
+      const needsKey = p.kind !== "webgpu-local";
+      const apiKey = needsKey ? await this.deps.keys.get(p.id) : "";
+      const blocked = await this.blockedReason(p, opts, !needsKey || Boolean(apiKey));
+      if (blocked || (needsKey && !apiKey)) {
         attempts.push({ providerId: p.id, outcome: "skipped", detail: blocked });
         continue;
       }
@@ -137,7 +138,7 @@ export class ProviderRouter {
         await this.bump(p.id);
         try {
           const text = await adapters[p.kind].complete(
-            { config: p, apiKey, fetch: this.deps.fetch, timeoutMs: this.cfg.requestTimeoutMs, signal: opts.signal },
+            { config: p, apiKey: apiKey ?? "", fetch: this.deps.fetch, timeoutMs: this.cfg.requestTimeoutMs, signal: opts.signal },
             model,
             { messages },
           );

@@ -1,3 +1,4 @@
+import { localModelCompiledIn, webgpuAvailable } from "../local/webgpu";
 import { useApp, useAppState } from "../state/useStore";
 
 export function Settings() {
@@ -27,7 +28,19 @@ export function Settings() {
       </label>
       {!s.linuxAvailable && <p className="muted">{s.deviceLowRam ? "Disabled: this device has low RAM." : "Not included in this build (use the full flavor)."}</p>}
       <h3>Experimental</h3>
-      <label><input type="checkbox" checked={st.localModel} onChange={toggle("localModel")} /> On-device model via WebGPU (falls back to your providers)</label>
+      <label><input type="checkbox" checked={st.localModel} disabled={!webgpuAvailable()}
+        onChange={(e) => {
+          if (e.target.checked && !st.localModelConsent && !confirm("The on-device model downloads its weights and a model-runtime WebAssembly file from the model host the first time it is used (large, over your data). Nothing else leaves your device. Continue?")) return;
+          void app.saveSettings({ localModel: e.target.checked, localModelConsent: e.target.checked || st.localModelConsent });
+        }} /> On-device model via WebGPU (falls back to your providers)</label>
+      {!webgpuAvailable() && <p className="muted">{localModelCompiledIn ? "WebGPU is not available on this device." : "Not included in this build. Rebuild with KRISH_LOCAL_MODEL=1 (see BUILD.md)."}</p>}
+      {st.localModel && s.localModels.length > 0 && (
+        <select value={st.localModelId ?? ""} onChange={(e) => void app.saveSettings({ localModelId: e.target.value || undefined })}>
+          <option value="">Choose a model</option>
+          {s.localModels.map((m) => <option key={m.id} value={m.id}>{m.id}</option>)}
+        </select>
+      )}
+      {s.localStatus && <p className="muted">{s.localStatus}</p>}
       <h3>Data</h3>
       <button onClick={() => void app.clearAllSiteData()}>Clear all site data</button>
       <button onClick={() => void app.memory.clear()}>Clear memory</button>

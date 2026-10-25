@@ -2,10 +2,11 @@ import {
   AgentController, autoFetchOnce, DEFAULT_BRIEF, History, Memory, newId, Panels, ProviderRouter, Projects, refreshModels,
   runAgent, Scheduler, nextRun, nextBriefAt, briefCommand,
   type AgentEvent, type AgentUI, type BriefSettings, type ChipState, type ConfirmRequest, type PageDriver, type ProviderConfig,
-  type SecureKind, type SelectedFile, type Sandbox,
+  type SecureKind, type SelectedFile, type Sandbox, setLocalEngine, type ModelInfo,
 } from "@krish/core";
 import type { Platform } from "../platform";
 import { Tier0Sandbox } from "../sandbox/tier0";
+import { createWebGpuEngine, webgpuAvailable } from "../local/webgpu";
 
 export type WindowSize = "mini" | "medium" | "large" | "full";
 
@@ -17,6 +18,9 @@ export interface Settings {
   brief: BriefSettings;
   linuxSandbox: boolean;
   localModel: boolean;
+  /** Set after the user accepted the download notice. */
+  localModelConsent: boolean;
+  localModelId?: string;
   activeProjectId?: string;
 }
 
@@ -28,6 +32,7 @@ export const DEFAULT_SETTINGS: Settings = {
   brief: DEFAULT_BRIEF,
   linuxSandbox: false,
   localModel: false,
+  localModelConsent: false,
 };
 
 export type Screen = "home" | "chat" | "panels" | "projects" | "tasks" | "history" | "providers" | "settings" | "security";
@@ -62,6 +67,8 @@ export interface State {
   deviceLowRam: boolean;
   linuxAvailable: boolean;
   notice?: string;
+  localModels: ModelInfo[];
+  localStatus: string;
 }
 
 export const WINDOW_PRESETS: Record<WindowSize, (vw: number, vh: number) => { w: number; h: number }> = {
@@ -79,6 +86,7 @@ export class AppStore {
     ready: false, screen: "home", settings: DEFAULT_SETTINGS, providers: [], items: [], prompts: [],
     running: false, paused: false, windowOpen: false, windowMinimized: false,
     page: { url: "", title: "", loading: false }, status: "idle", snapshot: "", deviceLowRam: false, linuxAvailable: false,
+    localModels: [], localStatus: "",
   };
   private listeners = new Set<() => void>();
   private controller?: AgentController;
@@ -118,8 +126,30 @@ export class AppStore {
     this.scheduler = new Scheduler(platform.kv);
     this.router = new ProviderRouter({
       keys: platform.keys, kv: platform.kv, fetch: platform.fetch,
-      providers: () => this.state.providers,
+      providers: () => this.routerProviders(),
     });
+  }
+
+  /** The on-device model, when enabled and usable, goes first; API providers follow as the automatic fallback. */
+  private routerProviders(): ProviderConfig[] {
+    const { localModel, localModelConsent, localModelId } = this.state.settings;
+    if (!localModel || !localModelConsent || !localModelId || !webgpuAvailable()) return this.state.providers;
+    const local: ProviderConfig = {
+      id: "local", name: "On-device", kind: "webgpu-local", baseUrl: "local:", enabled: true, allowSensitive: true, defaultModel: localModelId,
+    };
+    return [local, ...this.state.providers];
+  }
+
+  /** Called when the experimental flag changes. Registers or removes the engine; nothing loads until a task needs it. */
+  async applyLocalModel() {
+    const { localModel, localModelConsent } = this.state.settings;
+    if (!localModel || !localModelConsent || !webgpuAvailable()) {
+      setLocalEngine(undefined);
+      return this.set({ localModels: [], localStatus: "" });
+    }
+    const engine = createWebGpuEngine((localStatus) => this.set({ localStatus }));
+    setLocalEngine(engine);
+    this.set({ localModels: await engine.listModels().catch(() => []) });
   }
 
   subscribe = (l: () => void) => (this.listeners.add(l), () => void this.listeners.delete(l));
@@ -141,6 +171,7 @@ export class AppStore {
       ready: true, settings, providers: p ? JSON.parse(p) : [], deviceLowRam: info.lowRam,
       linuxAvailable: info.linuxSandbox && !info.lowRam,
     });
+    await this.applyLocalModel();
     await this.rearmSchedules();
   }
 
@@ -159,6 +190,7 @@ export class AppStore {
     await this.platform.kv.set(SETTINGS_KEY, JSON.stringify(settings));
     if (patch.desktopLayout !== undefined) await this.platform.browser.setDesktopLayout(patch.desktopLayout);
     if (patch.brief) await this.rearmSchedules();
+    if (patch.localModel !== undefined || patch.localModelConsent !== undefined) await this.applyLocalModel();
   }
 
   private async saveProviders(providers: ProviderConfig[]) {
