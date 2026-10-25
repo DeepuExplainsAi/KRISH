@@ -60,6 +60,12 @@ npx electron .
 
 In a Codespace there is no display; run this on your own computer. Desktop needs a graphical session.
 
+Real-Electron smoke test (12 checks through the preload bridge: https-only, blocked channels, isolated-world observe, stale-fingerprint refusal, layout toggle, snapshot, clear data). On a headless Linux box it needs `xvfb`; it loads https://example.com:
+
+```sh
+npm run build:ui && npm run smoke -w desktop
+```
+
 ## 4. Optional on-device model (WebGPU, experimental)
 
 Off by default and not compiled in. To include it (adds ~6 MB of JS and makes the app download model files at first use):

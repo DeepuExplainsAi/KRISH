@@ -1,6 +1,6 @@
 # Credits
 
-No third-party source code was copied into this repository. The projects below were named in the task brief as references. **They were not read, run or copied from during this build**; the design follows the brief's own specification. Licenses were checked via the GitHub API only.
+No third-party source code was copied into this repository. The projects below were named in the task brief as references. **Their source was not read, run or copied during this build** (the first pass and the 2026-10-25 audit both only queried repository metadata and licenses through the GitHub API); the design follows the brief's own specification.
 
 | Project | License | Use |
 |---|---|---|

@@ -1,7 +1,7 @@
 # Dependencies
 
 Every dependency is pinned to an exact version (no `^`/`~`) and has a reason. Lockfile: `package-lock.json`. Add nothing without a line here.
-All were checked for license and `npm audit` (0 vulnerabilities at pin time, 2026-10-25). Nothing is downloaded at run time.
+All were checked for license. `npm audit` (re-run 2026-10-25) reports 3 moderate findings, all one chain in dev tooling: `@capacitor/cli` -> `xcode` -> `uuid` (missing bounds check in uuid v3/v5/v6 when a buffer is passed). It runs only on the developer machine during `cap sync`, never ships in the app, and `npm audit fix --force` would downgrade `@capacitor/cli`, so it is left as is. Nothing is downloaded at run time.
 
 ## Runtime (ships in the app)
 
@@ -51,3 +51,6 @@ All were checked for license and `npm audit` (0 vulnerabilities at pin time, 202
 
 Deliberately NOT used: analytics/crash SDKs, Firebase, ads, any CDN-hosted script, any package that downloads binaries in `postinstall`
 (Electron's binary download is a separate, explicit step in BUILD.md).
+
+## Spec deviation: Playwright
+The brief names Playwright for the desktop browser view. Playwright is a test-automation library and is not meant to ship inside the app, so the desktop drives its `WebContentsView` with Electron's own APIs instead (`executeJavaScriptInIsolatedWorld`, `capturePage`, the in-process debugger for file inputs). Playwright is not a dependency. The real-Electron smoke test (`desktop/smoke.cjs`) talks to the app over the Chrome DevTools Protocol.

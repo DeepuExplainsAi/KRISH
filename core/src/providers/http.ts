@@ -55,7 +55,7 @@ export async function request(
       gaveUp,
     ]);
     if (!res.ok) {
-      const snippet = redactText((await res.text().catch(() => "")).slice(0, 200));
+      const snippet = redactText((await Promise.race([res.text(), gaveUp]).catch(() => "")).slice(0, 200));
       throw new ProviderError(
         classifyStatus(res.status),
         `HTTP ${res.status}: ${snippet}`,
