@@ -1,0 +1,77 @@
+apply plugin: 'com.android.application'
+apply plugin: 'org.jetbrains.kotlin.android'
+
+android {
+    namespace = "app.krish.agent"
+    compileSdk = rootProject.ext.compileSdkVersion
+
+    defaultConfig {
+        applicationId "app.krish.agent"
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        versionCode 1
+        versionName "0.1.0"
+        aaptOptions {
+            ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+        }
+    }
+
+    flavorDimensions "tier"
+    productFlavors {
+        // Small APK for low-end phones: Tier 0 (Web Worker) sandbox only.
+        lite {
+            dimension "tier"
+            applicationIdSuffix ".lite"
+            versionNameSuffix "-lite"
+            buildConfigField "boolean", "LINUX_SANDBOX", "false"
+        }
+        // Adds the optional Tier 1 Linux sandbox (proot + Alpine), off by default.
+        full {
+            dimension "tier"
+            buildConfigField "boolean", "LINUX_SANDBOX", "true"
+        }
+    }
+
+    buildFeatures { buildConfig = true }
+
+    // Shared page-side script lives in core/ and is packaged as an asset (single source of truth).
+    sourceSets.main.assets.srcDirs += ['../../core/page-script']
+
+    packaging {
+        jniLibs { useLegacyPackaging = true } // extractNativeLibs=true: Tier 1 executables live in the native-library dir
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_21
+        targetCompatibility JavaVersion.VERSION_21
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+        }
+    }
+
+    lint { abortOnError false }
+}
+
+kotlin {
+    compilerOptions { jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21 }
+}
+
+repositories {
+    flatDir { dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs' }
+}
+
+dependencies {
+    implementation fileTree(include: ['*.jar'], dir: 'libs')
+    implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
+    implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
+    implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
+    implementation "androidx.work:work-runtime:$workVersion"
+    implementation project(':capacitor-android')
+    implementation project(':capacitor-cordova-android-plugins')
+    testImplementation "junit:junit:$junitVersion"
+}
+
+apply from: 'capacitor.build.gradle'

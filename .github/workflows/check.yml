@@ -1,0 +1,33 @@
+name: check
+# Type-check, lint, unit tests, and a Kotlin COMPILE check (no APK is assembled).
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  js:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with: { node-version: 24, cache: npm }
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+  android-compile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with: { node-version: 24, cache: npm }
+      - uses: actions/setup-java@v6
+        with: { distribution: temurin, java-version: 21 }
+      - uses: android-actions/setup-android@v4
+      - run: npm ci
+      - run: npm run build:ui
+      - run: npx cap sync android
+      - run: ./gradlew --no-daemon compileLiteDebugKotlin compileFullDebugKotlin
+        working-directory: android

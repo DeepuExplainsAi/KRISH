@@ -1,12 +1,13 @@
 // Injected into the agent's tab by native code (evaluateJavascript / Playwright). Plain JS, no dependencies.
-// Exposes window.__krish. Element ids are indexes into the last observe() result; the DOM is not modified.
+// Evaluates to the API object (nothing is assigned to a page-reachable global except element-id state).
+// Native code wraps it as `var K = <this file>; K.observe()` on every call, so pages cannot spoof the API.
+// Element ids are indexes into the last observe() result; the DOM is not modified.
 // Native code calls these functions and reads the JSON result back; there is no JS bridge object in the page.
 (function () {
-  if (window.__krish && window.__krish.version) return;
   var MAX_ELEMENTS = 200;
   var MAX_TEXT = 60000;
-  var els = [];
-  var overlay = null;
+  // State survives re-injection so element ids stay valid between observe() and click().
+  var state = window.__krishState || (window.__krishState = { els: [], overlay: null });
 
   function visible(e) {
     if (e.hidden || e.getAttribute("aria-hidden") === "true") return false;
@@ -63,7 +64,7 @@
   }
 
   function observe() {
-    els = [];
+    var els = (state.els = []);
     var out = [];
     var nodes = document.querySelectorAll(SELECTOR);
     for (var i = 0; i < nodes.length && els.length < MAX_ELEMENTS; i++) {
@@ -76,7 +77,7 @@
   }
 
   function get(id) {
-    var e = els[id];
+    var e = state.els[id];
     if (!e || !e.isConnected) throw new Error("element " + id + " is gone; observe again");
     return e;
   }
@@ -96,14 +97,14 @@
   }
 
   function highlight(id) {
-    if (overlay) {
-      overlay.remove();
-      overlay = null;
+    if (state.overlay) {
+      state.overlay.remove();
+      state.overlay = null;
     }
     if (id == null) return "ok";
     var e = get(id);
     var r = e.getBoundingClientRect();
-    overlay = document.createElement("div");
+    var overlay = (state.overlay = document.createElement("div"));
     overlay.setAttribute("data-krish-overlay", "1");
     overlay.style.cssText =
       "position:fixed;pointer-events:none;z-index:2147483647;border:3px solid #ff7a1a;border-radius:6px;box-shadow:0 0 0 3px rgba(255,122,26,.3);" +
@@ -112,7 +113,7 @@
     return "ok";
   }
 
-  window.__krish = Object.freeze({
+  return Object.freeze({
     version: 1,
     observe: observe,
     read: function (id) {
@@ -145,6 +146,13 @@
       return "ok";
     },
     highlight: highlight,
+    // Center of the element in CSS px (for native trusted taps, e.g. file choosers that need a user gesture).
+    rect: function (id) {
+      var e = get(id);
+      if (e.scrollIntoView) e.scrollIntoView({ block: "center" });
+      var r = e.getBoundingClientRect();
+      return JSON.stringify({ x: r.left + r.width / 2, y: r.top + r.height / 2, innerWidth: window.innerWidth });
+    },
     // Clicking a file input opens the native chooser; native code answers it with the user-picked file.
     openFileChooser: function (id) {
       var e = get(id);
@@ -153,4 +161,4 @@
       return "ok";
     },
   });
-})();
+})()

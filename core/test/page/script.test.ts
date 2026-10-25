@@ -12,12 +12,14 @@ type K = {
   fill(id: number, v: string): string;
   highlight(id?: number | null): string;
   openFileChooser(id: number): string;
+  rect(id: number): string;
 };
-const k = () => (window as unknown as { __krish: K }).__krish;
+let api: K;
+const k = () => api;
 const obs = () => JSON.parse(k().observe()) as { url: string; text: string; elements: Record<string, unknown>[] };
 
 beforeEach(() => {
-  delete (window as unknown as { __krish?: K }).__krish;
+  delete (window as unknown as { __krishState?: unknown }).__krishState;
   document.body.innerHTML = `
     <h1>Hello</h1>
     <form id="f"><label for="q">Search</label><input id="q" name="q" type="text" placeholder="find">
@@ -28,7 +30,7 @@ beforeEach(() => {
     <script>var secret = 1</script>`;
   // test-only: evaluates our own bundled script file, never model text
   // eslint-disable-next-line no-eval
-  (0, eval)(script);
+  api = (0, eval)(script) as K;
 });
 
 describe("page script", () => {
@@ -92,6 +94,21 @@ describe("page script", () => {
     document.body.innerHTML = '<input id="t" type="text">';
     const o2 = obs();
     expect(() => k().openFileChooser(o2.elements[0]!.id as number)).toThrow(/not a file/);
+  });
+
+  it("re-injection keeps element ids valid and ignores a page-planted fake window.__krish", () => {
+    const o = obs();
+    Object.defineProperty(window, "__krish", { value: { click: () => "fake" }, writable: false, configurable: false });
+    // eslint-disable-next-line no-eval
+    api = (0, eval)(script) as K;
+    expect(k().click(o.elements.find((e) => e.text === "Docs")!.id as number)).toBe("ok");
+  });
+
+  it("rect returns the element center", () => {
+    const o = obs();
+    const r = JSON.parse(k().rect(o.elements[0]!.id as number));
+    expect(r).toHaveProperty("x");
+    expect(r).toHaveProperty("innerWidth");
   });
 
   it("the API object is frozen", () => {

@@ -1,0 +1,7 @@
+{
+  "appId": "app.krish.agent",
+  "appName": "Krish",
+  "webDir": "ui/dist",
+  "android": { "path": "android", "allowMixedContent": false },
+  "server": { "androidScheme": "https", "cleartext": false }
+}

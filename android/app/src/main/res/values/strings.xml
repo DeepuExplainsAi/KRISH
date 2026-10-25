@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Krish</string>
+    <string name="title_activity_main">Krish</string>
+    <string name="package_name">app.krish.agent</string>
+    <string name="custom_url_scheme">app.krish.agent</string>
+</resources>
