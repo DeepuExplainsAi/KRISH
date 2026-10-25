@@ -28,20 +28,32 @@ export async function request(
   if (call.signal?.aborted) throw new AbortedError();
   const timeout = new AbortController();
   let timedOut = false;
+  // Some fetch implementations ignore `signal` (Capacitor's native POST bridge does), so the wait itself is raced
+  // against the timeout and STOP. Otherwise a hung provider would block fallback and STOP forever.
+  let giveUp: (e: unknown) => void = () => undefined;
+  const gaveUp = new Promise<never>((_, reject) => (giveUp = reject));
+  gaveUp.catch(() => undefined); // never an unhandled rejection
   const timer = setTimeout(() => {
     timedOut = true;
     timeout.abort();
+    giveUp(new Error("timeout"));
   }, call.timeoutMs);
-  const onAbort = () => timeout.abort();
+  const onAbort = () => {
+    timeout.abort();
+    giveUp(new Error("aborted"));
+  };
   call.signal?.addEventListener("abort", onAbort);
   try {
-    const res = await call.fetch(url, {
-      method: init.method,
-      headers: { "content-type": "application/json", ...init.headers },
-      body: init.body === undefined ? undefined : JSON.stringify(init.body),
-      signal: timeout.signal,
-      credentials: "omit",
-    });
+    const res = await Promise.race([
+      call.fetch(url, {
+        method: init.method,
+        headers: { "content-type": "application/json", ...init.headers },
+        body: init.body === undefined ? undefined : JSON.stringify(init.body),
+        signal: timeout.signal,
+        credentials: "omit",
+      }),
+      gaveUp,
+    ]);
     if (!res.ok) {
       const snippet = redactText((await res.text().catch(() => "")).slice(0, 200));
       throw new ProviderError(
@@ -52,8 +64,9 @@ export async function request(
       );
     }
     try {
-      return await res.json();
-    } catch {
+      return await Promise.race([res.json(), gaveUp]);
+    } catch (e) {
+      if (timedOut || call.signal?.aborted) throw e; // classified by the outer handler
       throw new ProviderError("bad_json", "provider returned a non-JSON body");
     }
   } catch (e) {

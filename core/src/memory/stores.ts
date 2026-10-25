@@ -1,8 +1,13 @@
 import { redactText } from "../privacy/redact";
 import type { KVStore } from "../storage";
 
-/** Small JSON collection on top of KVStore. Every write passes through redaction. */
+/**
+ * Small JSON collection on top of KVStore. Every write passes through redaction.
+ * Writes are queued: the KVStore is async, so unqueued read-modify-write calls would overwrite each other.
+ */
 export class Collection<T extends { id: string }> {
+  private queue: Promise<unknown> = Promise.resolve();
+
   constructor(
     private kv: KVStore,
     private key: string,
@@ -14,17 +19,25 @@ export class Collection<T extends { id: string }> {
     return raw ? (JSON.parse(raw) as T[]) : [];
   }
 
-  async put(item: T): Promise<void> {
-    const rest = (await this.all()).filter((x) => x.id !== item.id);
-    await this.save([...rest, item].slice(-this.max));
+  private serial<R>(job: () => Promise<R>): Promise<R> {
+    const run = this.queue.then(job, job);
+    this.queue = run.catch(() => undefined);
+    return run;
   }
 
-  async remove(id: string): Promise<void> {
-    await this.save((await this.all()).filter((x) => x.id !== id));
+  put(item: T): Promise<void> {
+    return this.serial(async () => {
+      const rest = (await this.all()).filter((x) => x.id !== item.id);
+      await this.save([...rest, item].slice(-this.max));
+    });
   }
 
-  async clear(): Promise<void> {
-    await this.kv.delete(this.key);
+  remove(id: string): Promise<void> {
+    return this.serial(async () => this.save((await this.all()).filter((x) => x.id !== id)));
+  }
+
+  clear(): Promise<void> {
+    return this.serial(() => this.kv.delete(this.key));
   }
 
   private save(items: T[]) {

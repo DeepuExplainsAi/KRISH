@@ -163,3 +163,29 @@ describe("ProviderRouter fallback", () => {
     expect((c.init?.headers as Record<string, string>)["x-goog-api-key"]).toBe("key-g");
   });
 });
+
+describe("fetch that ignores AbortSignal (Capacitor native POST)", () => {
+  const hang = () => new Promise<Response>(() => undefined);
+  const settle = <T,>(p: Promise<T>) =>
+    Promise.race([p.then((v) => ({ v }), (e: unknown) => ({ e })), new Promise<"HUNG">((r) => setTimeout(() => r("HUNG"), 1500))]);
+
+  it("still times out and falls back to the next provider", async () => {
+    const { keys, kv } = await stores(["a", "b"]);
+    const router = new ProviderRouter({
+      keys, kv, providers: () => [provider("a"), provider("b")], config: { requestTimeoutMs: 40 },
+      fetch: (u) => (u.includes("a.test") ? hang() : Promise.resolve(openaiReply(DONE))),
+    });
+    const r = await settle(router.run(msgs, parseAction));
+    expect(r).not.toBe("HUNG");
+    expect((r as { v: { attempts: { outcome: string }[] } }).v.attempts[0]?.outcome).toBe("timeout");
+  });
+
+  it("STOP interrupts a hung request", async () => {
+    const { keys, kv } = await stores(["a"]);
+    const router = new ProviderRouter({ keys, kv, providers: () => [provider("a")], fetch: hang });
+    const ac = new AbortController();
+    setTimeout(() => ac.abort(), 20);
+    const r = await settle(router.run(msgs, parseAction, { signal: ac.signal }));
+    expect((r as { e: unknown }).e).toBeInstanceOf(AbortedError);
+  });
+});

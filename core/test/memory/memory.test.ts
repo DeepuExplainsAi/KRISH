@@ -91,3 +91,18 @@ describe("schedule", () => {
     expect(briefCommand("- a", [T({ title: "Pay rent" })])).toContain("Do not open any website");
   });
 });
+
+describe("concurrent writes", () => {
+  it("keep every entry even when the store is slow (read-modify-write must not interleave)", async () => {
+    class SlowKV extends MemoryKV {
+      async get(k: string) {
+        const v = await super.get(k);
+        await new Promise((r) => setTimeout(r, 2));
+        return v;
+      }
+    }
+    const h = new History(new SlowKV());
+    await Promise.all(Array.from({ length: 12 }, (_, i) => h.log("run", "chip", `c${i}`)));
+    expect((await h.list()).map((e) => e.label).sort()).toEqual(Array.from({ length: 12 }, (_, i) => `c${i}`).sort());
+  });
+});
