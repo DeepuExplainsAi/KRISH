@@ -192,7 +192,7 @@ function registerIpc() {
     call(lib.expr.fill(elementId, value, fp)).then(() => undefined, () => { throw new Error("could not fill the field"); }));
   handle("browser:highlight", ({ elementId }) => call(lib.expr.highlight(elementId)).then(() => undefined));
   handle("browser:upload", ({ elementId, fp, token }) => uploadFile(elementId, fp, tokens.get(token)));
-  handle("browser:setBounds", (b) => { bounds = { x: Math.round(b.x), y: Math.round(b.y), width: Math.max(1, Math.round(b.width)), height: Math.max(1, Math.round(b.height)) }; applyBounds(); });
+  handle("browser:setBounds", (b) => { bounds = { x: Math.round(b.x), y: Math.round(b.y), width: Math.max(1, Math.round(b.width)), height: Math.max(1, Math.round(b.height)) }; applyBounds(); view.setBorderRadius?.(Math.round(b.radius ?? 0)); });
   handle("browser:setMode", ({ mode }) => view.setVisible(mode === "live"));
   handle("browser:setDesktopLayout", ({ enabled }) => { desktopLayout = Boolean(enabled); applyBounds(); if (view.webContents.getURL()) view.webContents.reload(); });
   handle("browser:snapshot", async ({ maxWidth, quality }) => {

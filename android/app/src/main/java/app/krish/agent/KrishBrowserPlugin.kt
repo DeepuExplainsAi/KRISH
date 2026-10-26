@@ -2,7 +2,9 @@ package app.krish.agent
 
 import android.net.Uri
 import android.view.Gravity
+import android.graphics.Outline
 import android.view.View
+import android.view.ViewOutlineProvider
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import com.getcapacitor.JSObject
@@ -112,8 +114,14 @@ class KrishBrowserPlugin : Plugin(), AgentWebView.Listener {
         val y = call.getDouble("y") ?: 0.0
         val w = call.getDouble("width") ?: 1.0
         val h = call.getDouble("height") ?: 1.0
+        val radius = call.getDouble("radius") ?: 0.0
         ui(call) { v ->
             val d = activity.resources.displayMetrics.density
+            // Rounded corners so the page matches the card around it.
+            v.clipToOutline = radius > 0
+            v.outlineProvider = object : ViewOutlineProvider() {
+                override fun getOutline(view: View, outline: Outline) = outline.setRoundRect(0, 0, view.width, view.height, (radius * d).toFloat())
+            }
             val host = bridge.webView
             val content = activity.findViewById<View>(android.R.id.content)
             val a = IntArray(2).also { host.getLocationOnScreen(it) }

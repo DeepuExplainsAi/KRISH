@@ -6,6 +6,8 @@ import { IconClose, IconExpand, IconShrink, IconWarn } from "./icons";
 
 /** Smaller than this the page is not usable: the native view is hidden instead of squeezed. */
 const MIN_VIEW = 40;
+/** The page sits inside the black card with this margin and radius (keep in sync with `.live .view` in styles.css). */
+const VIEW_RADIUS = 20;
 
 const hostOf = (url: string) => {
   try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return url; }
@@ -27,6 +29,7 @@ export function LiveWindow() {
   // Take-over prompts are the exception: the user needs the page to solve a CAPTCHA.
   const blocking = s.prompts.some((p) => p.type !== "takeover");
   const open = s.windowOpen;
+  const expanded = s.windowExpanded;
   const show = open && !blocking;
 
   // Sends the exact `.view` box to the native view, only when it changed. Runs after every render (the card moves when the
@@ -48,10 +51,10 @@ export function LiveWindow() {
           sent.current = "hidden";
           return;
         }
-        const key = [r.left, r.top, r.width, r.height].map(Math.round).join(",");
+        const key = [r.left, r.top, r.width, r.height, expanded ? 1 : 0].map(Math.round).join(",");
         if (key === sent.current) return;
         sent.current = key;
-        void app.platform.browser.setBounds({ x: r.left, y: r.top, width: r.width, height: r.height });
+        void app.platform.browser.setBounds({ x: r.left, y: r.top, width: r.width, height: r.height, radius: expanded ? 0 : VIEW_RADIUS });
         void app.platform.browser.setMode("live");
       });
     };
@@ -72,7 +75,6 @@ export function LiveWindow() {
   const hasPage = s.page.url !== "";
   const host = hostOf(s.page.url);
   const statusText = s.page.loading ? t("opening", { site: host || "…" }) : s.running && step ? step.label : s.page.title || host || t("winTitle");
-  const expanded = s.windowExpanded;
   return (
     <div className={`live${expanded ? " full" : ""}${blocking ? " folded" : ""}`} role="region" aria-label={t("winTitle")}>
       {!blocking && (

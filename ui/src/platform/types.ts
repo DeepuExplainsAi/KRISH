@@ -11,6 +11,8 @@ export interface Bounds {
   y: number;
   width: number;
   height: number;
+  /** Corner radius of the native view in CSS px (matches the card around it). */
+  radius?: number;
 }
 
 /** The agent's embedded browser. Implemented natively on each platform. */
