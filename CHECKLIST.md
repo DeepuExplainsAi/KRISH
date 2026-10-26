@@ -17,6 +17,7 @@ Legend: **RUN** = executed in the build environment with the result observed. **
 | Tier 0 sandbox: zip, unzip, zip-slip, zip bomb, stored-entry size lie, QuickJS script, no host globals, infinite loop, memory cap, print/output limits | `npm test -w ui` (Node, real QuickJS WASM) | pass |
 | Desktop helper logic (https check, fetch validation, expression quoting, secret store, docker flags) | `npm test -w desktop` | pass |
 | **Real Electron 45 main process + preload + WebContentsView**: layout toggle with and without a page (used to segfault), http/file/unknown-channel refusals, fetch refusals, isolated-world observe/read, stale-fingerprint refusal, snapshot, clear site data. Page's own JS sees no `K` | `npm run smoke -w desktop` under Xvfb (12 checks); also confirmed it crashes on the old code | 12/12 pass |
+| **Login persistence on desktop** (Electron, `persist:krish-agent` partition): app closed and reopened with the same profile. Cookies with an expiry ("remember me") and localStorage survived; session cookies (no expiry) did not, as in any browser | manual script under Xvfb | as described |
 | **Tier 0 worker in real Chrome** (built bundle): script result, infinite loop interrupted at 5 s, `fetch`/`XMLHttpRequest`/`WebSocket`/`importScripts` undefined | agent-browser | pass |
 | **UI layout in real Chrome at 467x922**: nav at the bottom, live window drag writes storage once per drag (0 during, 1 on release or on `pointercancel`; a second pointer and stray moves after cancel are ignored) | agent-browser | pass |
 | TypeScript strict type-check, ESLint | `npm run typecheck`, `npm run lint` | clean |
@@ -30,7 +31,7 @@ Legend: **RUN** = executed in the build environment with the result observed. **
 ## NOT RUN: needs a real device or display (please test)
 
 1. **Everything on an Android device.** The APK was not installed or launched.
-2. Agent WebView on Android: loading sites, `evaluateJavascript` round trip, element highlight, live-window positioning under the UI (native `setBounds` margins), drag/pinch/resize feel, Mini snapshot mode, safe-area insets with Capacitor's SystemBars.
+2. Agent WebView on Android (including: login survives closing and reopening the app; `CookieManager.flush()` was added in `onPageFinished` and NOT recompiled after the change, the JDK was gone): loading sites, `evaluateJavascript` round trip, element highlight, live-window positioning under the UI (native `setBounds` margins), drag/pinch/resize feel, Mini snapshot mode, safe-area insets with Capacitor's SystemBars.
 3. File upload into a web page (real tap + `onShowFileChooser` answer): the riskiest mechanism; some sites may reject it.
 4. Android Keystore plugin (`KrishSecurePlugin`): encrypt/decrypt round trip.
 5. WorkManager notifications (`DueWorker`) and the POST_NOTIFICATIONS opt-in on Android 13+.

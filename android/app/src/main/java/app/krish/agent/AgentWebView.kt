@@ -80,6 +80,7 @@ class AgentWebView(context: Context, private val pageScript: String, private val
 
         override fun onPageFinished(view: WebView, url: String) {
             if (desktopLayout) view.evaluateJavascript(DESKTOP_VIEWPORT_JS, null)
+            CookieManager.getInstance().flush() // write logins to disk now; otherwise they can be lost if the app is killed soon after
             listener.onPage(url, view.title.orEmpty(), false)
         }
 
