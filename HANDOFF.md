@@ -3,6 +3,30 @@
 Project: KRISH, source-only personal agent (Android + desktop). Spec: `docs/SPEC.md`.
 Rule: update this file at the end of every work session (status table + "Next").
 
+## RELEASE RUN (in progress) — read this before anything else
+Task: follow `docs/AI-RELEASE-PROMPT.md` in order. Goal: CI live, builds fixed, GitHub Release with APKs + desktop apps.
+Last updated: 2026-10-24. Update this block after every step.
+
+| # | Step | State |
+|---|---|---|
+| 0 | Read HANDOFF.md, BUILD.md, ci/workflows/*.yml | DONE |
+| 1 | `gh auth status` has `workflow` scope | **BLOCKED**: token scopes are `gist, read:org, repo`. Pushing `.github/workflows/*` is refused without `workflow`. |
+| 2 | Copy `ci/workflows/*.yml` to `.github/workflows/`, push, run `check`, fix Kotlin (`openExternal` never compiled) | TODO |
+| 3 | Add `.github/workflows/release.yml` (tag `v*` + workflow_dispatch `tag`; Android lite/full debug, Windows x64 zip, Linux x64 tar.gz, SHA256SUMS.txt; pre-release) | TODO |
+| 4 | Fix loop until all runs are green; tests stay green (core 167, ui 32, desktop 8) | TODO |
+| 5 | Download and verify release files (see prompt step 5) | TODO |
+| 6 | README "Download" section, BUILD.md section 5, session log here | TODO |
+| 7 | Tag `v0.1.0`, release.yml publishes, notes state: unsigned debug, not tested on real devices, known gaps | TODO |
+
+**Unblock (owner):** give the AI a GitHub token with `repo` + `workflow`: either a classic PAT (github.com/settings/tokens -> Generate new token (classic) -> tick `repo` and `workflow`), or on a machine where `gh` is logged in: `gh auth refresh -h github.com -s workflow`. Then re-run the same prompt. Nothing else is needed from the owner.
+
+**Doing now / next action:** nothing is half-done; repo is unchanged except this block. After the scope is available start at step 2. Work on `main`, small commits, no force-push.
+
+**Owner requirements for the README "Download" section (step 6):**
+- Professional and engaging; only content that helps the reader download and install. No filler, no badges for the sake of badges.
+- Use the words people actually search for in October 2026 (for example: free AI agent, open source, Android APK, Windows, Linux, browser automation, bring your own API key, privacy). Check real search wording with a search tool before writing; do not invent claims about popularity or features.
+- Still true to the release notes: unsigned debug builds, not tested on real devices. Do not say "Hark" anywhere.
+
 ## Environment notes
 - Cloud sandbox: Node 24, ~480 MB RAM, 1 CPU, ~2 GB free disk. JDK 21 and the Android SDK are NOT preinstalled; install them to /opt/jdk and /opt/android-sdk (see "Restart here"). Electron runs under `xvfb-run`.
 - typescript pinned 6.0.3 because typescript-eslint 8.72 does not support TS 7.
