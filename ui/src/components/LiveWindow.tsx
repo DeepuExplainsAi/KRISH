@@ -71,7 +71,7 @@ export function LiveWindow() {
   if (!open) return null;
 
   const step = lastChip(s.items)?.chip;
-  const needsYou = s.status === "action_required" || step?.state === "action_required";
+  const needsYou = s.running && (s.status === "action_required" || step?.state === "action_required"); // a finished or stopped run never keeps the warning
   const hasPage = s.page.url !== "";
   const host = hostOf(s.page.url);
   const statusText = s.page.loading ? t("opening", { site: host || "…" }) : s.running && step ? step.label : s.page.title || host || t("winTitle");

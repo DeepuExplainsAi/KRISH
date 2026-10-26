@@ -7,7 +7,8 @@
     <title>Krish</title>
   </head>
   <body>
-    <div id="root"></div>
+    <!-- Painted before any script runs, so the first screen is never blank; React replaces it. -->
+    <div id="root"><div style="min-height:100dvh;display:grid;place-items:center;background:#1a2246;color:#f5f5f7;font:650 1.6rem system-ui,sans-serif">Krish</div></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

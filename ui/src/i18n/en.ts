@@ -53,7 +53,6 @@ export const en = {
   themeSystem: "Auto (follows device)",
   themeLight: "Light",
   themeDark: "Dark",
-  starting: "Starting…",
   autoOpenWindow: "Open the browser card when the agent opens a site",
   // screens
   homeOnlyHttps: "Only https:// sites can be opened",
@@ -183,6 +182,12 @@ export const en = {
   tab_free: "Free",
   tab_added: "Added",
   tab_custom: "Custom",
+  thinking: "Thinking…",
+  chatTitle: "How can I help?",
+  suggest1: "Explain how UPI works",
+  suggest2: "Find the latest news on a topic",
+  suggest3: "Open a website and do a task for me",
+  noAnswerTitle: "No AI provider could answer",
 };
 
 export type Dict = typeof en;

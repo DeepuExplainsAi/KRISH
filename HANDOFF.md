@@ -3,7 +3,21 @@
 Project: KRISH, source-only personal agent (Android + desktop). Spec: `docs/SPEC.md`.
 Rule: update this file at the end of every work session (status table + "Next").
 
-## PHONE-TEST FIXES (v0.1.2, 2026-10-24) — read this first
+## PHONE-TEST ROUND 2 (v0.1.3, 2026-10-24) — read this first
+Owner's findings from v0.1.2 and what was done (core 192, ui 36, desktop 8 pass; lint and typecheck clean). **Nothing here ran on a real phone yet.**
+| # | Finding | Fix | State |
+|---|---|---|---|
+| 1 | Old, vanished models kept being used | Model list marks `expiring` (OpenRouter `expiration_date` < 14 days) and never auto-picks it; `probeModels` now tries up to 9 ranked models, 3 at a time, and keeps the first two that answer a JSON probe (a 404 or a prose reply is skipped); a "model no longer available" error triggers a fresh list + probe by itself; at app start, providers that are not OK or not checked for a day are re-tested (`store.checkUntested`) | DONE in code; real providers not tried |
+| 2 | Instagram login "fails" and shows "Action required" | The warning only shows while a run is active (`LiveWindow`); steps left open when a run ends are closed (`store.ts`); Android WebView user agent drops `; wv` and `Version/x` (`AgentWebView.kt`) so sign-in pages treat it as Chrome | UA change **unverified** (cannot be tested here); if Instagram still refuses, the cause is Instagram blocking embedded browsers and nothing in the app can fix it |
+| 3 | Any message opened the Instagram tab | A run now starts with **no page**: no page is read, no card, no sensitive-page check. The agent gets "No page is open" (plus the title/URL of a tab the user left open, as a hint only). It must `navigate` (opens the card) or `read` (looks at the open tab) to use a browser. Only saved tasks/panels with a start URL begin on a page (`loop.ts` `pageLive`, `store.send`) | DONE, tested |
+| 4 | Free models on top, labelled | `sortModels` (free, then paid, then non-chat); picker shows a green "free" badge; free is also detected from `:free` / `-free` ids (OpenCode Zen) | DONE |
+| 5 | Professional look, slow screens | Screens other than Home/Chat are lazy chunks; App/Chat subscribe per field; page events only re-render on a real change; static HTML paints "Krish" before JS; welcome screen with 3 starter prompts; provider card moved rarely used fields into "Settings"; one-title + one-line-per-provider failure card | DONE in code, not measured on a phone |
+| 6 | Thinking indicator | `Thinking` bubble (dots + shimmer) while a run waits for the AI; off under reduced motion and lite mode | DONE |
+| 7 | Endless "Action required / take over / resume" | Cause: the stale login tab was read as a sensitive page on every step. Now: no page unless used; a sensitive page asks **once** ("let the AI see it?"), declining hands over to the user once; the same page never asks twice (`takenOver`); the model's JSON is parsed leniently (prose around JSON, think tags, plain prose on the first step = answer) so free models that ignore the format still work; JSON mode is requested and retried without it on 400/422 | DONE, tested |
+
+Next: install the APK, add a free key (Gemini or OpenRouter), check "hi" (no card, thinking dots, plain answer), then "open example.com" (card opens), then a login site (one question, no loop). If a provider still gives "unusable reply", look at `Attempt.detail`.
+
+## PHONE-TEST FIXES (v0.1.2, 2026-10-24)
 Owner tested v0.1.1 on a phone and sent screenshots. Findings and fixes (all in code and tests; core 179, ui 35, desktop 8):
 - **Wrong models were auto-picked** (Gemini `antigravity-preview` = 400 "Developer instruction is not enabled", OpenRouter obscure free model = 429, OpenCode Zen paid model = 402). Fix: name-based ranking is only a first guess; `probeModels` (`core/src/providers/models.ts`) now sends one tiny real request to the best-ranked models and keeps the first two that answer as default and fallback. Rate-limited, unpaid and rejected models are skipped. It runs when a key is added, on the new "Test" button, and once at start for providers saved earlier.
 - **Green tick**: `ProviderConfig.health {ok, at, note}`; set by the probe and updated after every real agent call (`RouterDeps.onResult`). Providers screen shows a green tick, "Checking…", or a red "Not working: <reason>".

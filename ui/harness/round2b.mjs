@@ -1,0 +1,3 @@
+export default [
+  { name: "01-picker", run: `(async()=>{ await __krish.addProvider({name:"Demo AI",kind:"openai-compat",baseUrl:"https://p.test/v1"},"k"); await __krish.updateProvider({...__krish.getState().providers[0], health:{ok:true,at:1}, defaultModel:"gemma-4-31b-it:free", fallbackModel:"nemotron-3-super-120b-a12b:free", models:{fetchedAt:1,items:[{id:"embed-3"},{id:"big-paid-pro-5"},{id:"gemma-4-31b-it:free",free:true},{id:"nemotron-3-super-120b-a12b:free",free:true},{id:"paid-mini-1"}]}}); __krish.go("providers"); await new Promise(r=>setTimeout(r,1200)); [...document.querySelectorAll('button')].find(b=>b.textContent==='Pick models').click(); })()`, wait: 700 },
+];

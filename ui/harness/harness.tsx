@@ -26,6 +26,7 @@ platform.browser.observe = async () =>
 platform.browser.fill = async (id, v) => void window.__filled.push([id, v]);
 platform.fetch = async (url, init) => {
   if (url.endsWith("/models")) return new Response(JSON.stringify({ data: [{ id: "free-model-1" }, { id: "free-model-2" }] }), { status: 200 });
+  if ((window as unknown as { __slow?: boolean }).__slow) await new Promise((r) => setTimeout(r, 30_000)); // lets a screenshot catch the "thinking" state
   window.__prompts.push(JSON.parse(String(init?.body)).messages.map((m: { content: string }) => m.content).join("\n"));
   const next = window.__script.shift() ?? { type: "done", summary: "Done." };
   return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(next) } }] }), { status: 200 });

@@ -6,6 +6,8 @@ export interface ModelInfo {
   /** true only when the provider's own response says the model is free. */
   free?: boolean;
   contextWindow?: number;
+  /** The provider announced this model leaves soon (or it is already gone). Never chosen automatically. */
+  expiring?: boolean;
 }
 
 export interface ModelCache {
@@ -99,7 +101,7 @@ export function friendlyReason(kind: ProviderErrorKind, status?: number): string
     case "timeout": return "too slow";
     case "network": return "no connection";
     case "server": return "provider is down";
-    case "bad_json": return "unusable reply";
-    default: return status ? `model not usable (HTTP ${status})` : "model not usable";
+    case "bad_json": return "gave a reply Krish could not read";
+    default: return status === 404 || status === 410 ? "model no longer available" : status ? `model not usable (HTTP ${status})` : "model not usable";
   }
 }

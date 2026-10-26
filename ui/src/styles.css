@@ -22,7 +22,7 @@
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { height: 100%; }
 body { margin: 0; background: var(--sky); color: var(--ink); }
-.boot { padding: 2rem; color: var(--white); }
+.boot { min-height: 100dvh; display: grid; place-items: center; color: var(--white); font-size: 1.6rem; font-weight: 650; letter-spacing: -.01em; }
 .app { display: flex; flex-direction: column; height: 100dvh; padding: var(--safe-area-inset-top, env(safe-area-inset-top, 0px)) var(--safe-area-inset-right, env(safe-area-inset-right, 0px)) var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)) var(--safe-area-inset-left, env(safe-area-inset-left, 0px)); }
 
 /* top bar: new chat, tabs, menu */
@@ -97,6 +97,23 @@ h2 { font-size: 1.35rem; }
 .msg .via { display: block; margin-top: .35rem; font-size: .72rem; color: var(--mute); }
 .msg.failed { color: var(--err); display: flex; flex-direction: column; align-items: flex-start; gap: .5rem; max-width: 92%; overflow-wrap: anywhere; font-size: .92rem; }
 .empty { padding: .7rem 1rem; border-radius: 22px; max-width: 88%; margin: 0; }
+.welcome { margin: auto 0; padding: 0 .35rem 1rem; display: grid; gap: .35rem; }
+.welcome h2 { margin: 0; font-size: 1.7rem; font-weight: 650; letter-spacing: -.01em; color: var(--white); }
+.welcome p { margin: 0 0 .6rem; color: var(--mute); line-height: 1.45; max-width: 30rem; }
+.suggest { display: grid; gap: .45rem; justify-items: start; }
+.suggest button { text-align: left; background: var(--glass); border: 1px solid var(--glass-line); padding: .6rem 1rem; min-height: 44px; font-size: .95rem; }
+.msg .why { display: grid; gap: .3rem; }
+.msg .why span { font-size: .86rem; color: var(--mute); }
+.msg.failed .why strong { color: var(--ink); font-weight: 600; }
+.msg.thinking { display: inline-flex; align-items: center; gap: .6rem; padding: .6rem 1rem; color: var(--mute); }
+.shimmer { background: linear-gradient(90deg, var(--mute) 0%, var(--ink) 50%, var(--mute) 100%); background-size: 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: shimmer 1.6s linear infinite; }
+@keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+.badge.free { margin-left: .45rem; color: var(--ok); border-color: color-mix(in srgb, var(--ok) 45%, transparent); background: color-mix(in srgb, var(--ok) 14%, transparent); }
+.more { margin: .4rem 0; }
+.more summary { cursor: pointer; color: var(--mute); font-size: .9rem; min-height: 36px; display: flex; align-items: center; }
+.models .list li { flex-direction: column; align-items: flex-start; gap: .35rem; }
+.models .list li .row button { min-height: 34px; padding: .25rem .8rem; font-size: .85rem; }
+.mname { overflow-wrap: anywhere; min-width: 0; }
 .chip { align-self: flex-start; display: inline-flex; align-items: center; gap: .5rem; max-width: 92%; border-radius: 99px; padding: .45rem 1rem; min-height: 40px; background: var(--glass); border: 1px solid var(--glass-line); font-size: .92rem; text-align: left; }
 .chip .txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chip.done svg { color: var(--ok); }
@@ -186,8 +203,9 @@ button.plain { background: none; border: 0; width: 100%; text-align: left; paddi
 @media (max-width: 899px) { .grid.wide { grid-template-columns: 1fr; } }
 
 /* Lite mode: no blur, no animation, no shadows; glass becomes a solid fill so text stays readable. */
+.app.lite .shimmer { color: var(--mute); background: none; }
 .app.lite *, .app.lite *::before, .app.lite *::after { animation: none !important; transition: none !important; backdrop-filter: none !important; box-shadow: none !important; }
 .app.lite .glass, .app.lite .card, .app.lite .seg, .app.lite .round, .app.lite .composer, .app.lite .chip, .app.lite .back, .app.lite main > section:not(.chat):not(.menu), .app.lite .msg.user { background: var(--glass-solid); }
 .app.lite .round.dark, .app.lite .chip.action_required, .app.lite .chip.running.latest { background: var(--strong); }
 .app.lite .round.stop, .app.lite button.stop { background: var(--glass-solid); }
-@media (prefers-reduced-motion: reduce) { .dots i, .view-empty .mark, .thread > *, .live, .notice { animation: none; } button { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .dots i, .shimmer, .view-empty .mark, .thread > *, .live, .notice { animation: none; } button { transition: none; } }

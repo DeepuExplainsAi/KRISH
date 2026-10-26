@@ -1,5 +1,5 @@
-import { DEFAULTS, searchModels, type ProviderConfig } from "@krish/core";
-import { useState } from "react";
+import { DEFAULTS, searchModels, sortModels, type ProviderConfig } from "@krish/core";
+import { useMemo, useState } from "react";
 import { useT } from "../i18n/useT";
 import { useApp, useAppState } from "../state/useStore";
 
@@ -7,14 +7,15 @@ function ModelPicker({ p }: { p: ProviderConfig }) {
   const app = useApp();
   const { t } = useT();
   const [q, setQ] = useState("");
-  const items = searchModels(p.models?.items ?? [], q).slice(0, 60);
+  const sorted = useMemo(() => sortModels(p.models?.items ?? []), [p.models]);
+  const items = searchModels(sorted, q).slice(0, 60);
   return (
     <div className="models">
       <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("searchModels", { count: String(p.models?.items.length ?? 0) })} />
       <ul className="list scroll">
         {items.map((m) => (
           <li key={m.id}>
-            <span>{m.id}{m.free ? ` · ${t("free")}` : ""}</span>
+            <span className="mname">{m.id}{m.free && <span className="badge free">{t("free")}</span>}</span>
             <span className="row">
               <button className={p.defaultModel === m.id ? "on" : ""} onClick={() => void app.updateProvider({ ...p, defaultModel: m.id })}>{t("default")}</button>
               <button className={p.fallbackModel === m.id ? "on" : ""} onClick={() => void app.updateProvider({ ...p, fallbackModel: m.id })}>{t("fallback")}</button>
@@ -57,23 +58,26 @@ function ProviderCard({ p, index, rank, last }: { p: ProviderConfig; index: numb
         </span>
       </div>
       <label><input type="checkbox" checked={p.enabled} onChange={(e) => update({ enabled: e.target.checked })} /> {t("enabled")}</label>
-      <label><input type="checkbox" checked={p.allowSensitive} onChange={(e) => update({ allowSensitive: e.target.checked })} /> {t("allowSensitive")}</label>
-      <label>{t("dailyCap")}
-        <input type="number" min={1} value={p.dailyLimit ?? ""} onChange={(e) => update({ dailyLimit: e.target.value ? Number(e.target.value) : undefined })} />
-      </label>
-      <form className="row" onSubmit={(e) => { e.preventDefault(); void app.setProviderKey(p.id, key).then(() => setKey("")); }}>
-        <input type="password" autoComplete="off" value={key} onChange={(e) => setKey(e.target.value)} placeholder={t("replaceKey")} />
-        <button type="submit" disabled={!key}>{t("saveKey")}</button>
-      </form>
+      <details className="more">
+        <summary>{t("settings")}</summary>
+        <label><input type="checkbox" checked={p.allowSensitive} onChange={(e) => update({ allowSensitive: e.target.checked })} /> {t("allowSensitive")}</label>
+        <label>{t("dailyCap")}
+          <input type="number" min={1} value={p.dailyLimit ?? ""} onChange={(e) => update({ dailyLimit: e.target.value ? Number(e.target.value) : undefined })} />
+        </label>
+        <form className="row" onSubmit={(e) => { e.preventDefault(); void app.setProviderKey(p.id, key).then(() => setKey("")); }}>
+          <input type="password" autoComplete="off" value={key} onChange={(e) => setKey(e.target.value)} placeholder={t("replaceKey")} />
+          <button type="submit" disabled={!key}>{t("saveKey")}</button>
+        </form>
+        <button onClick={() => void app.router.usageToday(p.id).then(setUsage)}>{usage === undefined ? t("usageToday") : t("usageCount", { count: String(usage) })}</button>
+      </details>
       <div className="row">
         <button onClick={() => void app.testProvider(p.id)} disabled={s.checking.includes(p.id)}>{t("testConnection")}</button>
         <button onClick={() => void app.refreshProviderModels(p.id)}>{t("refreshModels")}</button>
         <button onClick={() => setOpen(!open)}>{open ? t("hide") : t("pickModels")}</button>
-        <button onClick={() => void app.router.usageToday(p.id).then(setUsage)}>{usage === undefined ? t("usageToday") : t("usageCount", { count: String(usage) })}</button>
       </div>
       <p className="muted">
         {t("defaultFallbackLine", { default: p.defaultModel ?? t("none"), fallback: p.fallbackModel ?? t("none") })}
-        {p.models && ` · ${t("listFrom", { time: new Date(p.models.fetchedAt).toLocaleString() })}`}
+        {p.models && ` · ${t("listFrom", { time: new Date(p.models.fetchedAt).toLocaleDateString() })}`}
       </p>
       {p.modelsError && <p className="error">{p.modelsError}</p>}
       {open && <ModelPicker p={p} />}

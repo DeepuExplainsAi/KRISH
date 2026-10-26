@@ -1,5 +1,5 @@
 import {
-  AgentController, autoFetchOnce, cleanLabel, DEFAULT_BRIEF, History, Memory, newId, Panels, ProviderRouter, Projects, refreshModels, probeModels, withAutoModels,
+  AgentController, autoFetchOnce, cleanLabel, friendlyReason, DEFAULT_BRIEF, History, Memory, newId, Panels, ProviderRouter, Projects, refreshModels, probeModels, withAutoModels,
   runAgent, Scheduler, nextRun, nextBriefAt, briefCommand, Vault,
   type AgentEvent, type AgentUI, type BriefSettings, type ChipState, type ConfirmRequest, type PageDriver, type ProviderConfig,
   type MemoryPort, type SecureKind, type SelectedFile, type Sandbox, setLocalEngine, type ModelInfo,
@@ -207,7 +207,11 @@ export class AppStore {
     const settings = { ...DEFAULT_SETTINGS, liteMode: info.lowRam, ...(s ? migrateSettings(JSON.parse(s)) : {}) } as Settings;
     // Tier 1 is disabled on low-RAM devices regardless of the saved flag.
     if (info.lowRam) settings.linuxSandbox = false;
-    this.unPage = this.platform.browser.onPage((page) => this.set({ page }));
+    // The native view reports every load step; only a real change re-renders the app.
+    this.unPage = this.platform.browser.onPage((page) => {
+      const old = this.state.page;
+      if (old.url !== page.url || old.title !== page.title || old.loading !== page.loading) this.set({ page });
+    });
     this.set({
       ready: true, settings, providers: p ? JSON.parse(p) : [], deviceLowRam: info.lowRam,
       linuxAvailable: info.linuxSandbox && !info.lowRam,
@@ -270,9 +274,13 @@ export class AppStore {
     }
   }
 
-  /** Providers saved before connection tests existed get one real test, one after the other, in the background. */
+  /**
+   * At start, in the background and one after the other: providers never tested, not working at last check, or not checked for a
+   * day get a fresh model list and a real test. Free model lists change often, so a saved model may be gone by now.
+   */
   private async checkUntested() {
-    for (const p of this.state.providers.filter((x) => x.enabled && !x.health)) await this.check(p.id).catch(() => undefined);
+    const stale = (x: ProviderConfig) => !x.health || !x.health.ok || Date.now() - x.health.at > 864e5;
+    for (const p of this.state.providers.filter((x) => x.enabled && stale(x))) await this.testProvider(p.id).catch(() => undefined);
   }
 
   /** "Test" button: refetch the list and probe again. Replaces models the user did not pick by hand only when none works. */
@@ -286,6 +294,8 @@ export class AppStore {
     const p = this.state.providers.find((x) => x.id === id);
     if (!p || (p.health?.ok === ok && p.health.note === note)) return;
     void this.updateProvider({ ...p, health: { ok, at: Date.now(), note } });
+    // A model that vanished from the provider: fetch the current list and pick working models again, without the user doing anything.
+    if (!ok && note === friendlyReason("bad_request", 404) && !this.state.checking.includes(id)) void this.testProvider(id).catch(() => undefined);
   }
 
   async updateProvider(p: ProviderConfig) {
@@ -392,6 +402,9 @@ export class AppStore {
       void this.history.log(runId, "action", e.action.type, e.result);
     } else if (e.type === "end") {
       const bad = e.status === "failed" || e.status === "max_steps";
+      // Steps still open when the run ends (stopped, failed) must not stay "running" or "action required" in the thread.
+      const closed = bad || e.status === "stopped" ? "error" : "done";
+      this.set({ items: this.state.items.map((i) => (i.chip && (i.chip.state === "running" || i.chip.state === "action_required") ? { ...i, chip: { ...i.chip, state: closed } } : i)) });
       this.push({ role: "agent", text: e.summary, ...(bad ? { failed: true } : this.via ? { via: this.via } : {}) });
       this.via = undefined;
       void this.history.log(runId, "run_end", e.status, e.summary);

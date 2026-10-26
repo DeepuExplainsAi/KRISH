@@ -56,7 +56,9 @@ class AgentWebView(context: Context, private val pageScript: String, private val
             builtInZoomControls = true
             displayZoomControls = false
         }
-        defaultUserAgent = settings.userAgentString
+        // A plain Chrome-for-Android identity: the "; wv" and "Version/x" marks of an embedded WebView make some sign-in pages (Instagram, others) refuse a correct password.
+        defaultUserAgent = settings.userAgentString.replace("; wv", "").replace(Regex(" Version/[\\d.]+"), "")
+        settings.userAgentString = defaultUserAgent
         CookieManager.getInstance().setAcceptThirdPartyCookies(this, false)
         webViewClient = Client()
         webChromeClient = Chrome()

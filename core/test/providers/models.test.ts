@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { adapters, autoFetchOnce, pickModels, probeModels, refreshModels, searchModels, withAutoModels } from "../../src/providers/models";
+import { adapters, autoFetchOnce, pickModels, probeModels, refreshModels, searchModels, sortModels, withAutoModels } from "../../src/providers/models";
 import { json, mockFetch, provider } from "../helpers";
 
 const deps = (handlers: Parameters<typeof mockFetch>[0]) => {
@@ -101,6 +101,13 @@ describe("pickModels / withAutoModels", () => {
     expect(r.defaultModel).toBe("llama-3.3-70b:free");
     expect(r.fallbackModel).toBe("tiny-8b:free");
   });
+  it("lists free models first (marked by pricing or by the provider's own -free / :free naming), then paid, then non-chat", () => {
+    const sorted = sortModels([{ id: "text-embedding-3" }, { id: "paid-pro-9" }, { id: "tiny-8b-free", free: true }, { id: "big-70b:free", free: true }, { id: "paid-mini-1" }]);
+    expect(sorted.map((m) => m.id)).toEqual(["big-70b:free", "tiny-8b-free", "paid-pro-9", "paid-mini-1", "text-embedding-3"]);
+  });
+  it("never picks a model the provider says is leaving", () => {
+    expect(pickModels([{ id: "old-pro-9", free: true, expiring: true }, { id: "new-pro-3", free: true }]).defaultModel).toBe("new-pro-3");
+  });
   it("an empty list picks nothing; a single model has no fallback", () => {
     expect(pickModels([])).toEqual({ defaultModel: undefined, fallbackModel: undefined });
     expect(pickModels(ids("only-one"))).toEqual({ defaultModel: "only-one", fallbackModel: undefined });
@@ -127,16 +134,26 @@ describe("probeModels", () => {
     const out = await probeModels(withList(["chat-9", "chat-8", "chat-7", "chat-6", "chat-5"]), "k", d);
     expect(out).toMatchObject({ defaultModel: "chat-7", fallbackModel: "chat-6", health: { ok: true } });
   });
+  it("skips models that are gone (404) and models that cannot follow the JSON format", async () => {
+    const answer = (_u: string, init?: RequestInit) => {
+      const model = JSON.parse(String(init?.body)).model as string;
+      if (model === "chat-9") return json({}, 404);
+      return json({ choices: [{ message: { content: model === "chat-8" ? "Sure, I can help" : '{"ok":true}' } }] });
+    };
+    const { deps: d } = deps({ "o.test": answer });
+    const out = await probeModels(withList(["chat-9", "chat-8", "chat-7", "chat-6"]), "k", d);
+    expect(out).toMatchObject({ defaultModel: "chat-7", fallbackModel: "chat-6", health: { ok: true } });
+  });
   it("nothing works: no model chosen, health says why", async () => {
     const { deps: d } = deps({ "o.test": chat({ "chat-2": 429, "chat-1": 429 }) });
     const out = await probeModels(withList(["chat-2", "chat-1"]), "k", d);
     expect(out.defaultModel).toBeUndefined();
     expect(out.health).toMatchObject({ ok: false, note: "free limit used up, try again later" });
   });
-  it("a rejected key stops after one call", async () => {
+  it("a rejected key stops after the first batch", async () => {
     const { calls, deps: d } = deps({ "o.test": () => json({}, 401) });
-    const out = await probeModels(withList(["a-1", "a-2", "a-3"]), "bad", d);
-    expect(calls).toHaveLength(1);
+    const out = await probeModels(withList(["a-1", "a-2", "a-3", "a-4", "a-5"]), "bad", d);
+    expect(calls).toHaveLength(3);
     expect(out.health).toMatchObject({ ok: false, note: "key rejected" });
   });
 });

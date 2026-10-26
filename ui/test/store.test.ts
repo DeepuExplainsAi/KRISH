@@ -124,6 +124,23 @@ describe("AppStore", () => {
     expect(store.getState().status).toBe("idle");
   });
 
+  it("a plain chat answer never opens the browser card and ignores the tab left open; using a site opens the card", async () => {
+    const { store, platform, prompts } = setup([{ type: "done", summary: "Hi!" }, { type: "navigate", url: "https://site.test/" }, { type: "done", summary: "ok" }]);
+    let listener: (p: { url: string; title: string; loading: boolean }) => void = () => {};
+    platform.browser.onPage = (cb) => ((listener = cb), () => {});
+    await store.init();
+    await store.addProvider({ name: "P", kind: "openai-compat", baseUrl: "https://p.test/v1" }, "k");
+    await store.updateProvider({ ...store.getState().providers[0]!, defaultModel: "m1", allowSensitive: true });
+    listener({ url: "https://www.instagram.com/accounts/login/", title: "Login", loading: false }); // an old tab
+    store.openWindow();
+    await store.send("hi");
+    expect(store.getState().windowOpen).toBe(false);
+    expect(store.getState().items.some((i) => i.chip)).toBe(false);
+    expect(prompts[0]).toContain("No page is open");
+    await store.send("open site.test");
+    expect(store.getState().windowOpen).toBe(true);
+  });
+
   it("STOP resolves pending prompts and ends the run", async () => {
     const { store } = setup([{ type: "read" }, { type: "ask_user", question: "Code?", secure: { kind: "otp", elementId: 0 } }]);
     await store.init();

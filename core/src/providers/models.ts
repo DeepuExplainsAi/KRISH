@@ -54,11 +54,17 @@ function score(m: ModelInfo): number {
   return version * 10 + tier - (small ? 12 : 0) - (UNSTABLE.test(text) ? 8 : 0) + Math.min(params / 100, 4) + Math.min((m.contextWindow ?? 0) / 1e6, 2);
 }
 
-/** Chat models best first; when the provider marks some free, only those (a free key is never pointed at a paid model). */
+/** Every model for a picker: free ones first, then the rest, each group best first; non-chat models (embeddings, audio, image) last. */
+export function sortModels(items: ModelInfo[]): ModelInfo[] {
+  const group = (m: ModelInfo) => (NOT_CHAT.test(m.id) ? 2 : m.free ? 0 : 1);
+  return [...items].sort((a, b) => group(a) - group(b) || score(b) - score(a) || a.id.localeCompare(b.id));
+}
+
+/** Chat models to use automatically, best first. Models that are leaving are skipped; when some are free, only those (a free key is never pointed at a paid model). */
 export function rankModels(items: ModelInfo[]): ModelInfo[] {
-  const chat = items.filter((m) => !NOT_CHAT.test(m.id));
+  const chat = items.filter((m) => !NOT_CHAT.test(m.id) && !m.expiring);
   const free = chat.filter((m) => m.free);
-  return [...(free.length ? free : chat)].sort((a, b) => score(b) - score(a) || a.id.localeCompare(b.id));
+  return sortModels(free.length ? free : chat);
 }
 
 /** Best default and fallback model by name alone (a guess: `probeModels` checks it with real calls). */
@@ -68,26 +74,35 @@ export function pickModels(items: ModelInfo[]): Pick<ProviderConfig, "defaultMod
 }
 
 const PROBE = [{ role: "user" as const, content: 'Reply with exactly this JSON and nothing else: {"ok":true}' }];
+const PROBE_OK = /\{\s*"ok"\s*:\s*true\s*\}/;
+const PROBE_BATCH = 3;
 
 /**
- * Finds models that really answer: sends one tiny request to the best-ranked models (at most `tries`) and keeps the first
- * two that work. Rate-limited, unpaid and unsupported models are skipped, a rejected key stops the search.
- * `health.ok` is true when at least one model answered.
+ * Finds models that really answer: sends one tiny request to the best-ranked models (at most `tries`, three at a time) and
+ * keeps the first two, in rank order, that reply with the JSON asked for. Models that are gone, rate-limited, unpaid or that
+ * cannot follow the format are skipped; a rejected key stops the search. `health.ok` is true when at least one model answered.
  */
 export async function probeModels(config: ProviderConfig, apiKey: string, deps: RefreshDeps & { tries?: number }): Promise<ProviderConfig> {
-  const items = config.models?.items ?? [];
+  const candidates = rankModels(config.models?.items ?? []).slice(0, deps.tries ?? 9);
   const worked: string[] = [];
   let note = "no chat model found";
-  for (const model of rankModels(items).slice(0, deps.tries ?? 6)) {
-    try {
-      await adapters[config.kind].complete({ config, apiKey, fetch: deps.fetch, timeoutMs: deps.timeoutMs ?? 20_000 }, model.id, { messages: PROBE });
-      worked.push(model.id);
-      if (worked.length === 2) break;
-    } catch (e) {
-      const pe = e instanceof ProviderError ? e : undefined;
-      note = friendlyReason(pe?.kind ?? "network", pe?.status);
-      if (pe?.kind === "auth") break;
+  for (let i = 0; i < candidates.length && worked.length < 2; i += PROBE_BATCH) {
+    const batch = candidates.slice(i, i + PROBE_BATCH);
+    const results = await Promise.all(
+      batch.map(async (model) => {
+        try {
+          const text = await adapters[config.kind].complete({ config, apiKey, fetch: deps.fetch, timeoutMs: deps.timeoutMs ?? 20_000 }, model.id, { messages: PROBE });
+          return PROBE_OK.test(text) ? "ok" : new ProviderError("bad_json", "probe reply is not the requested JSON");
+        } catch (e) {
+          return e instanceof ProviderError ? e : new ProviderError("network", "unexpected provider failure");
+        }
+      }),
+    );
+    for (const [j, r] of results.entries()) {
+      if (r === "ok") worked.push(batch[j]!.id);
+      else note = friendlyReason(r.kind, r.status);
     }
+    if (results.some((r) => r !== "ok" && r.kind === "auth")) break;
   }
   const at = (deps.now ?? Date.now)();
   if (worked.length === 0) return { ...config, health: { ok: false, at, note } };

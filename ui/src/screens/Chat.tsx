@@ -6,18 +6,50 @@ import { IconClip, IconClose, IconGlobe, IconSend } from "../components/icons";
 import { PromptCard } from "../components/Prompts";
 import { useT } from "../i18n/useT";
 import { lastChip, MAX_ATTACHMENTS } from "../state/store";
-import { useApp, useAppState } from "../state/useStore";
+import { useApp, useAppSelector } from "../state/useStore";
 
 const fmtSize = (n: number) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : n >= 1024 ? `${Math.round(n / 1024)} KB` : `${n} B`);
 
+const SUGGESTIONS = ["suggest1", "suggest2", "suggest3"] as const;
+
+/** "No AI provider could answer. A: reason · B: reason" as a title and one line per provider. */
+function ProviderFailure({ text }: { text: string }) {
+  const { t } = useT();
+  const lines = text.slice(NO_PROVIDER_PREFIX.length).trim().split(" · ").filter(Boolean);
+  return (
+    <span className="why">
+      <strong>{t("noAnswerTitle")}</strong>
+      {lines.map((l) => <span key={l}>{l}</span>)}
+    </span>
+  );
+}
+
+/** Shown while the AI works out its next step: a soft shimmer and three dots, like a person typing. */
+function Thinking() {
+  const { t } = useT();
+  return (
+    <div className="msg agent thinking" role="status" aria-live="polite">
+      <span className="dots" aria-hidden="true"><i /><i /><i /></span>
+      <span className="shimmer">{t("thinking")}</span>
+    </div>
+  );
+}
+
 export function Chat() {
   const app = useApp();
-  const s = useAppState();
+  const items = useAppSelector((s) => s.items);
+  const prompts = useAppSelector((s) => s.prompts);
+  const attachments = useAppSelector((s) => s.attachments);
+  const running = useAppSelector((s) => s.running);
+  const paused = useAppSelector((s) => s.paused);
+  const s = { items, prompts, attachments, running };
   const { t } = useT();
   const [text, setText] = useState("");
   const end = useRef<HTMLDivElement>(null);
   // Braces matter: newer Chrome/WebView return a Promise from scrollIntoView, and a returned value is treated as the effect cleanup.
-  useEffect(() => { end.current?.scrollIntoView({ block: "end" }); }, [s.items.length, s.prompts.length]);
+  const lastItem = items[items.length - 1];
+  const thinking = running && !paused && prompts.length === 0 && !(lastItem?.chip?.state === "running");
+  useEffect(() => { end.current?.scrollIntoView({ block: "end" }); }, [items.length, prompts.length, thinking]);
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -30,13 +62,21 @@ export function Chat() {
   return (
     <section className="chat">
       <div className="thread">
-        {s.items.length === 0 && <p className="muted empty">{t("chatEmpty")}</p>}
+        {s.items.length === 0 && (
+          <div className="welcome">
+            <h2>{t("chatTitle")}</h2>
+            <p>{t("chatEmpty")}</p>
+            <div className="suggest">
+              {SUGGESTIONS.map((k) => <button key={k} type="button" onClick={() => setText(t(k))}>{t(k)}</button>)}
+            </div>
+          </div>
+        )}
         {s.items.map((i) =>
           i.chip ? (
             <ChipPill key={i.id} label={i.chip.label} state={i.chip.state} latest={s.running && i.id === lastChipId} onClick={app.openWindow} />
           ) : (
             <div key={i.id} className={`msg ${i.role}${i.failed ? " failed" : ""}`}>
-              {i.text}
+              {i.failed && i.text?.startsWith(NO_PROVIDER_PREFIX) ? <ProviderFailure text={i.text} /> : i.text}
               {i.via && <small className="via">{i.via}</small>}
               {i.failed && (
                 <span className="row">
@@ -48,6 +88,7 @@ export function Chat() {
             </div>
           ),
         )}
+        {thinking && <Thinking />}
         {s.prompts.map((p) => <PromptCard key={p.id} p={p} />)}
         <div ref={end} />
       </div>
