@@ -3,7 +3,7 @@
 Project: KRISH, source-only personal agent (Android + desktop). Spec: `docs/SPEC.md`.
 Rule: update this file at the end of every work session (status table + "Next").
 
-## REDESIGN RUN — IN PROGRESS (started 2026-10-24)
+## REDESIGN RUN — DONE IN CODE, v0.1.1 RELEASED (2026-10-24); WAITING FOR PHONE TEST
 Owner feedback after testing the v0.1.0 APK on a phone (screenshots of Krish vs the reference app in HANDOFF/CREDITS terms only; never write that name in app code or release notes).
 Method: public CSS/JS bundle of the reference app's login page was fetched and read (REA `analyze-javascript-application` timed out at 300 s on the 650 KB bundle; the CSS tokens, keyframes and easings were read directly). The chat screen itself is behind a login, so its layout was taken from the owner's screenshots only. Do not bypass the login.
 
@@ -24,7 +24,7 @@ Method: public CSS/JS bundle of the reference app's login page was fetched and r
 **Overall: about 85 % of the owner's list is done in code and tests (core 173, ui 34, desktop 8 pass; lint and typecheck clean). Nothing of this redesign has run on a real phone yet.**
 
 Still to do, in this order:
-1. Cut `v0.1.1` (`git tag v0.1.1 && git push origin v0.1.1`), check the release has `krish-android.apk`, then change the README download table to the single APK row and the v0.1.1 links (the table still lists the two v0.1.0 APKs on purpose: those files exist today).
+1. DONE: `v0.1.1` is published (pre-release) with `krish-android.apk`, Windows zip, Linux tar.gz and SHA256SUMS.txt; README links point to it. For the next release tag `v0.1.2` and change the version in the README links.
 2. Owner installs the APK and checks: "hi" gets a text answer with no browser card; adding a provider picks a model; a second provider shows "Backup 1"; the card opens only when a site loads, and the page lines up with the black card (Android `setBounds` + `clipToOutline`).
 3. If the card and native page are offset on a phone: the code is `components/LiveWindow.tsx` (`getBoundingClientRect` of `.view`) and `KrishBrowserPlugin.kt` `setBounds`.
 4. Unverified guess: the model list ranking in `core/src/providers/models.ts` (`score`) is a heuristic; check it against real provider lists and tune the regexes.

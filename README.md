@@ -4,14 +4,13 @@
 
 ## Download
 
-**[Latest builds: github.com/DeepuExplainsAi/KRISH/releases](https://github.com/DeepuExplainsAi/KRISH/releases)** (v0.1.0 is a pre-release: unsigned debug builds, not yet tested on real devices; details in the release notes)
+**[Latest builds: github.com/DeepuExplainsAi/KRISH/releases](https://github.com/DeepuExplainsAi/KRISH/releases)** (v0.1.1 is a pre-release: unsigned debug builds, not yet tested on real devices; details in the release notes)
 
 | Platform | File | Install |
 |---|---|---|
-| Android (all phones, 8.0+) | [`krish-android-lite-debug.apk`](https://github.com/DeepuExplainsAi/KRISH/releases/download/v0.1.0/krish-android-lite-debug.apk) | Open the APK and allow "install unknown apps" when asked. |
-| Android (arm64 phones) | [`krish-android-full-debug.apk`](https://github.com/DeepuExplainsAi/KRISH/releases/download/v0.1.0/krish-android-full-debug.apk) | Same as above. Adds the optional Linux sandbox; lite and full can be installed side by side. |
-| Windows 10/11 x64 | [`krish-windows-x64.zip`](https://github.com/DeepuExplainsAi/KRISH/releases/download/v0.1.0/krish-windows-x64.zip) | Unzip, run `Krish.exe`. SmartScreen: "More info" then "Run anyway" (the app is unsigned). |
-| Linux x64 | [`krish-linux-x64.tar.gz`](https://github.com/DeepuExplainsAi/KRISH/releases/download/v0.1.0/krish-linux-x64.tar.gz) | `tar xzf krish-linux-x64.tar.gz && ./Krish-linux-x64/Krish`. KrishVault needs a keyring such as GNOME Keyring. |
+| Android 8.0+ | [`krish-android.apk`](https://github.com/DeepuExplainsAi/KRISH/releases/download/v0.1.1/krish-android.apk) | Open the APK and allow "install unknown apps" when asked. One file for every phone. |
+| Windows 10/11 x64 | [`krish-windows-x64.zip`](https://github.com/DeepuExplainsAi/KRISH/releases/download/v0.1.1/krish-windows-x64.zip) | Unzip, run `Krish.exe`. SmartScreen: "More info" then "Run anyway" (the app is unsigned). |
+| Linux x64 | [`krish-linux-x64.tar.gz`](https://github.com/DeepuExplainsAi/KRISH/releases/download/v0.1.1/krish-linux-x64.tar.gz) | `tar xzf krish-linux-x64.tar.gz && ./Krish-linux-x64/Krish`. KrishVault needs a keyring such as GNOME Keyring. |
 
 Check a download against `SHA256SUMS.txt` from the same release. First run: Menu, then Providers, add a free API key (each provider has a "Get key" button), then type a task in Chat.
 
