@@ -158,8 +158,9 @@ h2 { font-size: 1.35rem; }
   main { padding: 0; display: flex; justify-content: center; }
   main > section { width: 100%; max-width: 860px; align-self: flex-start; }
   main > section.chat { max-width: 780px; align-self: stretch; }
+  /* The browser card is docked on the right (440px + gap): content narrows to leave it free instead of sitting under it */
   .app.has-window main { justify-content: flex-start; }
-  .app.has-window main > section.chat { max-width: 500px; }
+  .app.has-window main > section, .app.has-window main > section.chat { max-width: max(340px, calc(100% - 464px)); }
   .msg { max-width: 78%; }
   .back { display: none; }
   .avatar { display: none; }

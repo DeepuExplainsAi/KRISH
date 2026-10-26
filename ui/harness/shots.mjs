@@ -41,6 +41,7 @@ export default [
   { name: "25-memory-declined", run: answerFirst(false) },
   { name: "26-memory-still-empty", run: `(async()=> JSON.stringify(await ${mem}))()`, wait: 100 },
   // ---- other screens
+  { name: "27-home-with-card", run: `(async()=>{ await __krish.platform.browser.open("https://example.com/"); __krish.openWindow(); __krish.go("home"); })()`, wait: 800 },
   go("panels"), go("projects"), go("tasks"), go("history"), go("settings"), go("security"),
   { name: "chat-empty", run: `__krish.newChat()` },
 ];
