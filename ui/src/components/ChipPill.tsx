@@ -1,4 +1,5 @@
 import type { ChipState } from "@krish/core";
+import { memo } from "react";
 import { IconCheck, IconClose, IconWarn } from "./icons";
 
 const ICON: Record<ChipState, React.JSX.Element> = {
@@ -9,11 +10,11 @@ const ICON: Record<ChipState, React.JSX.Element> = {
 };
 
 /** One step of the agent: spinner while running, check when done, warning when the user must act. */
-export function ChipPill({ label, state, latest, onClick }: { label: string; state: ChipState; latest?: boolean; onClick?: () => void }) {
+export const ChipPill = memo(function ChipPill({ label, state, latest, onClick }: { label: string; state: ChipState; latest?: boolean; onClick?: () => void }) {
   return (
     <button type="button" className={`chip ${state}${latest ? " latest" : ""}`} onClick={onClick}>
       {ICON[state]}
       <span className="txt">{label}</span>
     </button>
   );
-}
+});

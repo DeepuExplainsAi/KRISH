@@ -12,8 +12,6 @@ import type { ThemePref } from "../theme";
 
 export const MAX_ATTACHMENTS = 10;
 
-export type WindowSize = "mini" | "medium" | "large" | "full";
-
 /** Bump when a default changes and old saved values must be migrated (see `migrateSettings`). */
 export const SETTINGS_VERSION = 2;
 
@@ -28,7 +26,6 @@ export interface Settings {
   autoOpenWindow: boolean;
   screenshots: boolean;
   desktopLayout: boolean;
-  window: { size: WindowSize; x: number; y: number; w: number; h: number };
   brief: BriefSettings;
   linuxSandbox: boolean;
   localModel: boolean;
@@ -46,7 +43,6 @@ export const DEFAULT_SETTINGS: Settings = {
   autoOpenWindow: true,
   screenshots: false,
   desktopLayout: false,
-  window: { size: "medium", x: 16, y: 96, w: 340, h: 320 },
   brief: DEFAULT_BRIEF,
   linuxSandbox: false,
   localModel: false,
@@ -92,11 +88,12 @@ export interface State {
   prompts: Prompt[];
   running: boolean;
   paused: boolean;
+  /** The browser card is shown (in the layout, never floating). */
   windowOpen: boolean;
-  windowMinimized: boolean;
+  /** The card fills the screen. */
+  windowExpanded: boolean;
   page: { url: string; title: string; loading: boolean };
   status: "idle" | "running" | "action_required" | "paused";
-  snapshot: string;
   deviceLowRam: boolean;
   linuxAvailable: boolean;
   notice?: string;
@@ -110,26 +107,8 @@ export const lastChip = (items: ChatItem[]): ChatItem | undefined => {
   return undefined;
 };
 
-/** Screens at least this wide get the desktop layout: centered content, a side panel next to the chat, a docked browser card. */
+/** Screens at least this wide get the desktop layout: side panel, chat, and the browser card as a right column. */
 export const WIDE = 900;
-
-export const WINDOW_PRESETS: Record<WindowSize, (vw: number, vh: number) => { w: number; h: number }> = {
-  mini: () => ({ w: 220, h: 168 }),
-  medium: (vw, vh) => (vw >= WIDE ? { w: 440, h: Math.min(400, vh - 120) } : { w: Math.min(vw - 24, 360), h: 320 }),
-  large: (vw, vh) => (vw >= WIDE ? { w: Math.min(Math.round(vw * 0.62), 980), h: Math.round(vh * 0.8) } : { w: vw - 16, h: Math.round(vh * 0.62) }),
-  full: (vw, vh) => ({ w: vw, h: vh }),
-};
-
-/** The app column on wide screens is centered and at most this wide (styles.css `.app`). */
-export const APP_MAX = 1240;
-
-/** Where the card starts on a first run: right edge of the app column on a wide screen, lower half on a phone. */
-export function firstWindow(vw: number, vh: number): Settings["window"] {
-  const { w, h } = WINDOW_PRESETS.medium(vw, vh);
-  if (vw < WIDE) return { size: "medium", w, h, x: 16, y: Math.max(96, vh - h - 96) };
-  const right = (vw + Math.min(vw, APP_MAX)) / 2 - 20;
-  return { size: "medium", w, h, x: Math.round(right - w), y: 84 };
-}
 
 const SETTINGS_KEY = "settings";
 const PROVIDERS_KEY = "providers";
@@ -137,15 +116,14 @@ const PROVIDERS_KEY = "providers";
 export class AppStore {
   state: State = {
     ready: false, screen: "home", settings: DEFAULT_SETTINGS, providers: [], items: [], attachments: [], prompts: [],
-    running: false, paused: false, windowOpen: false, windowMinimized: false,
-    page: { url: "", title: "", loading: false }, status: "idle", snapshot: "", deviceLowRam: false, linuxAvailable: false,
+    running: false, paused: false, windowOpen: false, windowExpanded: false,
+    page: { url: "", title: "", loading: false }, status: "idle", deviceLowRam: false, linuxAvailable: false,
     localModels: [], localStatus: "",
   };
   private listeners = new Set<() => void>();
   private controller?: AgentController;
   private seq = 0;
   private unPage?: () => void;
-  private snapTimer?: ReturnType<typeof setInterval>;
   /** Tier 0 is always on. Tier 1 / Docker replace it per task when enabled (see sandbox/). */
   readonly tier0 = new Tier0Sandbox();
   /** shell -> Tier 1 / Docker (only when enabled and available); everything else -> Tier 0. Files are shared. */
@@ -222,8 +200,6 @@ export class AppStore {
     ]);
     // First run on a low-RAM device starts in Lite mode; once the user has saved settings their choice wins.
     const settings = { ...DEFAULT_SETTINGS, liteMode: info.lowRam, ...(s ? migrateSettings(JSON.parse(s)) : {}) } as Settings;
-    // First run: park the card where it does not cover the chat (lower half on a phone, right side on a wide screen).
-    if (!s && typeof window !== "undefined") settings.window = firstWindow(window.innerWidth, window.innerHeight);
     // Tier 1 is disabled on low-RAM devices regardless of the saved flag.
     if (info.lowRam) settings.linuxSandbox = false;
     this.unPage = this.platform.browser.onPage((page) => {
@@ -246,11 +222,16 @@ export class AppStore {
   dispose() {
     this.vault.lock();
     this.unPage?.();
-    clearInterval(this.snapTimer);
   }
 
   go = (screen: Screen) => this.set({ screen });
-  notify = (notice?: string) => this.set({ notice });
+  private noticeTimer?: ReturnType<typeof setTimeout>;
+  /** A notice fades after a few seconds; tapping it dismisses it at once. */
+  notify = (notice?: string) => {
+    clearTimeout(this.noticeTimer);
+    this.set({ notice });
+    if (notice) this.noticeTimer = setTimeout(() => this.set({ notice: undefined }), 6000);
+  };
 
   // ---- settings / providers ----
   async saveSettings(patch: Partial<Settings>) {
@@ -315,37 +296,9 @@ export class AppStore {
   }
 
   // ---- live window ----
-  openWindow = () => this.set({ windowOpen: true, windowMinimized: false });
-  closeWindow = () => this.set({ windowOpen: false });
-  minimizeWindow = (v: boolean) => this.set({ windowMinimized: v });
-  /** `persist: false` is for drag/resize frames: update the screen only, and write storage once on release. */
-  async setWindowRect(w: Partial<Settings["window"]>, persist = true) {
-    const settings = { ...this.state.settings, window: { ...this.state.settings.window, ...w } };
-    this.set({ settings });
-    if (persist) await this.platform.kv.set(SETTINGS_KEY, JSON.stringify(settings));
-  }
-  /** Position before going full screen, so leaving full puts the card back where it was. */
-  private beforeFull?: { x: number; y: number };
-  async setWindowSize(size: WindowSize) {
-    const vw = window.innerWidth, vh = window.innerHeight;
-    const cur = this.state.settings.window;
-    const { w, h } = WINDOW_PRESETS[size](vw, vh);
-    if (size === "full" && cur.size !== "full") this.beforeFull = { x: cur.x, y: cur.y };
-    const from = size === "full" ? { x: 0, y: 0 } : cur.size === "full" && this.beforeFull ? this.beforeFull : cur;
-    // Keep the whole card on screen whatever the size (a large card must not hang off the bottom).
-    const x = size === "full" ? 0 : Math.max(0, Math.min(from.x, vw - w));
-    const y = size === "full" ? 0 : Math.max(0, Math.min(from.y, vh - h));
-    await this.setWindowRect({ size, w, h, x, y });
-  }
-
-  /** Mini size on a slow device uses ~1 snapshot/second instead of a live view. */
-  syncSnapshots(active: boolean) {
-    clearInterval(this.snapTimer);
-    if (!active) return this.set({ snapshot: "" });
-    const tick = async () => this.set({ snapshot: await this.platform.browser.snapshot(360, 50).catch(() => "") });
-    void tick();
-    this.snapTimer = setInterval(tick, 1000);
-  }
+  openWindow = () => this.set({ windowOpen: true });
+  closeWindow = () => this.set({ windowOpen: false, windowExpanded: false });
+  toggleWindowExpanded = () => this.set({ windowExpanded: !this.state.windowExpanded });
 
   // ---- prompts ----
   private prompt<T extends Prompt["type"]>(build: (id: number) => Extract<Prompt, { type: T }>, status: State["status"] = "action_required") {
@@ -469,7 +422,7 @@ export class AppStore {
     } finally {
       this.controller = undefined;
       this.set({ running: false, paused: false, status: "idle", prompts: [] });
-      await this.platform.browser.setMode(this.state.windowOpen && !this.state.windowMinimized ? "live" : "hidden").catch(() => undefined);
+      await this.platform.browser.setMode(this.state.windowOpen ? "live" : "hidden").catch(() => undefined);
     }
   }
 

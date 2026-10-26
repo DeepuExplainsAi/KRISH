@@ -1,143 +1,103 @@
 import { useEffect, useRef } from "react";
 import { useT } from "../i18n/useT";
-import type { Key } from "../i18n";
-import { lastChip, WINDOW_PRESETS, type WindowSize } from "../state/store";
+import { lastChip } from "../state/store";
 import { useApp, useAppState } from "../state/useStore";
-import { IconClose, IconExpand, IconMinimize, IconShrink, IconWarn } from "./icons";
+import { IconClose, IconExpand, IconShrink, IconWarn } from "./icons";
 
-const SIZES: [WindowSize, string, Key][] = [["mini", "S", "winSmall"], ["medium", "M", "winMedium"], ["large", "L", "winLarge"], ["full", "XL", "expand"]];
-/** One tap on the expand button grows the card; from full it drops back to medium. */
-const NEXT: Record<WindowSize, WindowSize> = { mini: "medium", medium: "large", large: "full", full: "medium" };
-const HEADER = 40;
+/** Smaller than this the page is not usable: the native view is hidden instead of squeezed. */
 const MIN_VIEW = 40;
-/** Smallest card that still fits header + footer + a usable page area (manual resize and pinch). */
-const MIN_W = 260;
-const MIN_H = 170;
+
+const hostOf = (url: string) => {
+  try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return url; }
+};
 
 /**
- * Floating card over the chat. The real browser view is a native view positioned under the
- * transparent `.view` area; this component only owns the frame, handles and bounds.
+ * The browser card: a black rounded card docked in the layout (above the composer in Chat, at the bottom elsewhere), the
+ * same on phone, desktop window and Linux. The real browser view is a native view placed exactly over `.view`; the
+ * status pill and buttons sit in the strip below it, because native pixels always cover app UI.
  */
 export function LiveWindow() {
   const app = useApp();
   const s = useAppState();
   const { t } = useT();
-  const { size, x, y, w, h } = s.settings.window;
-  const mini = size === "mini";
-  const snapshotMode = mini && s.deviceLowRam;
-  const frame = useRef<HTMLDivElement>(null);
   const viewBox = useRef<HTMLDivElement>(null);
-  const pinch = useRef<{ d: number; w: number; h: number } | undefined>(undefined);
-  const endGesture = useRef<(() => void) | undefined>(undefined);
-  useEffect(() => () => endGesture.current?.(), []);
+  const sent = useRef("");
 
-  // While a confirm / question / secure card is up, the live card collapses to its pill so nothing page-controlled can cover it.
+  // While a confirm / question / secure card is up, the page area folds away so nothing page-controlled sits next to it.
   // Take-over prompts are the exception: the user needs the page to solve a CAPTCHA.
   const blocking = s.prompts.some((p) => p.type !== "takeover");
-  const pill = s.windowMinimized || blocking;
   const open = s.windowOpen;
+  const show = open && !blocking;
 
-  // Native browser pixels sit above all app UI, so they must cover ONLY the .view box (never header, footer or prompts).
+  // Sends the exact `.view` box to the native view, only when it changed. Runs after every render (the card moves when the
+  // tray or keyboard changes the layout) and on resize.
   useEffect(() => {
-    const show = open && !pill && !snapshotMode;
-    app.syncSnapshots(open && !pill && snapshotMode);
     if (!show) {
-      void app.platform.browser.setMode("hidden");
+      // Only talk to the native side when something changed (this effect runs after every render).
+      if (sent.current !== "hidden") void app.platform.browser.setMode("hidden");
+      sent.current = "hidden";
       return;
     }
-    // At most one native bounds call per frame while dragging or resizing.
-    const frameId = requestAnimationFrame(() => {
-      const r = viewBox.current?.getBoundingClientRect();
-      // Exact `.view` box, never larger: native pixels sit above all UI. Too small to be useful -> hide it instead.
-      if (r && r.width >= MIN_VIEW && r.height >= MIN_VIEW) {
+    let frame = 0;
+    const sync = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const r = viewBox.current?.getBoundingClientRect();
+        if (!r || r.width < MIN_VIEW || r.height < MIN_VIEW) {
+          if (sent.current !== "hidden") void app.platform.browser.setMode("hidden");
+          sent.current = "hidden";
+          return;
+        }
+        const key = [r.left, r.top, r.width, r.height].map(Math.round).join(",");
+        if (key === sent.current) return;
+        sent.current = key;
         void app.platform.browser.setBounds({ x: r.left, y: r.top, width: r.width, height: r.height });
         void app.platform.browser.setMode("live");
-      } else void app.platform.browser.setMode("hidden");
-    });
-    return () => cancelAnimationFrame(frameId);
-  }, [app, open, pill, snapshotMode, x, y, w, h]);
+      });
+    };
+    sync();
+    window.addEventListener("resize", sync);
+    window.visualViewport?.addEventListener("resize", sync);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener("resize", sync);
+      window.visualViewport?.removeEventListener("resize", sync);
+    };
+  });
 
   if (!open) return null;
-  if (pill) {
-    return (
-      <button className="live-pill" onClick={() => app.minimizeWindow(false)}>
-        {s.page.title || s.page.url || t("winTitle")} ▲
-      </button>
-    );
-  }
 
-  const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
-  /** Runs a drag/resize: `move` updates the screen only; the end (up, cancel or unmount) removes listeners and saves once. */
-  const gesture = (pointerId: number, move: (m: PointerEvent) => void) => {
-    const onMove = (m: PointerEvent) => { if (m.pointerId === pointerId) move(m); };
-    const end = (m?: PointerEvent) => {
-      if (m && m.pointerId !== pointerId) return;
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", end);
-      window.removeEventListener("pointercancel", end);
-      endGesture.current = undefined;
-      void app.setWindowRect({});
-    };
-    endGesture.current?.();
-    endGesture.current = end;
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", end);
-    window.addEventListener("pointercancel", end);
-  };
-  const drag = (e: React.PointerEvent) => {
-    if (size === "full") return;
-    const sx = e.clientX - x, sy = e.clientY - y;
-    gesture(e.pointerId, (m) =>
-      void app.setWindowRect({ x: clamp(m.clientX - sx, -w + 60, window.innerWidth - 60), y: clamp(m.clientY - sy, 0, window.innerHeight - HEADER) }, false));
-  };
-  const resize = (e: React.PointerEvent) => {
-    e.stopPropagation();
-    const sx = e.clientX - w, sy = e.clientY - h;
-    gesture(e.pointerId, (m) =>
-      void app.setWindowRect({ size: "medium", w: clamp(m.clientX - sx, MIN_W, window.innerWidth - x), h: clamp(m.clientY - sy, MIN_H, window.innerHeight - y) }, false));
-  };
-  // Two-finger pinch on the header/frame border resizes (the page itself gets its own touch input).
-  const touchDist = (t: React.TouchList) => Math.hypot(t[0]!.clientX - t[1]!.clientX, t[0]!.clientY - t[1]!.clientY);
-  const onTouchStart = (e: React.TouchEvent) => { if (e.touches.length === 2) pinch.current = { d: touchDist(e.touches), w, h }; };
-  const onTouchMove = (e: React.TouchEvent) => {
-    if (e.touches.length !== 2 || !pinch.current) return;
-    const k = touchDist(e.touches) / pinch.current.d;
-    const max = WINDOW_PRESETS.full(window.innerWidth, window.innerHeight);
-    void app.setWindowRect({ size: "medium", w: clamp(pinch.current.w * k, MIN_W, max.w), h: clamp(pinch.current.h * k, MIN_H, max.h) }, false);
-  };
-  const onTouchEnd = () => { if (pinch.current) { pinch.current = undefined; void app.setWindowRect({}); } };
-
-  const live = s.running || s.page.url !== "";
   const step = lastChip(s.items)?.chip;
   const needsYou = s.status === "action_required" || step?.state === "action_required";
-  const statusText = s.page.loading ? t("loading") : s.running && step ? step.label : s.page.title || s.page.url || t("winTitle");
+  const hasPage = s.page.url !== "";
+  const host = hostOf(s.page.url);
+  const statusText = s.page.loading ? t("opening", { site: host || "…" }) : s.running && step ? step.label : s.page.title || host || t("winTitle");
+  const expanded = s.windowExpanded;
   return (
-    <div ref={frame} className={`live ${size}`} style={{ left: x, top: y, width: w, height: h }} onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd} onTouchCancel={onTouchEnd}>
-      <div className="live-head" onPointerDown={drag}>
-        <button className="mini-btn" onPointerDown={(e) => e.stopPropagation()} onClick={app.closeWindow} aria-label={t("close")} title={t("close")}><IconClose size={16} /></button>
-        <span className="title">{s.page.loading ? t("loading") : s.page.title || s.page.url || t("winTitle")}</span>
-        {SIZES.map(([k, label, key]) => (
-          <button key={k} className={`size ${size === k ? "on" : ""}`} aria-label={t(key)} title={t(key)} onPointerDown={(e) => e.stopPropagation()} onClick={() => void app.setWindowSize(k)}>{label}</button>
-        ))}
-        <button className="mini-btn" onPointerDown={(e) => e.stopPropagation()} onClick={() => app.minimizeWindow(true)} aria-label={t("minimize")} title={t("minimize")}><IconMinimize /></button>
-      </div>
-      <div className="view" ref={viewBox}>
-        {snapshotMode && s.snapshot && <img src={s.snapshot} alt={t("snapshot")} />}
-        {!live && <p className="muted">{t("noPage")}</p>}
-      </div>
+    <div className={`live${expanded ? " full" : ""}${blocking ? " folded" : ""}`} role="region" aria-label={t("winTitle")}>
+      {!blocking && (
+        <div className="view" ref={viewBox}>
+          {!hasPage && (
+            <div className="view-empty">
+              {(s.running || s.page.loading) && <span className="mark" aria-hidden="true" />}
+              <p>{s.running ? t("opening", { site: "…" }) : t("noPage")}</p>
+            </div>
+          )}
+        </div>
+      )}
       <div className="live-foot">
-        <span className={`status ${needsYou ? "need" : ""}`}>
-          {needsYou ? <IconWarn /> : s.running && <span className="dots" aria-hidden="true"><i /><i /><i /></span>}
+        <span className={`status${needsYou ? " need" : ""}`}>
+          {needsYou ? <IconWarn /> : (s.running || s.page.loading) && <span className="dots" aria-hidden="true"><i /><i /><i /></span>}
           <span className="txt">{needsYou ? t("actionRequired") : statusText}</span>
         </span>
-        <button className="round dark" onClick={() => void app.setWindowSize(NEXT[size])} aria-label={size === "full" ? t("collapse") : t("expand")} title={size === "full" ? t("collapse") : t("expand")}>
-          {size === "full" ? <IconShrink /> : <IconExpand />}
+        {s.running && !s.paused && <button className="round wide takeover" onClick={() => app.takeOver()}>{t("takeOver")}</button>}
+        {s.paused && <button className="round wide" onClick={() => app.resume()}>{t("resume")}</button>}
+        {s.running && <button className="round" onClick={app.stop} aria-label={t("stop")} title={t("stop")}><IconClose size={18} /></button>}
+        <button className="round" onClick={app.toggleWindowExpanded} aria-label={expanded ? t("collapse") : t("expand")} title={expanded ? t("collapse") : t("expand")}>
+          {expanded ? <IconShrink /> : <IconExpand />}
         </button>
-        {s.running && !s.paused && <button className="round dark wide takeover" onClick={() => app.takeOver()}>{t("takeOver")}</button>}
-        {s.paused && <button className="round dark wide" onClick={() => app.resume()}>{t("resume")}</button>}
-        {s.running && <button className="round stop" onClick={app.stop} aria-label={t("stop")} title={t("stop")}><IconClose size={18} /></button>}
+        <button className="round" onClick={app.closeWindow} aria-label={t("close")} title={t("close")}><IconClose size={18} /></button>
       </div>
-      <div className="handle" onPointerDown={resize} aria-label={t("resize")} />
     </div>
   );
 }

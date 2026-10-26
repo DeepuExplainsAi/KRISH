@@ -28,9 +28,12 @@ export interface Attempt {
   detail?: string;
 }
 
+/** Start of the error shown when no provider could answer; the UI offers a shortcut to API Keys for it. */
+export const NO_PROVIDER_PREFIX = "No AI provider could answer.";
+
 export class AllProvidersFailedError extends Error {
   constructor(readonly attempts: Attempt[]) {
-    super(`No AI provider could answer. ${attempts.map((a) => `${a.providerName}: ${a.detail ?? a.outcome}`).join(" · ") || "None added yet"}. Check API Keys.`);
+    super(`${NO_PROVIDER_PREFIX} ${attempts.map((a) => `${a.providerName}: ${a.detail ?? a.outcome}`).join(" · ") || "None added yet"}. Check API Keys.`);
   }
 }
 

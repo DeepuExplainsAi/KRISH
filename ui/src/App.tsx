@@ -47,7 +47,7 @@ export function App() {
   if (!s.ready) return <div className="boot">{t("starting")}</div>;
   const Screen = SCREENS[s.screen];
   return (
-    <div className={`app${s.settings.liteMode ? " lite" : ""}${s.windowOpen && !s.windowMinimized ? " has-window" : ""}`}>
+    <div className={`app${s.settings.liteMode ? " lite" : ""}`}>
       <header className="topbar">
         <button className="round" aria-label={t("newChat")} title={t("newChat")} disabled={s.running} onClick={() => { app.newChat(); setChatKey((k) => k + 1); }}><IconPlus /></button>
         <nav className="seg">
@@ -75,7 +75,7 @@ export function App() {
         <Screen key={s.screen === "chat" ? `chat${chatKey}` : s.screen} />
       </main>
       </div>
-      <LiveWindow />
+      {s.screen !== "chat" && <LiveWindow />}
     </div>
   );
 }

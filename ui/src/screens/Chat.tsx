@@ -1,5 +1,7 @@
+import { NO_PROVIDER_PREFIX } from "@krish/core";
 import { useEffect, useRef, useState } from "react";
 import { ChipPill } from "../components/ChipPill";
+import { LiveWindow } from "../components/LiveWindow";
 import { IconClip, IconClose, IconGlobe, IconSend } from "../components/icons";
 import { PromptCard } from "../components/Prompts";
 import { useT } from "../i18n/useT";
@@ -35,6 +37,7 @@ export function Chat() {
           ) : (
             <div key={i.id} className={`msg ${i.role}${i.failed ? " failed" : ""}`}>
               {i.text}
+              {i.failed && i.text?.startsWith(NO_PROVIDER_PREFIX) && <button type="button" className="primary" onClick={() => app.go("providers")}>{t("openApiKeys")}</button>}
               {i.files?.map((f) => <span key={f.name} className="file-chip static"><IconClip /><span className="txt">{f.name}</span><small>{fmtSize(f.size)}</small></span>)}
             </div>
           ),
@@ -42,6 +45,7 @@ export function Chat() {
         {s.prompts.map((p) => <PromptCard key={p.id} p={p} />)}
         <div ref={end} />
       </div>
+      <LiveWindow />
       {s.attachments.length > 0 && (
         <div className="attachments" aria-label={t("attachments")}>
           {s.attachments.map((f) => (

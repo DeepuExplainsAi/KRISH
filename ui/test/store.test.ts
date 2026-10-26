@@ -1,7 +1,7 @@
 import { MemoryKeyStore, MemoryKV, type PageObservation } from "@krish/core";
 import { describe, expect, it } from "vitest";
 import type { Platform } from "../src/platform/types";
-import { APP_MAX, AppStore, firstWindow, migrateSettings, SETTINGS_VERSION } from "../src/state/store";
+import { AppStore, migrateSettings, SETTINGS_VERSION } from "../src/state/store";
 
 const reply = (o: object) => new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(o) } }] }), { status: 200 });
 
@@ -256,18 +256,16 @@ describe("attachments", () => {
     expect(migrateSettings({ version: SETTINGS_VERSION, theme: "light" })).toEqual({ version: SETTINGS_VERSION, theme: "light" });
   });
 
-  it("the window card starts docked at the right of the centered column on PC and in the lower half on a phone", () => {
-    const pc = firstWindow(1600, 900);
-    expect(pc.x + pc.w).toBe(Math.round((1600 + APP_MAX) / 2 - 20));
-    expect(pc.y).toBe(84);
-    const phone = firstWindow(467, 922);
-    expect(phone).toMatchObject({ x: 16 });
-    expect(phone.y).toBeGreaterThan(300);
-    expect(phone.w).toBeLessThanOrEqual(467 - 24);
+  it("the browser card is part of the layout: open, expand and close", async () => {
+    const { store } = setup([]);
+    await store.init();
+    store.openWindow();
+    store.toggleWindowExpanded();
+    expect(store.getState()).toMatchObject({ windowOpen: true, windowExpanded: true });
+    store.closeWindow();
+    expect(store.getState()).toMatchObject({ windowOpen: false, windowExpanded: false });
   });
-});
 
-describe("KrishVault in the store", () => {
   it("is created in the store and kept in the key store as ciphertext, never in kv", async () => {
     const { store, platform } = setup([]);
     await store.init();

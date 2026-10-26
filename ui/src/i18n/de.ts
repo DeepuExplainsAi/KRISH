@@ -11,9 +11,8 @@ export const de: Partial<Dict> = {
   answerSent: "Deine Antwort wird an die KI gesendet. Gib hier keine Passwörter oder Codes ein.",
   secureNote: "Geht in {field} auf {site}. Wird nicht an die KI gesendet.",
   securedBy: "Gesichert von Krish", yourAnswer: "Deine Antwort",
-  winTitle: "Browser", loading: "Lädt…", noPage: "Noch keine Seite. Bitte den Agenten, eine Seite zu öffnen.",
-  winSmall: "Klein", winMedium: "Mittel", winLarge: "Groß", expand: "Vergrößern", collapse: "Verkleinern", minimize: "Minimieren", close: "Schließen",
-  resize: "Größe ändern", snapshot: "Browser-Schnappschuss",
+  winTitle: "Browser", openApiKeys: "API-Schlüssel öffnen", opening: "{site} wird geöffnet", loading: "Lädt…", noPage: "Noch keine Seite. Bitte den Agenten, eine Seite zu öffnen.",
+  expand: "Vergrößern", collapse: "Verkleinern", close: "Schließen",
   panels: "Panels", tasks: "Geplante Aufgaben", history: "Verlauf", providers: "Anbieter", settings: "Einstellungen", security: "Sicherheit",
   language: "Sprache", languageAuto: "Automatisch (Gerätesprache)", theme: "Design", themeSystem: "System (wie das Gerät)", themeLight: "Hell", themeDark: "Dunkel", attachFile: "Datei anhängen (Foto, Video, Audio, ZIP, jeder Typ)", attachments: "Angehängte Dateien", removeFile: "{name} entfernen", autoOpenWindow: "Browser-Karte öffnen, sobald der Agent eine Seite öffnet", starting: "Startet…",
 };

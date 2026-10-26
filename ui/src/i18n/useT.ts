@@ -1,9 +1,9 @@
 import { useMemo } from "react";
-import { useAppState } from "../state/useStore";
+import { useAppSelector } from "../state/useStore";
 import { resolveLang, translator, type Lang, type T } from "./index";
 
 export function useT(): { t: T; lang: Lang } {
-  const pref = useAppState().settings.language;
+  const pref = useAppSelector((s) => s.settings.language);
   return useMemo(() => {
     const lang = resolveLang(pref);
     return { t: translator(lang), lang };

@@ -11,9 +11,8 @@ export const hi: Partial<Dict> = {
   answerSent: "आपका जवाब AI को भेजा जाएगा। यहाँ पासवर्ड या कोड न लिखें।",
   secureNote: "{site} पर {field} में जाएगा। AI को नहीं भेजा जाता।",
   securedBy: "Krish द्वारा सुरक्षित", yourAnswer: "आपका जवाब",
-  winTitle: "ब्राउज़र", loading: "लोड हो रहा है…", noPage: "अभी कोई पेज नहीं। एजेंट से कोई साइट खोलने को कहें।",
-  winSmall: "छोटा", winMedium: "मध्यम", winLarge: "बड़ा", expand: "बड़ा करें", collapse: "छोटा करें", minimize: "छिपाएँ", close: "बंद करें",
-  resize: "आकार बदलें", snapshot: "ब्राउज़र स्नैपशॉट",
+  winTitle: "ब्राउज़र", openApiKeys: "API कीज़ खोलें", opening: "{site} खोल रहे हैं", loading: "लोड हो रहा है…", noPage: "अभी कोई पेज नहीं। एजेंट से कोई साइट खोलने को कहें।",
+  expand: "बड़ा करें", collapse: "छोटा करें", close: "बंद करें",
   panels: "पैनल", tasks: "निर्धारित काम", history: "इतिहास", providers: "प्रोवाइडर", settings: "सेटिंग्स", security: "सुरक्षा",
   language: "भाषा", languageAuto: "ऑटो (डिवाइस की भाषा)", theme: "थीम", themeSystem: "ऑटो (डिवाइस जैसी)", themeLight: "लाइट", themeDark: "डार्क", attachFile: "फ़ाइल जोड़ें (फ़ोटो, वीडियो, ऑडियो, ज़िप, कोई भी)", attachments: "जुड़ी हुई फ़ाइलें", removeFile: "{name} हटाएँ", autoOpenWindow: "जब एजेंट कोई साइट खोले तो ब्राउज़र कार्ड खोलें", starting: "शुरू हो रहा है…",
   // screens
