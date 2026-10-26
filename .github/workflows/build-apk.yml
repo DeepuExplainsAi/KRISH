@@ -1,0 +1,28 @@
+name: build-apk
+# Manual: builds DEBUG APKs for both flavors and uploads them as artifacts. No signing, no publishing.
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with: { node-version: 24, cache: npm }
+      - uses: actions/setup-java@v6
+        with: { distribution: temurin, java-version: 21 }
+      - name: Android SDK (preinstalled on the runner)
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"
+      - run: npm ci
+      - run: npm run build:ui
+      - run: npx cap sync android
+      - run: ./gradlew --no-daemon assembleLiteDebug assembleFullDebug
+        working-directory: android
+      - uses: actions/upload-artifact@v7
+        with:
+          name: krish-debug-apks
+          path: android/app/build/outputs/apk/*/debug/*.apk

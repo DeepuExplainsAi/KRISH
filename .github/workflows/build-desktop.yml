@@ -1,0 +1,36 @@
+name: build-desktop
+# Manual: packages the desktop app (Electron 45) for Windows and Linux and uploads it as an artifact. Unsigned, no installer, no publishing.
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [win32, linux]
+    runs-on: ${{ matrix.platform == 'win32' && 'windows-latest' || 'ubuntu-latest' }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with: { node-version: 24, cache: npm }
+      - run: npm ci
+      - run: npm run build:ui
+      # main.cjs reads ../ui/dist and ../core/page-script, so the staged folder keeps that layout.
+      - name: Stage app files
+        shell: bash
+        run: |
+          mkdir -p stage/desktop stage/ui stage/core
+          cp desktop/main.cjs desktop/lib.cjs desktop/preload.cjs stage/desktop/
+          cp -r ui/dist stage/ui/dist
+          cp -r core/page-script stage/core/page-script
+          echo '{"name":"krish","version":"0.1.0","main":"desktop/main.cjs"}' > stage/package.json
+      - run: npx --yes @electron/packager stage Krish --platform=${{ matrix.platform }} --arch=x64 --electron-version=45.0.0 --out=out --overwrite
+      - name: Archive (keeps the executable bit on Linux)
+        if: matrix.platform == 'linux'
+        run: tar -czf krish-linux-x64.tar.gz -C out Krish-linux-x64
+      - uses: actions/upload-artifact@v7
+        with:
+          name: krish-desktop-${{ matrix.platform }}
+          path: ${{ matrix.platform == 'linux' && 'krish-linux-x64.tar.gz' || 'out/Krish-win32-x64' }}

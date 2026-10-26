@@ -25,7 +25,10 @@ jobs:
         with: { node-version: 24, cache: npm }
       - uses: actions/setup-java@v6
         with: { distribution: temurin, java-version: 21 }
-      - uses: android-actions/setup-android@v4
+      - name: Android SDK (preinstalled on the runner)
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"
       - run: npm ci
       - run: npm run build:ui
       - run: npx cap sync android
