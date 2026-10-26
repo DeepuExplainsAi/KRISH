@@ -1,0 +1,92 @@
+name: release
+# Tag push `v*` (or manual run with a tag) builds unsigned DEBUG Android APKs and Windows/Linux desktop packages,
+# then publishes them as a GitHub PRE-RELEASE. Only GITHUB_TOKEN is used.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag (created on the current commit if it does not exist), e.g. v0.1.0
+        required: true
+        type: string
+permissions:
+  contents: read
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with: { node-version: 24, cache: npm }
+      - uses: actions/setup-java@v6
+        with: { distribution: temurin, java-version: 21 }
+      - name: Android SDK (preinstalled on the runner)
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"
+      - run: npm ci
+      - run: npm run build:ui
+      - run: npx cap sync android
+      - run: ./gradlew --no-daemon assembleLiteDebug assembleFullDebug
+        working-directory: android
+      - name: Name the files
+        run: |
+          mkdir out
+          cp android/app/build/outputs/apk/lite/debug/app-lite-debug.apk out/krish-android-lite-debug.apk
+          cp android/app/build/outputs/apk/full/debug/app-full-debug.apk out/krish-android-full-debug.apk
+      - uses: actions/upload-artifact@v7
+        with: { name: android, path: out/*.apk, if-no-files-found: error }
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [win32, linux]
+    runs-on: ${{ matrix.platform == 'win32' && 'windows-latest' || 'ubuntu-latest' }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with: { node-version: 24, cache: npm }
+      - run: npm ci
+      - run: npm run build:ui
+      # main.cjs reads ../ui/dist and ../core/page-script, so the staged folder keeps that layout.
+      - name: Stage app files
+        shell: bash
+        run: |
+          mkdir -p stage/desktop stage/ui stage/core
+          cp desktop/main.cjs desktop/lib.cjs desktop/preload.cjs stage/desktop/
+          cp -r ui/dist stage/ui/dist
+          cp -r core/page-script stage/core/page-script
+          echo '{"name":"krish","version":"0.1.0","main":"desktop/main.cjs"}' > stage/package.json
+      - run: npx --yes @electron/packager stage Krish --platform=${{ matrix.platform }} --arch=x64 --electron-version=45.0.0 --out=out --overwrite
+      - name: Archive (keeps the executable bit on Linux)
+        if: matrix.platform == 'linux'
+        run: tar -czf krish-linux-x64.tar.gz -C out Krish-linux-x64
+      - uses: actions/upload-artifact@v7
+        with:
+          name: desktop-${{ matrix.platform }}
+          path: ${{ matrix.platform == 'linux' && 'krish-linux-x64.tar.gz' || 'out/Krish-win32-x64' }}
+          if-no-files-found: error
+  publish:
+    needs: [android, desktop]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with: { path: dl }
+      - name: Collect files
+        run: |
+          mkdir release
+          cp dl/android/*.apk release/
+          cp dl/desktop-linux/krish-linux-x64.tar.gz release/
+          mv dl/desktop-win32 Krish-win32-x64
+          zip -qr release/krish-windows-x64.zip Krish-win32-x64
+          (cd release && sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt)
+      - name: Publish pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$TAG" release/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease --title "Krish $TAG" --notes-file .github/release-notes.md
