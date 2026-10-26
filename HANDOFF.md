@@ -33,7 +33,7 @@ Method: public CSS/JS bundle of the reference app's login page was fetched and r
 **Overall: about 85 % of the owner's list is done in code and tests (core 173, ui 34, desktop 8 pass; lint and typecheck clean). Nothing of this redesign has run on a real phone yet.**
 
 Still to do, in this order:
-1. DONE: `v0.1.1` is published (pre-release) with `krish-android.apk`, Windows zip, Linux tar.gz and SHA256SUMS.txt; README links point to it. For the next release tag `v0.1.2` and change the version in the README links.
+1. DONE: `v0.1.2` is the latest (pre-release; v0.1.1 and v0.1.0 also exist) with `krish-android.apk`, Windows zip, Linux tar.gz and SHA256SUMS.txt; README links point to it. For the next release tag `v0.1.3` and change the version in the README links.
 2. Owner installs the APK and checks: "hi" gets a text answer with no browser card; adding a provider picks a model; a second provider shows "Backup 1"; the card opens only when a site loads, and the page lines up with the black card (Android `setBounds` + `clipToOutline`).
 3. If the card and native page are offset on a phone: the code is `components/LiveWindow.tsx` (`getBoundingClientRect` of `.view`) and `KrishBrowserPlugin.kt` `setBounds`.
 4. Unverified guess: the model list ranking in `core/src/providers/models.ts` (`score`) is a heuristic; check it against real provider lists and tune the regexes.
