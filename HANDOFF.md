@@ -3,6 +3,24 @@
 Project: KRISH, source-only personal agent (Android + desktop). Spec: `docs/SPEC.md`.
 Rule: update this file at the end of every work session (status table + "Next").
 
+## REDESIGN RUN — IN PROGRESS (started 2026-10-24)
+Owner feedback after testing the v0.1.0 APK on a phone (screenshots of Krish vs the reference app in HANDOFF/CREDITS terms only; never write that name in app code or release notes).
+Method: public CSS/JS bundle of the reference app's login page was fetched and read (REA `analyze-javascript-application` timed out at 300 s on the 650 KB bundle; the CSS tokens, keyframes and easings were read directly). The chat screen itself is behind a login, so its layout was taken from the owner's screenshots only. Do not bypass the login.
+
+| # | Item | State |
+|---|---|---|
+| 1 | Crash text "Cannot read properties of undefined (reading 'token')" = cancelled file picker resolved with no data (`platform/capacitor.ts`) | DONE (commit 3a71227) |
+| 2 | "all providers failed: <random id>:skipped" — message now names each provider and why (`router.ts`); the usual reason was "no model selected" | DONE |
+| 3 | Adding a provider = enabled + appended to fallback order + best chat model picked automatically (`core/src/providers/models.ts` `pickModels`/`withAutoModels`, used by router and `store.addProvider/refreshProviderModels`) | DONE, tests added |
+| 4 | Browser card opened on every send. Now it opens only when a page actually loads (`store.ts` onPage hook) or a start URL is given | DONE |
+| 5 | Plain questions ("hi") answered as chat text: prompt rule "answer directly", no step pill for a first-step `done`, blank page is not "sensitive" (`prompt.ts`, `loop.ts`, `redact.ts`), summary limit 2000 -> 6000 | DONE |
+| 6 | Hark-like dark theme (lighter slate blue + graphite glass) and light sky | TODO / in progress |
+| 7 | Performance: remove nested `backdrop-filter`, fixed background, selector hook | TODO / in progress |
+| 8 | Browser card redesign: black card inside the chat layout (phone, desktop window, Linux the same), no S/M/L/XL, no drag | TODO / in progress |
+| 9 | Providers screen: fallback order badge, "Ready" state | TODO |
+| 10 | Clearer first run (no provider -> button to API Keys) | TODO |
+| 11 | "Every field shows an error": not reproduced from code; the two visible errors were items 1 and 2. Ask the owner which field if it still happens | OPEN |
+
 ## RELEASE RUN — DONE 2026-10-24 (v0.1.0 published)
 Followed `docs/AI-RELEASE-PROMPT.md`. Release: https://github.com/DeepuExplainsAi/KRISH/releases/tag/v0.1.0 (pre-release).
 Next AI: the release task is finished. Remaining work is the device testing below and the older "Still open" list. To cut another release: `git tag v0.1.1 && git push origin v0.1.1`.
