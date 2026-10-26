@@ -4,7 +4,7 @@ import type { PageObservation } from "../page/types";
 import { isSensitivePage, redactText, secretKind, type SecretKind } from "../privacy/redact";
 import { AbortedError } from "../providers/types";
 import { AllProvidersFailedError, type ProviderRouter } from "../providers/router";
-import { parseAction, type Action } from "../schema/actions";
+import { parseReply, type Action } from "../schema/actions";
 import { AgentController, raceStop, StoppedError } from "./controller";
 import { findLoginFields } from "../vault/vault";
 import { gate, sameSite, sandboxWrites, siteOf } from "./policy";
@@ -18,6 +18,10 @@ export interface AgentOptions {
   screenshots?: boolean;
   /** Files the user attached to this task (picked in the system picker). The model sees names and sizes only. */
   files?: SelectedFile[];
+  /** True when the app opened a page for this task (saved task, panel). Otherwise the agent starts without a page and opens one itself, so a plain chat never touches the browser. */
+  startOnPage?: boolean;
+  /** One line about a tab the user left open ("site: title"). The model sees only this line until it chooses to read the tab. */
+  openTab?: string;
   limits?: Partial<AgentLimits>;
 }
 
@@ -43,6 +47,12 @@ interface Turn {
   action: string;
   result: string;
 }
+
+/** What the agent sees while it has no page open. */
+const NO_PAGE: PageObservation = { url: "", title: "", text: "", elements: [] };
+const noPageText = (openTab?: string) =>
+  `No page is open for this task. Answer directly if you can. If the task needs a website, navigate to it.${openTab ? ` The user has this tab open (not read yet): ${openTab}. Use read only if the task is about that tab.` : ""}`;
+const BROWSER_ACTIONS = new Set<Action["type"]>(["navigate", "read", "click", "type", "paste", "upload_selected_file"]);
 
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n)}…` : s);
 /** Stops data from closing its own delimiter block. */
@@ -99,6 +109,14 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
   let userReply = "";
   let homeUrl = "";
   let step = 0;
+  /** False until the task needs a page: the app's page (maybe an old tab) is neither read nor shown to the model before that. */
+  let pageLive = Boolean(opts.startOnPage);
+  /** The agent itself navigated to the page (it did not find it open), so a saved login may be offered there. */
+  let agentOpened = false;
+  /** Pages where the user already took over once; asking again would only repeat the same prompt. */
+  const takenOver = new Set<string>();
+  /** Sign-in / payment pages the user let the AI see for this run. Passwords are never shown anyway (redacted). */
+  const consented = new Set<string>();
   /** Login pages already offered a saved login in this run: one try per page, so a wrong password is never retried in a loop. */
   const vaultTried = new Set<string>();
   const loginAsked = LOGIN_INTENT.test(opts.task);
@@ -250,7 +268,9 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
   }
 
   /** One offer per login page (query and fragment ignored) and at most 3 per run, so a page that rewrites its URL cannot make the agent ask forever. */
-  const pageKey = (url: string) => { const u = new URL(url); return `${u.origin}${u.pathname}`; };
+  const pageKey = (url: string) => {
+    try { const u = new URL(url); return `${u.origin}${u.pathname}`; } catch { return url; }
+  };
 
   /**
    * Fills a saved login into the login form, with the user's OK. The app does it natively: the model sees only that it happened.
@@ -308,12 +328,13 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
       await controller.whenRunning();
       if (signal.aborted) throw new StoppedError();
 
-      const obs = await driver.observe();
+      const obs = pageLive ? await driver.observe() : NO_PAGE;
       homeUrl ||= obs.url;
-      startUrl ||= obs.url;
-      if (await autofillLogin(obs)) continue;
-      const sensitive = isSensitivePage(obs);
-      const text = formatObservation(obs);
+      if (!agentOpened) startUrl ||= obs.url;
+      if (pageLive && (await autofillLogin(obs))) continue;
+      const pageSensitive = isSensitivePage(obs);
+      const sensitive = pageSensitive && !consented.has(pageKey(obs.url));
+      const text = pageLive ? formatObservation(obs) : noPageText(opts.openTab ? redactText(opts.openTab) : undefined);
       // The numbers the model sees are fixed for this step, so "m2" always means the line it read.
       memoryShown = deps.memory ? await deps.memory.list() : [];
       const memoryText = deps.memory ? memoryShown.map((m, i) => `m${i + 1}: ${m.text}`).join("\n") : opts.memory;
@@ -333,9 +354,9 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
         const run = await router.run(
           [
             { role: "system", content: SYSTEM_PROMPT },
-            { role: "user", content: prompt, imageDataUrl: opts.screenshots && !sensitive && typed.size === 0 ? obs.screenshotDataUrl : undefined },
+            { role: "user", content: prompt, imageDataUrl: opts.screenshots && !pageSensitive && typed.size === 0 ? obs.screenshotDataUrl : undefined },
           ],
-          parseAction,
+          (raw) => parseReply(raw, step === 0),
           { sensitive, signal },
         );
         action = run.value;
@@ -345,10 +366,24 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
         if (e instanceof AllProvidersFailedError) {
           const blockedBySensitive = e.attempts.some((a) => a.detail === "sensitive page not allowed");
           if (sensitive && blockedBySensitive) {
-            const id = chip("Action required", "action_required");
-            await raceStop(ui.takeOver("This page looks sensitive and no provider is allowed on it. Act yourself, then tap Resume.", signal), signal);
-            chip("Action required", "done", id);
-            continue;
+            const key = pageKey(obs.url);
+            const where = key;
+            if (!takenOver.has(key)) {
+              const allowed = await raceStop(
+                ui.confirm({ kind: "sensitive", title: "This looks like a sign-in or payment page. Let the AI see it?", preview: `${where}\n\nPasswords and codes are never shown to the AI.` }, signal),
+                signal,
+              );
+              if (allowed) {
+                consented.add(key);
+                continue;
+              }
+              takenOver.add(key);
+              const id = chip("Your turn", "action_required");
+              await raceStop(ui.takeOver("Do this step yourself in the browser. Krish does not see what you type. Tap Resume when you are done.", signal), signal);
+              chip("Your turn", "done", id);
+              continue;
+            }
+            return finish("failed", "I stopped on a sign-in or payment page that the AI may not see. Finish it yourself, then send your request again.");
           }
           return finish("failed", e.message);
         }
@@ -373,6 +408,14 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
         return finish("done", action.summary);
       }
 
+      if (!pageLive && action.type === "read") {
+        // The user's open tab becomes the page. The next step observes it.
+        pageLive = true;
+        chip(label, "done", id);
+        history.push({ action: actionText, result: "now looking at the tab the user has open" });
+        continue;
+      }
+
       let result: string;
       let failed = false;
       try {
@@ -383,6 +426,12 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
           result = "user declined this action; ask what to change or finish";
         } else {
           if (verdict.verdict === "confirm" && verdict.request.kind === "navigate") homeUrl = verdict.request.preview; // previews of navigate confirmations are URLs
+          if (BROWSER_ACTIONS.has(action.type)) ui.emit({ type: "browser" });
+          if (!pageLive && action.type === "navigate") {
+            homeUrl = action.url;
+            agentOpened = true;
+            pageLive = true;
+          }
           result = await execute(action, obs);
         }
       } catch (e) {

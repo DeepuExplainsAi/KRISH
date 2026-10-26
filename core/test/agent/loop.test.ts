@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { AgentController, MemoryKeyStore, runAgent, Vault, type AgentEvent, type AgentUI, type ConfirmRequest, type MemoryPort, type PageDriver } from "../../src";
+import { AgentController, MemoryKeyStore, runAgent as runAgentRaw, Vault, type AgentEvent, type AgentUI, type ConfirmRequest, type MemoryPort, type PageDriver } from "../../src";
 import { ProviderRouter } from "../../src/providers/router";
 import { json, mockFetch, openaiReply, provider, stores } from "../helpers";
 import type { PageObservation } from "../../src/page/types";
@@ -57,6 +57,8 @@ async function harness(script: (string | ((prompt: string) => string))[], over: 
   return { router, prompts };
 }
 
+/** Most tests start with the user's page already open; the "no page yet" behaviour has its own tests with `runAgentRaw`. */
+const runAgent = (o: Parameters<typeof runAgentRaw>[0], d: Parameters<typeof runAgentRaw>[1]) => runAgentRaw({ startOnPage: true, ...o }, d);
 const A = (o: object) => JSON.stringify(o);
 const home = "https://site.test/app";
 
@@ -290,23 +292,31 @@ describe("runAgent", () => {
     expect(p.match(/<\/PAGE_DATA>/g)).toHaveLength(1);
   });
 
-  it("sensitive page with a provider that is not allowed -> take over instead of calling the model", async () => {
+  it("sensitive page, provider not allowed: asks once; if declined the user takes over; a second stop ends the run (no loop)", async () => {
     const { router, prompts } = await harness([A({ type: "done", summary: "x" })], { providers: [provider("a", { allowSensitive: false })] });
     const pages = { "https://site.test/login": { elements: [el(1, { type: "password" })] } };
     const { driver } = fakeDriver(pages, "https://site.test/login");
     let tookOver = 0;
-    let calls = 0;
-    const { ui } = fakeUI({
-      takeOver: async () => {
-        tookOver++;
-        calls++;
-        if (calls > 1) throw new Error("loop");
-      },
-    });
+    const { ui, confirms } = fakeUI({ confirm: async () => false, takeOver: async () => void tookOver++ });
     const r = await runAgent({ task: "t" }, { driver, router, ui, controller: new AgentController() });
     expect(prompts).toHaveLength(0);
-    expect(tookOver).toBeGreaterThanOrEqual(1);
+    expect(confirms).toHaveLength(0);
+    expect(tookOver).toBe(1);
     expect(r.status).toBe("failed");
+    expect(r.summary).toContain("sign-in or payment page");
+  });
+
+  it("sensitive page: when the user allows it, the AI sees the page for this run (secrets stay redacted) and no take-over happens", async () => {
+    const { router, prompts } = await harness([A({ type: "done", summary: "ok" })], { providers: [provider("a", { allowSensitive: false })] });
+    const pages = { "https://site.test/login": { elements: [el(1, { type: "password", value: "hunter2hunter2" })] } };
+    const { driver } = fakeDriver(pages, "https://site.test/login");
+    let tookOver = 0;
+    const { ui, confirms } = fakeUI({ takeOver: async () => void tookOver++ });
+    const r = await runAgent({ task: "t" }, { driver, router, ui, controller: new AgentController() });
+    expect(confirms[0]?.kind).toBe("sensitive");
+    expect(tookOver).toBe(0);
+    expect(r.status).toBe("done");
+    expect(prompts[0]).not.toContain("hunter2hunter2");
   });
 
   it("STOP interrupts a pending confirmation", async () => {
@@ -643,5 +653,61 @@ describe("one task at a time", () => {
     expect(SYSTEM_PROMPT).toMatch(/not continue, repeat or link to them/);
     expect(SYSTEM_PROMPT).toMatch(/Never guess or invent/);
     expect(SYSTEM_PROMPT).toMatch(/never change memory on your own/i);
+  });
+});
+
+describe("runAgent without a page (plain chat)", () => {
+  const stale = "https://www.instagram.com/accounts/login/";
+  const pages = { [stale]: { text: "Log in to Instagram", elements: [el(1, { type: "password" })] } };
+
+  it("never reads the page the user left open: no observation, no sensitive-page stop, the answer comes back as plain chat", async () => {
+    const { router, prompts } = await harness([A({ type: "done", summary: "Hello!" })], { providers: [provider("a", { allowSensitive: false })] });
+    const fake = fakeDriver(pages, stale);
+    let observed = 0;
+    const driver = { ...fake.driver, observe: async () => (observed++, fake.driver.observe()) };
+    const { ui, events, confirms } = fakeUI();
+    const r = await runAgentRaw({ task: "hi", openTab: `Login • Instagram — ${stale}` }, { driver, router, ui, controller: new AgentController() });
+    expect(r).toMatchObject({ status: "done", summary: "Hello!" });
+    expect(observed).toBe(0);
+    expect(confirms).toHaveLength(0);
+    expect(prompts[0]).toContain("No page is open");
+    expect(prompts[0]).not.toContain("Log in to Instagram");
+    expect(events.some((e) => e.type === "browser")).toBe(false);
+    expect(events.some((e) => e.type === "chip")).toBe(false);
+  });
+
+  it("a prose answer on the first step is the final answer", async () => {
+    const { router } = await harness(["Namaste! Main madad ke liye hoon."]);
+    const { ui } = fakeUI();
+    const r = await runAgentRaw({ task: "hi" }, { driver: fakeDriver({}, "").driver, router, ui, controller: new AgentController() });
+    expect(r).toMatchObject({ status: "done", summary: "Namaste! Main madad ke liye hoon." });
+  });
+
+  it("navigate opens the site (no 'leave site' prompt) and announces the browser; later steps see the page", async () => {
+    const { router, prompts } = await harness([A({ type: "navigate", url: "https://news.test/" }), A({ type: "done", summary: "ok" })]);
+    const fake = fakeDriver({ "https://news.test/": { text: "Top story" } }, "");
+    const { ui, events, confirms } = fakeUI();
+    await runAgentRaw({ task: "news" }, { driver: fake.driver, router, ui, controller: new AgentController() });
+    expect(fake.log).toEqual(["navigate https://news.test/"]);
+    expect(confirms).toHaveLength(0);
+    expect(events.filter((e) => e.type === "browser").length).toBe(1);
+    expect(prompts[1]).toContain("Top story");
+  });
+
+  it("read on the first step looks at the tab the user has open", async () => {
+    const { router, prompts } = await harness([A({ type: "read" }), A({ type: "done", summary: "ok" })]);
+    const fake = fakeDriver({ [home]: { text: "Docs page" } }, home);
+    const { ui } = fakeUI();
+    await runAgentRaw({ task: "summarise this page", openTab: home }, { driver: fake.driver, router, ui, controller: new AgentController() });
+    expect(prompts[0]).toContain(home);
+    expect(prompts[1]).toContain("Docs page");
+  });
+
+  it("a click with no page open is refused, not sent to a stale element", async () => {
+    const { router } = await harness([A({ type: "click", elementId: 1 }), A({ type: "done", summary: "ok" })]);
+    const fake = fakeDriver({}, "");
+    const { ui } = fakeUI();
+    await runAgentRaw({ task: "t" }, { driver: fake.driver, router, ui, controller: new AgentController() });
+    expect(fake.log).toEqual([]);
   });
 });

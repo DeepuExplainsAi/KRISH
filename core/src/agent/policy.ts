@@ -54,20 +54,22 @@ export function gate(action: Action, ctx: GateContext): Gate {
   const el = "elementId" in action && action.elementId !== undefined
     ? ctx.obs.elements.find((e) => e.id === action.elementId)
     : undefined;
+  // No page open yet (url ""): there is nothing to protect or leave, and the first navigation picks the site.
+  const pageless = ctx.obs.url === "";
   if ("elementId" in action && action.elementId !== undefined && !el) {
-    return { verdict: "block", reason: `no element [${action.elementId}] on this page; read the page again` };
+    return { verdict: "block", reason: pageless ? "no page is open; navigate to a site first" : `no element [${action.elementId}] on this page; read the page again` };
   }
-  const host = new URL(ctx.obs.url).hostname;
+  const host = pageless ? "" : new URL(ctx.obs.url).hostname;
 
   // The page may have moved to another site by redirect or script, not by an action we approved.
   const passive = action.type === "read" || action.type === "wait" || action.type === "ask_user" || action.type === "done" || action.type === "navigate";
-  if (!passive && !sameSite(ctx.obs.url, ctx.homeUrl)) {
+  if (!passive && !pageless && !sameSite(ctx.obs.url, ctx.homeUrl)) {
     return { verdict: "confirm", request: { kind: "navigate", title: "The page moved to another site. Continue here?", preview: ctx.obs.url } };
   }
 
   switch (action.type) {
     case "navigate":
-      return sameSite(action.url, ctx.homeUrl)
+      return pageless || sameSite(action.url, ctx.homeUrl)
         ? { verdict: "allow" }
         : { verdict: "confirm", request: { kind: "navigate", title: "Leave this site?", preview: action.url } };
 

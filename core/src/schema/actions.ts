@@ -66,9 +66,27 @@ export type Action = z.infer<typeof ActionSchema>;
 
 export class ActionParseError extends Error {}
 
-/** Parses untrusted model output. Only strict JSON (optionally in a ```json fence) is accepted. */
-export function parseAction(raw: string): Action {
-  const body = raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
+const THINK = /<think(?:ing)?>[\s\S]*?<\/think(?:ing)?>/gi;
+
+/** First balanced {...} object in the text (string-aware), for models that wrap their JSON in prose. */
+function firstObject(s: string): string | undefined {
+  const start = s.indexOf("{");
+  if (start < 0) return undefined;
+  let depth = 0;
+  let inString = false;
+  for (let i = start; i < s.length; i++) {
+    const c = s[i];
+    if (inString) {
+      if (c === "\\") i++;
+      else if (c === '"') inString = false;
+    } else if (c === '"') inString = true;
+    else if (c === "{") depth++;
+    else if (c === "}" && --depth === 0) return s.slice(start, i + 1);
+  }
+  return undefined;
+}
+
+const parseJson = (body: string): Action => {
   let json: unknown;
   try {
     json = JSON.parse(body);
@@ -78,4 +96,26 @@ export function parseAction(raw: string): Action {
   const result = ActionSchema.safeParse(json);
   if (!result.success) throw new ActionParseError(`invalid action: ${result.error.issues[0]?.message ?? "unknown"}`);
   return result.data;
+};
+
+const unwrap = (raw: string) => raw.replace(THINK, "").trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
+
+/** Parses untrusted model output. Only strict JSON (optionally in a ```json fence, after reasoning tags) is accepted. */
+export const parseAction = (raw: string): Action => parseJson(unwrap(raw));
+
+/**
+ * What the agent loop accepts from a model. Free models often add a sentence around the JSON or answer a greeting in plain
+ * prose, so this also takes the first JSON object inside prose and, on the first step of a run, plain prose as the final answer.
+ * The result still passes the same schema and the policy gate.
+ */
+export function parseReply(raw: string, firstStep: boolean): Action {
+  const body = unwrap(raw);
+  try {
+    return parseJson(body);
+  } catch (e) {
+    const inner = firstObject(body);
+    if (inner) return parseJson(inner);
+    if (firstStep && body && !/"type"\s*:/.test(body)) return { type: "done", summary: body.slice(0, 6000) };
+    throw e;
+  }
 }

@@ -207,14 +207,7 @@ export class AppStore {
     const settings = { ...DEFAULT_SETTINGS, liteMode: info.lowRam, ...(s ? migrateSettings(JSON.parse(s)) : {}) } as Settings;
     // Tier 1 is disabled on low-RAM devices regardless of the saved flag.
     if (info.lowRam) settings.linuxSandbox = false;
-    this.unPage = this.platform.browser.onPage((page) => {
-      this.set({ page });
-      // The card appears when the agent actually loads a site, never for a plain chat answer.
-      if (this.state.running && this.state.settings.autoOpenWindow && !this.cardShownThisRun && page.url && page.url !== "about:blank") {
-        this.cardShownThisRun = true;
-        this.openWindow();
-      }
-    });
+    this.unPage = this.platform.browser.onPage((page) => this.set({ page }));
     this.set({
       ready: true, settings, providers: p ? JSON.parse(p) : [], deviceLowRam: info.lowRam,
       linuxAvailable: info.linuxSandbox && !info.lowRam,
@@ -376,7 +369,6 @@ export class AppStore {
     };
   }
 
-  private cardShownThisRun = false;
   private via?: string;
   private chipItems = new Map<number, number>();
   private onAgentEvent(runId: string, e: AgentEvent) {
@@ -393,6 +385,9 @@ export class AppStore {
     } else if (e.type === "provider") {
       const name = this.routerProviders().find((p) => p.id === e.providerId)?.name ?? "";
       this.via = name ? `${name} · ${e.model}` : e.model;
+    } else if (e.type === "browser") {
+      // The card opens when the agent really uses the browser, never for a plain chat or an old tab.
+      if (this.state.settings.autoOpenWindow) this.openWindow();
     } else if (e.type === "action") {
       void this.history.log(runId, "action", e.action.type, e.result);
     } else if (e.type === "end") {
@@ -448,17 +443,19 @@ export class AppStore {
     // Only the composer passes files; saved tasks, panels and the brief never pick up the composer's tray.
     const files = opts.files ?? [];
     if (opts.files) this.draftEpoch++;
-    this.cardShownThisRun = false;
     this.set({ running: true, paused: false, status: "running", screen: "chat", ...(opts.files ? { attachments: [] } : {}) });
     if (opts.startUrl) this.openWindow();
+    else this.closeWindow(); // a plain chat starts without the card (and without the tab left open before)
     this.push({ role: "user", text: command, files: files.length ? files.map(({ name, size }) => ({ name, size })) : undefined });
     await this.history.log(runId, "run_start", command);
     try {
       if (opts.startUrl) await this.platform.browser.open(opts.startUrl);
       const project = (await this.projects.list()).find((p) => p.id === this.state.settings.activeProjectId);
       const task = project?.instructions ? `${command}\n\n(Project "${project.name}": ${project.instructions})` : command;
+      const { url, title } = this.state.page;
+      const openTab = url && url !== "about:blank" ? `${title ? `${title} — ` : ""}${url}` : undefined;
       await runAgent(
-        { task, files, screenshots: this.state.settings.screenshots },
+        { task, files, screenshots: this.state.settings.screenshots, startOnPage: Boolean(opts.startUrl), openTab },
         { driver: this.driver(), router: this.router, ui: this.buildUI(runId), controller, sandbox: this.sandbox, memory: this.memoryPort(), vault: this.vault },
       );
     } finally {

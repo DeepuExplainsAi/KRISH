@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ActionParseError, parseAction } from "../../src/schema/actions";
+import { ActionParseError, parseAction, parseReply } from "../../src/schema/actions";
 
 describe("parseAction", () => {
   it("accepts every allowed action", () => {
@@ -19,6 +19,10 @@ describe("parseAction", () => {
       { type: "done", summary: "finished" },
     ];
     for (const a of ok) expect(parseAction(JSON.stringify(a)).type).toBe(a.type);
+  });
+
+  it("ignores reasoning tags before the JSON", () => {
+    expect(parseAction('<think>I should {read} it</think>{"type":"read"}').type).toBe("read");
   });
 
   it("accepts a json code fence", () => {
@@ -43,5 +47,21 @@ describe("parseAction", () => {
     ["null", "null"],
   ])("rejects %s", (_n, raw) => {
     expect(() => parseAction(raw)).toThrow(ActionParseError);
+  });
+});
+
+describe("parseReply (what the agent loop accepts)", () => {
+  it("takes the JSON object out of surrounding prose", () => {
+    expect(parseReply('Sure! Here it is: {"type":"done","summary":"a } b"} Hope that helps.', false)).toMatchObject({ type: "done", summary: "a } b" });
+  });
+
+  it("first step: plain prose is the answer; later steps still reject it", () => {
+    expect(parseReply("Hello there!", true)).toEqual({ type: "done", summary: "Hello there!" });
+    expect(() => parseReply("Hello there!", false)).toThrow(ActionParseError);
+  });
+
+  it("never turns a broken action into an answer, and the schema still applies inside prose", () => {
+    expect(() => parseReply('{"type":"click","elementId":"x"', true)).toThrow(ActionParseError);
+    expect(() => parseReply('ok {"type":"eval","code":"1"}', true)).toThrow(ActionParseError);
   });
 });

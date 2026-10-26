@@ -100,6 +100,7 @@ describe("AppStore", () => {
 
   it("secure prompt: user value reaches the page, never the model or history", async () => {
     const { store, filled, prompts } = setup([
+      { type: "read" },
       { type: "ask_user", question: "Enter your password", secure: { kind: "password", elementId: 0 } },
       { type: "done", summary: "logged in" },
     ]);
@@ -124,7 +125,7 @@ describe("AppStore", () => {
   });
 
   it("STOP resolves pending prompts and ends the run", async () => {
-    const { store } = setup([{ type: "ask_user", question: "Code?", secure: { kind: "otp", elementId: 0 } }]);
+    const { store } = setup([{ type: "read" }, { type: "ask_user", question: "Code?", secure: { kind: "otp", elementId: 0 } }]);
     await store.init();
     await store.addProvider({ name: "P", kind: "openai-compat", baseUrl: "https://p.test/v1" }, "k");
     await store.updateProvider({ ...store.getState().providers[0]!, defaultModel: "m1", allowSensitive: true });
@@ -164,7 +165,7 @@ describe("AppStore", () => {
   });
 
   it("New chat clears the thread and returns to Chat, but is ignored while a run is active", async () => {
-    const { store } = setup([{ type: "ask_user", question: "Code?", secure: { kind: "otp", elementId: 0 } }, { type: "done", summary: "ok" }]);
+    const { store } = setup([{ type: "read" }, { type: "ask_user", question: "Code?", secure: { kind: "otp", elementId: 0 } }, { type: "done", summary: "ok" }]);
     await store.init();
     await store.addProvider({ name: "P", kind: "openai-compat", baseUrl: "https://p.test/v1" }, "k");
     await store.updateProvider({ ...store.getState().providers[0]!, defaultModel: "m1", allowSensitive: true });

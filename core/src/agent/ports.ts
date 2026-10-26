@@ -33,7 +33,7 @@ export interface Sandbox {
   run(task: SandboxTask, signal?: AbortSignal): Promise<string>;
 }
 
-export type ConfirmKind = "send" | "upload" | "sandbox" | "navigate" | "consent" | "settings" | "memory" | "vault";
+export type ConfirmKind = "send" | "upload" | "sandbox" | "navigate" | "consent" | "settings" | "memory" | "vault" | "sensitive";
 
 /** KrishVault as the agent loop sees it. Passwords only ever go from here into the page (never to a model, log or history). */
 export interface VaultPort {
@@ -63,6 +63,8 @@ export type AgentEvent =
   | { type: "chip"; id: number; label: string; state: ChipState }
   | { type: "action"; step: number; action: Action; result: string }
   | { type: "provider"; providerId: string; model: string }
+  /** The agent is about to use the browser (navigate, read, click, type...). A plain chat answer never emits this. */
+  | { type: "browser" }
   | { type: "end"; status: AgentStatus; summary: string };
 
 export type AgentStatus = "done" | "stopped" | "failed" | "max_steps";
