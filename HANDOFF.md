@@ -40,6 +40,35 @@ What changed (UI + one prompt line; core logic, policy gate and security rules u
 11. **Independent review, fixed:** (a) The "normal question may not collect a secret" guard was English-only; with answers now in the user's language it covers password/OTP/PIN/card terms in all 7 languages (Unicode-aware regex in `loop.ts`; test with Hindi, Bengali, Spanish, French, German, Portuguese, Hinglish). Still a heuristic: the real protection is the secure card on the actual field. (b) Model-written step labels are only shown for steps that run without approval (`verdict: allow`); a step that confirms, asks or is blocked keeps the app's own wording. Control/bidi/zero-width characters are stripped from labels. (c) Browser card minimum size raised to 260x170 (header + footer + usable page); native bounds are exactly the `.view` box, and if it is smaller than 40 px the native view is hidden instead of enlarged. (d) New chat remounts the composer so an unsent draft does not follow. (e) Inner screens (Home, Settings, Providers, Projects, Tasks, Panels, History, Security) and accessibility labels now use `t()`.
 Not verified: real phone touch (only CDP touch events in headless Chrome); Android/desktop native view positioning under the new card layout (same `.view` box logic as before); Hindi/Bengali font rendering on the device. Providers, Projects, Tasks, Panels and History only got the new colors, no layout rework.
 
+## PLAN (waiting for owner OK): API Keys screen + "Get key" links (2026-10-26)
+**Status: mockup shown to the owner, NOT built. Do not build before the owner confirms. Owner will then say what else to change per screen.**
+Owner wants (Hinglish, paraphrased):
+1. A screen for adding provider API keys. Each provider has a direct "Get key" link that opens that provider's key-creation page. Many free providers (OpenCode Zen, OpenRouter, Gemini, ...), then a **Custom** entry (name + base URL + key).
+2. Same design on PC and mobile. PC = wider (2-column grid), mobile = vertical single column, like other AI apps.
+3. Bottom pill tabs like the Hark Logins screenshot: All / Free / Added / Custom (black active pill, frosted list above).
+4. Keep all existing features. Existing `screens/Providers.tsx` logic (order = fallback, enable, allow-sensitive, daily cap, key replace, refresh/pick models, usage) stays; the new screen is a restyle plus a catalog.
+5. Owner will list per-screen changes later. Keep writing them here.
+
+Mockup: one row per provider = letter icon, name, "Free" badge, limits line, `Get key` button. Tapping a row expands: black pill "Open <key page>", password field, "Add & load models". Custom row = name + base URL (https only) + key.
+
+Catalog to add (extend `DEFAULTS.presets` in `core/src/config/defaults.ts` with `keyUrl` and `free` text; show in `Providers.tsx`). URLs checked with curl on 2026-10-26 (HTTP status after redirects; login redirects are normal). Free limits are from awesome-free-llm-apis (verified Mar 2026), may have changed: show them as "approx" and never promise them.
+| Provider | keyUrl | baseUrl | kind | Notes |
+|---|---|---|---|---|
+| OpenCode Zen | https://opencode.ai/auth | https://opencode.ai/zen/v1 | openai-compat | `/models` works without a key (200). Free models marked "free for a limited time"; some free models log prompts / train: say so in the UI. Some models use the Anthropic/Responses/Gemini endpoints, not chat completions: only chat-completions models work with kind openai-compat, so filter the list. |
+| OpenRouter | https://openrouter.ai/keys | https://openrouter.ai/api/v1 | openai-compat | `:free` model ids; about 20/min, 200/day |
+| Google Gemini | https://aistudio.google.com/apikey | existing preset | gemini | free tier not in EU/UK/CH |
+| Groq | https://console.groq.com/keys | existing | openai-compat | about 30/min, 14,400/day |
+| Cerebras | https://cloud.cerebras.ai/ | existing | openai-compat | about 30/min; models list answers 403 without key |
+| Mistral | https://console.mistral.ai/api-keys | existing | openai-compat | about 1 req/s |
+| GitHub Models | https://github.com/settings/tokens | existing (models.github.ai/inference) | openai-compat | needs a PAT with models scope |
+| NVIDIA NIM | https://build.nvidia.com/ | https://integrate.api.nvidia.com/v1 | openai-compat | `/models` 200 |
+| Hugging Face | https://huggingface.co/settings/tokens | https://router.huggingface.co/v1 | openai-compat | `/models` 200; about $0.10 free credit per month. The older api-inference.huggingface.co URL from the list was NOT used. |
+| SambaNova | https://cloud.sambanova.ai/apis | https://api.sambanova.ai/v1 | openai-compat | `/models` 200 |
+Left out on purpose: Requesty (key page 404), Cloudflare Workers AI and Cohere (not OpenAI-compatible), keyless/pay-per-IP services. Could not check from the sandbox (blocked/403): platform.openai.com, console.x.ai, Cloudflare dashboard.
+
+Opening "Get key": use an external browser (Android: `Intent.ACTION_VIEW` via a Capacitor plugin; desktop: `shell.openExternal` with an https allow-list). Do NOT load it in the agent's WebView (the agent window must not see the user's login). Check what the app already exposes before adding a new bridge; it must stay https-only.
+Never put a key in a URL, log, or the model prompt (unchanged rule).
+
 ## Session log: audit and fixes (2026-10-25)
 Re-checked the previous work against the spec by running it, not by reading the old notes. Found and fixed:
 1. **Desktop app crashed at launch (segfault).** `applyBounds()` enabled/disabled device emulation on a `WebContentsView` that had no page yet. Now applied only once a page is loaded and after each load (`applyEmulation`). The old code never ran in Electron, so this was never seen.
