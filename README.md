@@ -1,12 +1,21 @@
 # Krish
 
-A free-to-run personal agent for Android and desktop. You log in to your own accounts once inside the app's built-in
-browser, then give plain-language commands. The agent reads pages, fills forms, pastes text, uploads files you pick, and
-types prompts into AI chat sites, asking before anything risky.
+**Free, open-source AI agent for Android, Windows and Linux.** Krish is an AI browser agent that works inside your own logged-in accounts: you give a plain-language command, it reads pages, fills forms, uploads files you pick and types into AI chat sites, and asks before anything risky. Bring your own API key (Gemini, Groq, OpenRouter and more), no Krish account, no backend server, no telemetry.
 
-No backend server. You bring your own API keys. Everything the agent does is visible in the app and logged on your device.
+## Download
 
-**Source only.** This repository contains no APK or installer. Build instructions: [BUILD.md](BUILD.md).
+**[Latest builds: github.com/DeepuExplainsAi/KRISH/releases](https://github.com/DeepuExplainsAi/KRISH/releases)** (v0.1.0 is a pre-release: unsigned debug builds, not yet tested on real devices; details in the release notes)
+
+| Platform | File | Install |
+|---|---|---|
+| Android (all phones, 8.0+) | [`krish-android-lite-debug.apk`](https://github.com/DeepuExplainsAi/KRISH/releases/download/v0.1.0/krish-android-lite-debug.apk) | Open the APK and allow "install unknown apps" when asked. |
+| Android (arm64 phones) | [`krish-android-full-debug.apk`](https://github.com/DeepuExplainsAi/KRISH/releases/download/v0.1.0/krish-android-full-debug.apk) | Same as above. Adds the optional Linux sandbox; lite and full can be installed side by side. |
+| Windows 10/11 x64 | [`krish-windows-x64.zip`](https://github.com/DeepuExplainsAi/KRISH/releases/download/v0.1.0/krish-windows-x64.zip) | Unzip, run `Krish.exe`. SmartScreen: "More info" then "Run anyway" (the app is unsigned). |
+| Linux x64 | [`krish-linux-x64.tar.gz`](https://github.com/DeepuExplainsAi/KRISH/releases/download/v0.1.0/krish-linux-x64.tar.gz) | `tar xzf krish-linux-x64.tar.gz && ./Krish-linux-x64/Krish`. KrishVault needs a keyring such as GNOME Keyring. |
+
+Check a download against `SHA256SUMS.txt` from the same release. First run: Menu, then Providers, add a free API key (each provider has a "Get key" button), then type a task in Chat.
+
+**Prefer to build it yourself?** Source and steps: [BUILD.md](BUILD.md).
 **Current status and what is unverified:** [CHECKLIST.md](CHECKLIST.md). Working on it? Read [HANDOFF.md](HANDOFF.md) first.
 
 ## Layout
