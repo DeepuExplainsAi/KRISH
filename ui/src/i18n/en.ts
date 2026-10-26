@@ -45,6 +45,10 @@ export const en = {
   security: "Security",
   language: "Language",
   languageAuto: "Auto (device language)",
+  theme: "Theme",
+  themeSystem: "System (follows device)",
+  themeLight: "Light",
+  themeDark: "Dark",
   starting: "Starting…",
   autoOpenWindow: "Show the browser card when the agent starts working",
   // screens

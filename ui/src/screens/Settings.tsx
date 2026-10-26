@@ -1,5 +1,6 @@
 import { LANG_NAMES, type Lang, type LangPref } from "../i18n";
 import { useT } from "../i18n/useT";
+import type { ThemePref } from "../theme";
 import { localModelCompiledIn, webgpuAvailable } from "../local/webgpu";
 import { useApp, useAppState } from "../state/useStore";
 
@@ -17,6 +18,13 @@ export function Settings() {
         <select value={st.language} onChange={(e) => void app.saveSettings({ language: e.target.value as LangPref })}>
           <option value="auto">{t("languageAuto")}</option>
           {(Object.keys(LANG_NAMES) as Lang[]).map((l) => <option key={l} value={l}>{LANG_NAMES[l]}</option>)}
+        </select>
+      </label>
+      <label>{t("theme")}
+        <select value={st.theme} onChange={(e) => void app.saveSettings({ theme: e.target.value as ThemePref })}>
+          <option value="system">{t("themeSystem")}</option>
+          <option value="light">{t("themeLight")}</option>
+          <option value="dark">{t("themeDark")}</option>
         </select>
       </label>
       <label><input type="checkbox" checked={st.liteMode} onChange={toggle("liteMode")} /> {t("liteMode")}</label>

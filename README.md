@@ -14,7 +14,7 @@ No backend server. You bring your own API keys. Everything the agent does is vis
 | Path | What |
 |---|---|
 | `core/` | Shared TypeScript: provider adapters + fallback, strict action schema, redaction, agent loop, policy gate, memory, history, projects, panels, scheduler. Page-side script in `core/page-script/`. |
-| `ui/` | React + Vite app: Home, Chat with live browser window, Projects (top tabs); Panels, Tasks, History, Providers, Settings, Security (Menu). 7 UI languages (`ui/src/i18n`). Tier 0 sandbox. |
+| `ui/` | React + Vite app: Home, Chat with live browser window, Projects (top tabs); Panels, Tasks, History, Providers, Settings, Security (Menu). 7 UI languages (`ui/src/i18n`), light/dark/system theme. Tier 0 sandbox. |
 | `android/` | Capacitor + Kotlin plugins. Hardened agent WebView, Keystore secrets, WorkManager, file picker. Flavors `lite` and `full`. |
 | `desktop/` | Electron shell: agent browser in a separate sandboxed `WebContentsView`, OS-keychain secrets, optional Docker tier. |
 | `LICENSES/`, `CREDITS.md`, `SOURCE-OFFER.md`, `DEPENDENCIES.md` | Licenses, attribution, and why each dependency exists. |

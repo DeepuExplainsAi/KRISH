@@ -14,6 +14,7 @@ import { IconBack, IconPlus, IconStop } from "./components/icons";
 import { useT } from "./i18n/useT";
 import type { Key } from "./i18n";
 import type { Screen } from "./state/store";
+import { resolveTheme } from "./theme";
 import { useApp, useAppState } from "./state/useStore";
 
 /** Main tabs. Every other screen is reached from the Menu (avatar button). */
@@ -34,6 +35,14 @@ export function App() {
   const [chatKey, setChatKey] = useState(0); // remounts Chat so an unsent draft does not follow into the new chat
   useEffect(() => () => app.dispose(), [app]);
   useEffect(() => void (document.documentElement.lang = lang), [lang]);
+  const themePref = s.settings.theme;
+  useEffect(() => {
+    const mq = matchMedia("(prefers-color-scheme: dark)");
+    const apply = () => void (document.documentElement.dataset.theme = resolveTheme(themePref, mq.matches));
+    apply();
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
+  }, [themePref]);
   if (!s.ready) return <div className="boot">{t("starting")}</div>;
   const Screen = SCREENS[s.screen];
   return (

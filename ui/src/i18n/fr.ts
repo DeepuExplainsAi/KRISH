@@ -15,5 +15,5 @@ export const fr: Partial<Dict> = {
   winSmall: "Petite", winMedium: "Moyenne", winLarge: "Grande", expand: "Agrandir", collapse: "Réduire", minimize: "Minimiser", close: "Fermer",
   resize: "Redimensionner", snapshot: "Capture du navigateur",
   panels: "Panneaux", tasks: "Tâches planifiées", history: "Historique", providers: "Fournisseurs", settings: "Réglages", security: "Sécurité",
-  language: "Langue", languageAuto: "Auto (langue de l'appareil)", autoOpenWindow: "Afficher la carte du navigateur quand l'agent se met au travail", starting: "Démarrage…",
+  language: "Langue", languageAuto: "Auto (langue de l'appareil)", theme: "Thème", themeSystem: "Système (selon l'appareil)", themeLight: "Clair", themeDark: "Sombre", autoOpenWindow: "Afficher la carte du navigateur quand l'agent se met au travail", starting: "Démarrage…",
 };

@@ -8,12 +8,15 @@ import type { Platform } from "../platform";
 import { Tier0Sandbox } from "../sandbox/tier0";
 import { createWebGpuEngine, webgpuAvailable } from "../local/webgpu";
 import type { LangPref } from "../i18n";
+import type { ThemePref } from "../theme";
 
 export type WindowSize = "mini" | "medium" | "large" | "full";
 
 export interface Settings {
   /** UI language. "auto" follows the device. The agent answers in the language the user writes, independent of this. */
   language: LangPref;
+  /** "system" follows the device light/dark setting. */
+  theme: ThemePref;
   liteMode: boolean;
   /** Show the browser card as soon as the agent starts working (like a live view). Off: open it by tapping a step. */
   autoOpenWindow: boolean;
@@ -31,6 +34,7 @@ export interface Settings {
 
 export const DEFAULT_SETTINGS: Settings = {
   language: "auto",
+  theme: "system",
   liteMode: false,
   autoOpenWindow: true,
   screenshots: false,

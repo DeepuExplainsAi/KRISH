@@ -22,7 +22,7 @@ Rule: update this file at the end of every work session (status table + "Next").
 | docs | README, BUILD, SECURITY, CREDITS, CHECKLIST, SOURCE-OFFER, LICENSES | DONE |
 
 ## Verified (actually run)
-CHECKLIST.md is authoritative. Counts as of 2026-10-26: core 121, ui 21, desktop 8 unit tests; desktop smoke 12 checks; typecheck, lint, UI build, `cap sync`, `compileLiteDebugKotlin` + `compileFullDebugKotlin` all clean.
+CHECKLIST.md is authoritative. Counts as of 2026-10-26: core 121, ui 22, desktop 8 unit tests; desktop smoke 12 checks; typecheck, lint, UI build, `cap sync`, `compileLiteDebugKotlin` + `compileFullDebugKotlin` all clean.
 
 ## Session log: Hark-style restyle, language, adjustable browser card (2026-10-26)
 Owner request: new look like hark.com (video + screenshots in the todo), same features, browser card adjustable, answer in the user's language, many UI languages. **No feature was removed.** All old screens still exist.
@@ -39,6 +39,16 @@ What changed (UI + one prompt line; core logic, policy gate and security rules u
 10. Resize handle moved 6 px inside the card: at the very corner, touches hit the chat underneath and the browser cancelled the gesture.
 11. **Independent review, fixed:** (a) The "normal question may not collect a secret" guard was English-only; with answers now in the user's language it covers password/OTP/PIN/card terms in all 7 languages (Unicode-aware regex in `loop.ts`; test with Hindi, Bengali, Spanish, French, German, Portuguese, Hinglish). Still a heuristic: the real protection is the secure card on the actual field. (b) Model-written step labels are only shown for steps that run without approval (`verdict: allow`); a step that confirms, asks or is blocked keeps the app's own wording. Control/bidi/zero-width characters are stripped from labels. (c) Browser card minimum size raised to 260x170 (header + footer + usable page); native bounds are exactly the `.view` box, and if it is smaller than 40 px the native view is hidden instead of enlarged. (d) New chat remounts the composer so an unsent draft does not follow. (e) Inner screens (Home, Settings, Providers, Projects, Tasks, Panels, History, Security) and accessibility labels now use `t()`.
 Not verified: real phone touch (only CDP touch events in headless Chrome); Android/desktop native view positioning under the new card layout (same `.view` box logic as before); Hindi/Bengali font rendering on the device. Providers, Projects, Tasks, Panels and History only got the new colors, no layout rework.
+
+## Session log: dark theme + full-app screenshot check (2026-10-26, later)
+Owner asked: show every screen of the whole app on phone and PC, say what works, add a dark mode that can follow the system, check for errors. No feature changed.
+1. **Theme setting** (`Settings.theme`: `system` | `light` | `dark`, default `system`; Settings -> Theme). `ui/src/theme.ts` `resolveTheme()` (tested). `App.tsx` sets `<html data-theme>` and listens to `prefers-color-scheme`, so System follows the device live.
+2. **CSS** (`styles.css`): all hard-coded colors became variables (`--strong`/`--on-strong` replace `--black`, plus `--surface`, `--field`, `--field-pre`, `--user-bubble`, `--bar`, `--live-bg`, `--handle`, `--shadow`). `:root[data-theme="dark"]` overrides them (deep navy sky like the owner's Hark chat screenshot, glass cards, white active pill). Light values are unchanged. New colors go into the variables, never hard-coded.
+3. **i18n:** keys `theme`, `themeSystem`, `themeLight`, `themeDark` in all 7 languages.
+4. **Checked in headless Chrome** (phone 467x922 @2x and PC 1280x800; light and dark; 15 screens each: Home, Menu, Providers, Projects, Panels, Tasks, History (closed/open), Settings (top/bottom), Security, Chat empty / working with browser card / done / secure input card): no JS exceptions, no console errors, no horizontal overflow, explicit theme overrides the device and "System" restores it. Only noise: the harness server's `/favicon.ico` 404.
+5. **Tests:** core 121, ui 22 (+1), desktop 8; typecheck, lint, UI build clean.
+Not done: Android system bars and the Electron window background still use the light native theme (CHECKLIST 14). Inner screens still have the old layout, only restyled.
+Screenshot harness (not committed; see `.git/info/exclude`): `ui/harness.html`, `ui/src/harness.tsx`, `ui/vite.harness.ts` build a fake-platform UI with a scripted model. The runner drove Chrome over CDP with `Emulation.setEmulatedMedia` for dark. Needs a 1 GB swapfile in the 480 MB sandbox.
 
 ## PLAN (waiting for owner OK): API Keys screen + "Get key" links (2026-10-26)
 **Status: mockup shown to the owner, NOT built. Do not build before the owner confirms. Owner will then say what else to change per screen.**
