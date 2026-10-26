@@ -138,6 +138,18 @@ describe("ProviderRouter fallback", () => {
     await expect(none.router.run(msgs, parseAction)).rejects.toBeInstanceOf(AllProvidersFailedError);
   });
 
+  it("the error names each provider and why it was skipped", async () => {
+    const { router } = await setup({}, [provider("a", { name: "Gemini", enabled: false }), provider("b", { name: "Groq", defaultModel: undefined })]);
+    await expect(router.run(msgs, parseAction)).rejects.toThrow(/Gemini: disabled · Groq: no model selected/);
+  });
+
+  it("a provider without a chosen model gets one from its fetched list", async () => {
+    const { router } = await setup({ "a.test": () => openaiReply(DONE) }, [
+      provider("a", { defaultModel: undefined, models: { fetchedAt: 1, items: [{ id: "chat-2" }, { id: "chat-1" }] } }),
+    ]);
+    expect((await router.run(msgs, parseAction)).model).toBe("chat-2");
+  });
+
   it("does not fall back when the user aborts", async () => {
     const ac = new AbortController();
     const { router, calls } = await setup({

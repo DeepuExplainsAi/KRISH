@@ -94,7 +94,7 @@ export function createCapacitorPlatform(): Platform {
     files: {
       pick: async () => {
         const r = await F.pickFile();
-        return r.token ? { name: r.name ?? "file", size: r.size ?? 0, token: r.token } : undefined;
+        return r?.token ? { name: r.name ?? "file", size: r.size ?? 0, token: r.token } : undefined; // cancelled picker resolves with no data
       },
       read: async (token, maxBytes) => fromBase64((await F.readFile({ token, maxBytes })).base64),
       save: async (name, bytes, mime) => (await F.saveFile({ name, mime, base64: toBase64(bytes) })).saved,

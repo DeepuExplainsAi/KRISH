@@ -1,5 +1,5 @@
 import {
-  AgentController, autoFetchOnce, cleanLabel, DEFAULT_BRIEF, History, Memory, newId, Panels, ProviderRouter, Projects, refreshModels,
+  AgentController, autoFetchOnce, cleanLabel, DEFAULT_BRIEF, History, Memory, newId, Panels, ProviderRouter, Projects, refreshModels, withAutoModels,
   runAgent, Scheduler, nextRun, nextBriefAt, briefCommand, Vault,
   type AgentEvent, type AgentUI, type BriefSettings, type ChipState, type ConfirmRequest, type PageDriver, type ProviderConfig,
   type MemoryPort, type SecureKind, type SelectedFile, type Sandbox, setLocalEngine, type ModelInfo,
@@ -24,7 +24,7 @@ export interface Settings {
   /** "system" follows the device light/dark setting. */
   theme: ThemePref;
   liteMode: boolean;
-  /** Show the browser card as soon as the agent starts working (like a live view). Off: open it by tapping a step. */
+  /** Open the browser card when the agent loads a site (plain answers never open it). Off: open it by tapping a step. */
   autoOpenWindow: boolean;
   screenshots: boolean;
   desktopLayout: boolean;
@@ -77,6 +77,8 @@ export interface ChatItem {
   /** Files attached to a user message (name and size only). */
   files?: { name: string; size: number }[];
   chip?: { label: string; state: ChipState };
+  /** The run ended in an error: shown as an error note, not as an answer. */
+  failed?: boolean;
 }
 
 export interface State {
@@ -224,7 +226,14 @@ export class AppStore {
     if (!s && typeof window !== "undefined") settings.window = firstWindow(window.innerWidth, window.innerHeight);
     // Tier 1 is disabled on low-RAM devices regardless of the saved flag.
     if (info.lowRam) settings.linuxSandbox = false;
-    this.unPage = this.platform.browser.onPage((page) => this.set({ page }));
+    this.unPage = this.platform.browser.onPage((page) => {
+      this.set({ page });
+      // The card appears when the agent actually loads a site, never for a plain chat answer.
+      if (this.state.running && this.state.settings.autoOpenWindow && !this.cardShownThisRun && page.url && page.url !== "about:blank") {
+        this.cardShownThisRun = true;
+        this.openWindow();
+      }
+    });
     this.set({
       ready: true, settings, providers: p ? JSON.parse(p) : [], deviceLowRam: info.lowRam,
       linuxAvailable: info.linuxSandbox && !info.lowRam,
@@ -264,8 +273,9 @@ export class AppStore {
     const base: ProviderConfig = { ...cfg, id, enabled: true, allowSensitive: false };
     await this.saveProviders([...this.state.providers, base]);
     // One automatic model fetch, only when the key is first added.
+    // Then the best default / fallback model is picked, so the new provider answers right away.
     const fetched = await autoFetchOnce(base, apiKey, { fetch: this.platform.fetch });
-    await this.updateProvider(fetched);
+    await this.updateProvider(withAutoModels(fetched));
   }
 
   async updateProvider(p: ProviderConfig) {
@@ -276,7 +286,9 @@ export class AppStore {
     const p = this.state.providers.find((x) => x.id === id);
     const key = p && (await this.platform.keys.get(id));
     if (!p || !key) return this.notify("Add an API key first");
-    await this.updateProvider(await refreshModels(p, key, { fetch: this.platform.fetch }));
+    const next = await refreshModels(p, key, { fetch: this.platform.fetch });
+    const gone = (m?: string) => m !== undefined && next.models !== undefined && !next.models.items.some((i) => i.id === m);
+    await this.updateProvider(withAutoModels({ ...next, defaultModel: gone(next.defaultModel) ? undefined : next.defaultModel, fallbackModel: gone(next.fallbackModel) ? undefined : next.fallbackModel }));
   }
 
   async setProviderKey(id: string, key: string) {
@@ -375,6 +387,7 @@ export class AppStore {
     };
   }
 
+  private cardShownThisRun = false;
   private chipItems = new Map<number, number>();
   private onAgentEvent(runId: string, e: AgentEvent) {
     if (e.type === "chip") {
@@ -390,7 +403,7 @@ export class AppStore {
     } else if (e.type === "action") {
       void this.history.log(runId, "action", e.action.type, e.result);
     } else if (e.type === "end") {
-      this.push({ role: "agent", text: e.summary });
+      this.push({ role: "agent", text: e.summary, ...(e.status === "failed" || e.status === "max_steps" ? { failed: true } : {}) });
       void this.history.log(runId, "run_end", e.status, e.summary);
     }
   }
@@ -440,8 +453,9 @@ export class AppStore {
     // Only the composer passes files; saved tasks, panels and the brief never pick up the composer's tray.
     const files = opts.files ?? [];
     if (opts.files) this.draftEpoch++;
+    this.cardShownThisRun = false;
     this.set({ running: true, paused: false, status: "running", screen: "chat", ...(opts.files ? { attachments: [] } : {}) });
-    if (this.state.settings.autoOpenWindow) this.openWindow();
+    if (opts.startUrl) this.openWindow();
     this.push({ role: "user", text: command, files: files.length ? files.map(({ name, size }) => ({ name, size })) : undefined });
     await this.history.log(runId, "run_start", command);
     try {
@@ -455,7 +469,7 @@ export class AppStore {
     } finally {
       this.controller = undefined;
       this.set({ running: false, paused: false, status: "idle", prompts: [] });
-      await this.platform.browser.setMode("hidden").catch(() => undefined);
+      await this.platform.browser.setMode(this.state.windowOpen && !this.state.windowMinimized ? "live" : "hidden").catch(() => undefined);
     }
   }
 

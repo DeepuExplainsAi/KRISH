@@ -33,7 +33,7 @@ export function Chat() {
           i.chip ? (
             <ChipPill key={i.id} label={i.chip.label} state={i.chip.state} latest={s.running && i.id === lastChipId} onClick={app.openWindow} />
           ) : (
-            <div key={i.id} className={`msg ${i.role}`}>
+            <div key={i.id} className={`msg ${i.role}${i.failed ? " failed" : ""}`}>
               {i.text}
               {i.files?.map((f) => <span key={f.name} className="file-chip static"><IconClip /><span className="txt">{f.name}</span><small>{fmtSize(f.size)}</small></span>)}
             </div>

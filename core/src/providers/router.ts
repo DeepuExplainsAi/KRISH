@@ -1,6 +1,6 @@
 import { DEFAULTS, type RouterConfig } from "../config/defaults";
 import type { KeyStore, KVStore } from "../storage";
-import { adapters } from "./models";
+import { adapters, withAutoModels } from "./models";
 import {
   AbortedError,
   ProviderError,
@@ -22,6 +22,7 @@ export interface RouterDeps {
 
 export interface Attempt {
   providerId: string;
+  providerName: string;
   model?: string;
   outcome: "ok" | "skipped" | ProviderErrorKind;
   detail?: string;
@@ -29,7 +30,7 @@ export interface Attempt {
 
 export class AllProvidersFailedError extends Error {
   constructor(readonly attempts: Attempt[]) {
-    super(`all providers failed: ${attempts.map((a) => `${a.providerId}:${a.outcome}`).join(", ") || "none configured"}`);
+    super(`No AI provider could answer. ${attempts.map((a) => `${a.providerName}: ${a.detail ?? a.outcome}`).join(" · ") || "None added yet"}. Check API Keys.`);
   }
 }
 
@@ -123,13 +124,14 @@ export class ProviderRouter {
    */
   async run<T>(messages: ChatMessage[], parse: (text: string) => T, opts: RunOptions = {}): Promise<RunResult<T>> {
     const attempts: Attempt[] = [];
-    for (const p of this.deps.providers()) {
+    for (const configured of this.deps.providers()) {
+      const p = withAutoModels(configured);
       if (opts.signal?.aborted) throw new AbortedError();
       const needsKey = p.kind !== "webgpu-local";
       const apiKey = needsKey ? await this.deps.keys.get(p.id) : "";
       const blocked = await this.blockedReason(p, opts, !needsKey || Boolean(apiKey));
       if (blocked || (needsKey && !apiKey)) {
-        attempts.push({ providerId: p.id, outcome: "skipped", detail: blocked });
+        attempts.push({ providerId: p.id, providerName: p.name, outcome: "skipped", detail: blocked });
         continue;
       }
       const models = [p.defaultModel!, ...(p.fallbackModel && p.fallbackModel !== p.defaultModel ? [p.fallbackModel] : [])];
@@ -149,12 +151,12 @@ export class ProviderRouter {
             throw new ProviderError("bad_json", "model output rejected by schema");
           }
           this.onSuccess(p.id);
-          attempts.push({ providerId: p.id, model, outcome: "ok" });
+          attempts.push({ providerId: p.id, providerName: p.name, model, outcome: "ok" });
           return { value, providerId: p.id, model, attempts };
         } catch (e) {
           if (e instanceof AbortedError) throw e;
           lastError = e instanceof ProviderError ? e : new ProviderError("network", "unexpected provider failure");
-          attempts.push({ providerId: p.id, model, outcome: lastError.kind, detail: lastError.message });
+          attempts.push({ providerId: p.id, providerName: p.name, model, outcome: lastError.kind, detail: lastError.message });
           if (lastError.kind === "auth") break; // same key: fallback model will not help
         }
       }

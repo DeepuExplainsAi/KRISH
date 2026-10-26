@@ -53,7 +53,7 @@ export const en = {
   themeLight: "Light",
   themeDark: "Dark",
   starting: "Starting…",
-  autoOpenWindow: "Show the browser card when the agent starts working",
+  autoOpenWindow: "Open the browser card when the agent opens a site",
   // screens
   homeOnlyHttps: "Only https:// sites can be opened",
   homeNeedProvider: "Add an AI provider and your own API key to begin.",

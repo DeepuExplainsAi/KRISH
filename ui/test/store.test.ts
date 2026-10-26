@@ -47,6 +47,38 @@ describe("AppStore", () => {
     expect(JSON.stringify(await platform.kv.get("providers"))).not.toContain("SECRET-KEY");
   });
 
+  it("a provider added with a key is ready at once: enabled, last in the fallback list, best model chosen", async () => {
+    const { store, platform } = setup([]);
+    platform.fetch = async () => new Response(JSON.stringify({ data: [{ id: "chat-small-mini" }, { id: "chat-3-pro" }, { id: "embed-1" }] }), { status: 200 });
+    await store.init();
+    await store.addProvider({ name: "A", kind: "openai-compat", baseUrl: "https://a.test/v1" }, "k1");
+    await store.addProvider({ name: "B", kind: "openai-compat", baseUrl: "https://b.test/v1" }, "k2");
+    const [a, b] = store.getState().providers;
+    expect([a!.name, b!.name]).toEqual(["A", "B"]);
+    expect(b).toMatchObject({ enabled: true, defaultModel: "chat-3-pro", fallbackModel: "chat-small-mini" });
+  });
+
+  it("a plain answer does not open the browser card; loading a page does, once per run", async () => {
+    const plain = setup([{ type: "done", summary: "Hello! How can I help?" }]);
+    await plain.store.init();
+    await plain.store.addProvider({ name: "P", kind: "openai-compat", baseUrl: "https://p.test/v1" }, "k");
+    await plain.store.updateProvider({ ...plain.store.getState().providers[0]!, allowSensitive: true }); // the fake page is a login form
+    await plain.store.send("hi");
+    const s = plain.store.getState();
+    expect(s.windowOpen).toBe(false);
+    expect(s.items.map((i) => i.text ?? i.chip?.label)).toEqual(["hi", "Hello! How can I help?"]); // no step pill for a plain answer
+
+    const web = setup([{ type: "navigate", url: "https://site.test/x" }, { type: "done", summary: "ok" }]);
+    let onPage: (p: { url: string; title: string; loading: boolean; canGoBack: boolean }) => void = () => {};
+    web.platform.browser.onPage = (cb) => ((onPage = cb), () => {});
+    web.platform.browser.open = async (url) => onPage({ url, title: "", loading: false, canGoBack: false });
+    await web.store.init();
+    await web.store.addProvider({ name: "P", kind: "openai-compat", baseUrl: "https://p.test/v1" }, "k");
+    await web.store.updateProvider({ ...web.store.getState().providers[0]!, allowSensitive: true });
+    await web.store.send("open the site");
+    expect(web.store.getState().windowOpen).toBe(true);
+  });
+
   it("secure prompt: user value reaches the page, never the model or history", async () => {
     const { store, filled, prompts } = setup([
       { type: "ask_user", question: "Enter your password", secure: { kind: "password", elementId: 0 } },

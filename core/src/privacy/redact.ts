@@ -86,6 +86,7 @@ export function redactElement(el: PageElement): PageElement {
 }
 
 export function isSensitivePage(obs: Pick<PageObservation, "url" | "elements">): boolean {
+  if (obs.url === "" || obs.url === "about:blank") return false; // no page loaded yet: nothing sensitive to protect
   let url: URL | undefined;
   try {
     url = new URL(obs.url);

@@ -59,7 +59,7 @@ export const ActionSchema = z.discriminatedUnion("type", [
     secure: z.strictObject({ kind: SecureKindSchema, elementId: elementId.optional() }).optional(),
     thought,
   }),
-  z.strictObject({ type: z.literal("done"), summary: z.string().max(2000), thought }),
+  z.strictObject({ type: z.literal("done"), summary: z.string().max(6000), thought }),
 ]);
 
 export type Action = z.infer<typeof ActionSchema>;

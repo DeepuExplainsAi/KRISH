@@ -15,5 +15,5 @@ export const de: Partial<Dict> = {
   winSmall: "Klein", winMedium: "Mittel", winLarge: "Groß", expand: "Vergrößern", collapse: "Verkleinern", minimize: "Minimieren", close: "Schließen",
   resize: "Größe ändern", snapshot: "Browser-Schnappschuss",
   panels: "Panels", tasks: "Geplante Aufgaben", history: "Verlauf", providers: "Anbieter", settings: "Einstellungen", security: "Sicherheit",
-  language: "Sprache", languageAuto: "Automatisch (Gerätesprache)", theme: "Design", themeSystem: "System (wie das Gerät)", themeLight: "Hell", themeDark: "Dunkel", attachFile: "Datei anhängen (Foto, Video, Audio, ZIP, jeder Typ)", attachments: "Angehängte Dateien", removeFile: "{name} entfernen", autoOpenWindow: "Browser-Karte zeigen, sobald der Agent arbeitet", starting: "Startet…",
+  language: "Sprache", languageAuto: "Automatisch (Gerätesprache)", theme: "Design", themeSystem: "System (wie das Gerät)", themeLight: "Hell", themeDark: "Dunkel", attachFile: "Datei anhängen (Foto, Video, Audio, ZIP, jeder Typ)", attachments: "Angehängte Dateien", removeFile: "{name} entfernen", autoOpenWindow: "Browser-Karte öffnen, sobald der Agent eine Seite öffnet", starting: "Startet…",
 };

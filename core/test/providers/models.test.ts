@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { autoFetchOnce, refreshModels, searchModels } from "../../src/providers/models";
+import { autoFetchOnce, pickModels, refreshModels, searchModels, withAutoModels } from "../../src/providers/models";
 import { json, mockFetch, provider } from "../helpers";
 
 const deps = (handlers: Parameters<typeof mockFetch>[0]) => {
@@ -86,5 +86,30 @@ describe("refreshModels", () => {
     const items = [{ id: "llama-3" }, { id: "x", displayName: "Gemma Big" }];
     expect(searchModels(items, "GEMMA")).toHaveLength(1);
     expect(searchModels(items, "")).toHaveLength(2);
+  });
+});
+
+describe("pickModels / withAutoModels", () => {
+  const ids = (...x: string[]) => x.map((id) => ({ id }));
+  it("prefers a newer, bigger, stable chat model and skips embeddings, audio and image models", () => {
+    const r = pickModels(ids("text-embedding-004", "gemini-2.5-flash-lite", "gemini-2.5-pro", "gemini-2.5-flash", "gemini-3-pro-preview", "gemini-2.5-flash-preview-tts"));
+    expect(r.defaultModel).toBe("gemini-3-pro-preview");
+    expect(r.fallbackModel).toBe("gemini-2.5-pro");
+  });
+  it("uses only free models when the provider marks some as free", () => {
+    const r = pickModels([{ id: "big-paid-pro-5" }, { id: "llama-3.3-70b:free", free: true }, { id: "tiny-8b:free", free: true }]);
+    expect(r.defaultModel).toBe("llama-3.3-70b:free");
+    expect(r.fallbackModel).toBe("tiny-8b:free");
+  });
+  it("an empty list picks nothing; a single model has no fallback", () => {
+    expect(pickModels([])).toEqual({ defaultModel: undefined, fallbackModel: undefined });
+    expect(pickModels(ids("only-one"))).toEqual({ defaultModel: "only-one", fallbackModel: undefined });
+  });
+  it("keeps models the user chose and fills only the missing one", () => {
+    const base = provider("p", { defaultModel: undefined, models: { fetchedAt: 1, items: ids("m-2", "m-1") } });
+    expect(withAutoModels(base)).toMatchObject({ defaultModel: "m-2", fallbackModel: "m-1" });
+    const chosen = { ...base, defaultModel: "m-1" };
+    expect(withAutoModels(chosen)).toMatchObject({ defaultModel: "m-1", fallbackModel: "m-2" });
+    expect(withAutoModels({ ...chosen, fallbackModel: "x" })).toEqual({ ...chosen, fallbackModel: "x" });
   });
 });

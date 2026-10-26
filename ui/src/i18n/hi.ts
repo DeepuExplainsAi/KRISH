@@ -15,7 +15,7 @@ export const hi: Partial<Dict> = {
   winSmall: "छोटा", winMedium: "मध्यम", winLarge: "बड़ा", expand: "बड़ा करें", collapse: "छोटा करें", minimize: "छिपाएँ", close: "बंद करें",
   resize: "आकार बदलें", snapshot: "ब्राउज़र स्नैपशॉट",
   panels: "पैनल", tasks: "निर्धारित काम", history: "इतिहास", providers: "प्रोवाइडर", settings: "सेटिंग्स", security: "सुरक्षा",
-  language: "भाषा", languageAuto: "ऑटो (डिवाइस की भाषा)", theme: "थीम", themeSystem: "ऑटो (डिवाइस जैसी)", themeLight: "लाइट", themeDark: "डार्क", attachFile: "फ़ाइल जोड़ें (फ़ोटो, वीडियो, ऑडियो, ज़िप, कोई भी)", attachments: "जुड़ी हुई फ़ाइलें", removeFile: "{name} हटाएँ", autoOpenWindow: "जब एजेंट काम शुरू करे तो ब्राउज़र कार्ड दिखाएँ", starting: "शुरू हो रहा है…",
+  language: "भाषा", languageAuto: "ऑटो (डिवाइस की भाषा)", theme: "थीम", themeSystem: "ऑटो (डिवाइस जैसी)", themeLight: "लाइट", themeDark: "डार्क", attachFile: "फ़ाइल जोड़ें (फ़ोटो, वीडियो, ऑडियो, ज़िप, कोई भी)", attachments: "जुड़ी हुई फ़ाइलें", removeFile: "{name} हटाएँ", autoOpenWindow: "जब एजेंट कोई साइट खोले तो ब्राउज़र कार्ड खोलें", starting: "शुरू हो रहा है…",
   // screens
   homeOnlyHttps: "सिर्फ़ https:// साइटें खोली जा सकती हैं",
   homeNeedProvider: "शुरू करने के लिए एक AI प्रोवाइडर और अपनी API key जोड़ें।",

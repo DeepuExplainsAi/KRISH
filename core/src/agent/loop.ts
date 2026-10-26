@@ -362,11 +362,13 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
       // secure-input steps always say "Action required", so model text can never dress up a trusted prompt.
       const thought = verdict.verdict === "allow" && !(action.type === "ask_user" && action.secure) ? cleanLabel(action.thought ?? "") : "";
       const label = thought ? clip(redactText(thought), 80) : describe(action, obs);
-      const id = chip(label, action.type === "ask_user" && action.secure ? "action_required" : "running");
+      // A plain answer (done as the very first step) is just chat text: no step pill for it.
+      const plainAnswer = action.type === "done" && step === 1;
+      const id = plainAnswer ? 0 : chip(label, action.type === "ask_user" && action.secure ? "action_required" : "running");
       const actionText = redactText(JSON.stringify(action.type === "type" || action.type === "paste" ? { ...action, text: clip(action.text, 200) } : action));
 
       if (action.type === "done") {
-        chip(label, "done", id);
+        if (!plainAnswer) chip(label, "done", id);
         ui.emit({ type: "action", step, action, result: action.summary });
         return finish("done", action.summary);
       }

@@ -56,6 +56,8 @@ describe("fields and pages", () => {
     expect(isSensitivePage({ url: "https://x.com/a", elements: [el({ type: "password" })] })).toBe(true);
     expect(isSensitivePage({ url: "https://x.com/a", elements: [el({ type: "text", name: "q" })] })).toBe(false);
     expect(isSensitivePage({ url: "garbage", elements: [] })).toBe(true);
+    expect(isSensitivePage({ url: "", elements: [] })).toBe(false); // no page loaded yet
+    expect(isSensitivePage({ url: "about:blank", elements: [] })).toBe(false);
   });
 
   it("formatObservation marks a hidden file input so the model can still target it", () => {
