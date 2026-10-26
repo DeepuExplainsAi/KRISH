@@ -83,7 +83,7 @@ Workflows live in `.github/workflows/` (`ci/workflows/` keeps a copy of the firs
 | `check` | every push, PR | typecheck, lint, tests, Kotlin compile of both flavors |
 | `build-apk` | manual | debug APKs as workflow artifacts |
 | `build-desktop` | manual | Windows/Linux packages as workflow artifacts |
-| `release` | tag `v*`, or manual with a `tag` input | builds all of the above and publishes a **pre-release** with `krish-android-lite-debug.apk`, `krish-android-full-debug.apk`, `krish-windows-x64.zip`, `krish-linux-x64.tar.gz`, `SHA256SUMS.txt`; notes from `.github/release-notes.md` |
+| `release` | tag `v*`, or manual with a `tag` input | builds all of the above and publishes a **pre-release** with `krish-android.apk` (the lite flavor), `krish-windows-x64.zip`, `krish-linux-x64.tar.gz`, `SHA256SUMS.txt`; notes from `.github/release-notes.md` |
 
 Cut a release: `git tag v0.1.1 && git push origin v0.1.1`. Builds are unsigned debug builds; no secrets are used except the built-in `GITHUB_TOKEN`.
 Pushing files under `.github/workflows/` needs a token with the `workflow` scope (`gh auth refresh -h github.com -s workflow`).

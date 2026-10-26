@@ -35,8 +35,8 @@ SANDBOX (tiered; the user installs nothing)
 LIVE VIEW AND SECURE INPUT (original implementation)
 - The agent's browser is shown inside the app, never as a separate app or window.
 - Chat shows a step timeline of chips ("Logging in", "Code submitted", "Reading a page", "Logged in"), saved in History. Tapping a chip (or the status pill) opens the live browser window.
-- The window opens as a floating card over the chat at a medium size. The user can resize it: drag handle, pinch, and one-tap size presets (Mini, Medium, Large, Full screen). It can be dragged, minimized to a small pill, and closed. Remember the last size. Chat stays usable behind the card in Mini and Medium sizes.
-- In Mini size, show a periodic snapshot (about 1 per second) instead of a live view if the device is slow.
+- The browser card (2026-10-24 redesign) is a black rounded card docked in the layout: above the composer in Chat, at the bottom on other screens. It opens only when the agent loads a page (or the user taps a step or the globe), never for a plain answer. Header-less: the page, then a status pill with the current step, Take over / Resume, STOP, expand (full screen) and close. Same on phone, desktop window and Linux. No drag, resize or size presets.
+- Plain questions (greetings, general knowledge, reasoning) are answered as chat text without touching the browser; the system prompt says so.
 - Optional desktop-layout mode: desktop user agent and a 1280x800 viewport scaled to fit the card.
 - Highlight the element currently being clicked or typed into.
 - When the agent needs the user (OTP, password, CAPTCHA, 2FA), the status pill turns to "Action required" and a native input card appears in the chat (title, masked field, Continue). The user types the value into the app's own card; the APP (never the model) puts it into the page field. That value is never sent to any model, logged or stored. For CAPTCHA, offer "Take over".

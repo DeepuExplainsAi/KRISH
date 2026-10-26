@@ -5,7 +5,7 @@ export const fr: Partial<Dict> = {
   statusIdle: "Prêt", statusWorking: "En cours", actionRequired: "Action requise", statusPaused: "En pause",
   stop: "STOP", takeOver: "Reprendre la main", resume: "Reprendre",
   composerPlaceholder: "Écrire à Krish",
-  chatEmpty: "Ouvrez un site dans la fenêtre du navigateur, connectez-vous vous-même, puis dites-moi quoi faire.",
+  chatEmpty: "Posez-moi une question ou dites-moi quoi faire sur un site. J'ouvre le navigateur seulement si la tâche l'exige.",
   browser: "Navigateur", send: "Envoyer",
   confirm: "Confirmer", cancel: "Annuler", continue: "Continuer", question: "Question",
   answerSent: "Votre réponse est envoyée à l'IA. N'écrivez ici ni mot de passe ni code.",
@@ -15,4 +15,5 @@ export const fr: Partial<Dict> = {
   expand: "Agrandir", collapse: "Réduire", close: "Fermer",
   panels: "Panneaux", tasks: "Tâches planifiées", history: "Historique", providers: "Fournisseurs", settings: "Réglages", security: "Sécurité",
   language: "Langue", languageAuto: "Auto (langue de l'appareil)", theme: "Thème", themeSystem: "Système (selon l'appareil)", themeLight: "Clair", themeDark: "Sombre", attachFile: "Joindre un fichier (photo, vidéo, audio, zip, tout type)", attachments: "Fichiers joints", removeFile: "Retirer {name}", autoOpenWindow: "Ouvrir la carte du navigateur quand l'agent ouvre un site", starting: "Démarrage…",
+  roleMain: "Principal", roleBackup: "Secours {n}",
 };

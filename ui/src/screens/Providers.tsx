@@ -26,7 +26,8 @@ function ModelPicker({ p }: { p: ProviderConfig }) {
   );
 }
 
-function ProviderCard({ p, first, last }: { p: ProviderConfig; first: boolean; last: boolean }) {
+/** `rank` = position among enabled providers (0 = tried first); `index` = position in the full list. */
+function ProviderCard({ p, index, rank, last }: { p: ProviderConfig; index: number; rank: number; last: boolean }) {
   const app = useApp();
   const { t } = useT();
   const [key, setKey] = useState("");
@@ -36,9 +37,9 @@ function ProviderCard({ p, first, last }: { p: ProviderConfig; first: boolean; l
   return (
     <div className="card">
       <div className="row between">
-        <strong>{p.name}</strong>
+        <span className="row"><strong>{p.name}</strong>{p.enabled && <span className="badge">{rank === 0 ? t("roleMain") : t("roleBackup", { n: String(rank) })}</span>}</span>
         <span className="row">
-          <button disabled={first} onClick={() => void app.moveProvider(p.id, -1)} aria-label={t("moveUp")} title={t("moveUp")}>↑</button>
+          <button disabled={index === 0} onClick={() => void app.moveProvider(p.id, -1)} aria-label={t("moveUp")} title={t("moveUp")}>↑</button>
           <button disabled={last} onClick={() => void app.moveProvider(p.id, 1)} aria-label={t("moveDown")} title={t("moveDown")}>↓</button>
           <button onClick={() => void app.removeProvider(p.id)}>{t("remove")}</button>
         </span>
@@ -133,7 +134,7 @@ export function Providers() {
       <h2>{t("providers")}</h2>
       <p className="muted">{t("providersIntro")}</p>
       {(tab === "added" || tab === "all") && s.providers.length > 0 && (
-        <div className="grid wide">{s.providers.map((p, i) => <ProviderCard key={p.id} p={p} first={i === 0} last={i === s.providers.length - 1} />)}</div>
+        <div className="grid wide">{s.providers.map((p, i) => <ProviderCard key={p.id} p={p} index={i} rank={s.providers.slice(0, i).filter((x) => x.enabled).length} last={i === s.providers.length - 1} />)}</div>
       )}
       {tab === "added" && s.providers.length === 0 && <p className="muted">{t("noProvidersYet")}</p>}
       {tab !== "added" && tab !== "custom" && <div className="grid wide">{catalog.map((p) => <CatalogRow key={p.name} preset={p} added={names.has(p.name)} />)}</div>}

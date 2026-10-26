@@ -5,7 +5,7 @@ export const es: Partial<Dict> = {
   statusIdle: "Listo", statusWorking: "Trabajando", actionRequired: "Acción necesaria", statusPaused: "En pausa",
   stop: "PARAR", takeOver: "Tomar el control", resume: "Continuar",
   composerPlaceholder: "Escribe a Krish",
-  chatEmpty: "Abre un sitio en la ventana del navegador, inicia sesión tú mismo y dime qué hacer.",
+  chatEmpty: "Pregúntame lo que quieras o dime qué hacer en un sitio web. Solo abro el navegador cuando la tarea lo necesita.",
   browser: "Navegador", send: "Enviar",
   confirm: "Confirmar", cancel: "Cancelar", continue: "Continuar", question: "Pregunta",
   answerSent: "Tu respuesta se envía a la IA. No escribas contraseñas ni códigos aquí.",
@@ -15,4 +15,5 @@ export const es: Partial<Dict> = {
   expand: "Ampliar", collapse: "Reducir", close: "Cerrar",
   panels: "Paneles", tasks: "Tareas programadas", history: "Historial", providers: "Proveedores", settings: "Ajustes", security: "Seguridad",
   language: "Idioma", languageAuto: "Automático (idioma del dispositivo)", theme: "Tema", themeSystem: "Sistema (según el dispositivo)", themeLight: "Claro", themeDark: "Oscuro", attachFile: "Adjuntar archivo (foto, vídeo, audio, zip, cualquiera)", attachments: "Archivos adjuntos", removeFile: "Quitar {name}", autoOpenWindow: "Abrir la tarjeta del navegador cuando el agente abra un sitio", starting: "Iniciando…",
+  roleMain: "Principal", roleBackup: "Respaldo {n}",
 };

@@ -1,10 +1,9 @@
-**Unsigned DEBUG builds. They were NOT tested on a real phone or on a real Windows/Linux desktop.** What was checked: the files build in CI, both APKs are valid and carry the expected application IDs, the Windows and Linux packages contain the app, and the Linux build starts and keeps running for 25 seconds under a virtual display. Nothing beyond that.
+**Unsigned DEBUG builds. They were NOT tested on a real phone or on a real Windows/Linux desktop.** What was checked: the files build in CI, the APK is valid and carries the expected application ID, the Windows and Linux packages contain the app, and the Linux build starts and keeps running for 25 seconds under a virtual display. Nothing beyond that.
 
 ## Files
 | File | For |
 |---|---|
-| `krish-android-lite-debug.apk` | Any Android phone (8.0+). Smaller, Tier 0 sandbox only. |
-| `krish-android-full-debug.apk` | arm64 phones only. Adds the optional Linux sandbox. |
+| `krish-android.apk` | Any Android phone (8.0+). The only Android file you need. |
 | `krish-windows-x64.zip` | Windows 64-bit. Unzip, run `Krish.exe`. |
 | `krish-linux-x64.tar.gz` | Linux 64-bit. Extract, run `./Krish`. |
 | `SHA256SUMS.txt` | Checksums for all files. |

@@ -1,5 +1,5 @@
 name: release
-# Tag push `v*` (or manual run with a tag) builds unsigned DEBUG Android APKs and Windows/Linux desktop packages,
+# Tag push `v*` (or manual run with a tag) builds an unsigned DEBUG Android APK and Windows/Linux desktop packages,
 # then publishes them as a GitHub PRE-RELEASE. Only GITHUB_TOKEN is used.
 on:
   push:
@@ -30,13 +30,12 @@ jobs:
       - run: npm ci
       - run: npm run build:ui
       - run: npx cap sync android
-      - run: ./gradlew --no-daemon assembleLiteDebug assembleFullDebug
+      - run: ./gradlew --no-daemon assembleLiteDebug
         working-directory: android
       - name: Name the files
         run: |
           mkdir out
-          cp android/app/build/outputs/apk/lite/debug/app-lite-debug.apk out/krish-android-lite-debug.apk
-          cp android/app/build/outputs/apk/full/debug/app-full-debug.apk out/krish-android-full-debug.apk
+          cp android/app/build/outputs/apk/lite/debug/app-lite-debug.apk out/krish-android.apk
       - uses: actions/upload-artifact@v7
         with: { name: android, path: out/*.apk, if-no-files-found: error }
   desktop:

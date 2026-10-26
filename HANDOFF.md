@@ -14,12 +14,22 @@ Method: public CSS/JS bundle of the reference app's login page was fetched and r
 | 3 | Adding a provider = enabled + appended to fallback order + best chat model picked automatically (`core/src/providers/models.ts` `pickModels`/`withAutoModels`, used by router and `store.addProvider/refreshProviderModels`) | DONE, tests added |
 | 4 | Browser card opened on every send. Now it opens only when a page actually loads (`store.ts` onPage hook) or a start URL is given | DONE |
 | 5 | Plain questions ("hi") answered as chat text: prompt rule "answer directly", no step pill for a first-step `done`, blank page is not "sensitive" (`prompt.ts`, `loop.ts`, `redact.ts`), summary limit 2000 -> 6000 | DONE |
-| 6 | Hark-like dark theme (lighter slate blue + graphite glass) and light sky | TODO / in progress |
-| 7 | Performance: remove nested `backdrop-filter`, fixed background, selector hook | TODO / in progress |
-| 8 | Browser card redesign: black card inside the chat layout (phone, desktop window, Linux the same), no S/M/L/XL, no drag | TODO / in progress |
-| 9 | Providers screen: fallback order badge, "Ready" state | TODO |
-| 10 | Clearer first run (no provider -> button to API Keys) | TODO |
+| 6 | Softer dark theme (slate-blue sky, graphite glass) and light sky taken from the reference screens | DONE |
+| 7 | Performance: nested backdrop-filter removed (only top tabs and composer blur), static background, `useAppSelector`, memo chips, bounds sent only on change | DONE, not measured on a real phone |
+| 8 | Browser card redesign: black card docked in the layout, same on phone, desktop and Linux, no drag or S/M/L/XL (see item 6 below) | DONE, checked in headless Chrome at 467x922 and 1280x800; NOT checked on a real phone or Electron window |
+| 9 | Providers screen: Main / Backup N badge from the order of enabled providers | DONE |
+| 10 | Clearer first run: chat empty text, no-provider error has an "Open API Keys" button; ONE Android APK (`krish-android.apk`, the lite flavor) in releases from the next tag on | DONE in code; README links change with the next release |
 | 11 | "Every field shows an error": not reproduced from code; the two visible errors were items 1 and 2. Ask the owner which field if it still happens | OPEN |
+
+**Overall: about 85 % of the owner's list is done in code and tests (core 173, ui 34, desktop 8 pass; lint and typecheck clean). Nothing of this redesign has run on a real phone yet.**
+
+Still to do, in this order:
+1. Cut `v0.1.1` (`git tag v0.1.1 && git push origin v0.1.1`), check the release has `krish-android.apk`, then change the README download table to the single APK row and the v0.1.1 links (the table still lists the two v0.1.0 APKs on purpose: those files exist today).
+2. Owner installs the APK and checks: "hi" gets a text answer with no browser card; adding a provider picks a model; a second provider shows "Backup 1"; the card opens only when a site loads, and the page lines up with the black card (Android `setBounds` + `clipToOutline`).
+3. If the card and native page are offset on a phone: the code is `components/LiveWindow.tsx` (`getBoundingClientRect` of `.view`) and `KrishBrowserPlugin.kt` `setBounds`.
+4. Unverified guess: the model list ranking in `core/src/providers/models.ts` (`score`) is a heuristic; check it against real provider lists and tune the regexes.
+5. The chat screen of the reference app is behind a login: only the owner's screenshots were available. If the owner wants a closer match (card header, animation details), ask for screenshots or a screen recording of that screen. Do not log in or bypass the wall.
+6. Item 11 above (field errors) needs the owner to say which field.
 
 ## RELEASE RUN — DONE 2026-10-24 (v0.1.0 published)
 Followed `docs/AI-RELEASE-PROMPT.md`. Release: https://github.com/DeepuExplainsAi/KRISH/releases/tag/v0.1.0 (pre-release).
@@ -109,7 +119,7 @@ What changed (UI + one prompt line; core logic, policy gate and security rules u
 3. **New chat** (`store.newChat`): clears the thread and goes to Chat; ignored while a run is active (STOP first). History keeps old runs. Test added.
 4. **Steps** (`components/ChipPill.tsx`): spinner / check / warning icons. The latest running step is a black pill.
 5. **Cards** (`components/Prompts.tsx`): confirm / question / secure input / take-over as glass cards with an X close button and "Secured by Krish". Same behaviour: the secure value goes only to the page.
-6. **Browser card** (`components/LiveWindow.tsx`): header has close, title, size buttons S / M / L / XL, minimize. Footer = status pill with the current step (or "Action required" when the user must act), expand/shrink button (cycles medium -> large -> full -> medium), Take over / Resume, STOP. Still draggable (header) and resizable (corner handle, two-finger pinch). Size is clamped so the card never hangs off screen; leaving full restores the old position. It opens automatically when a run starts (Settings: "Show the browser card when the agent starts working", default on). It still collapses to a pill while confirm/question/secure cards are open (security rule, verified).
+6. **Browser card** (`components/LiveWindow.tsx`, redesigned 2026-10-24): a black card in the layout (Chat: between thread and composer; other screens: bottom). The native view sits over `.view` with a 20 px radius (`setBounds` takes `radius`: Android `clipToOutline`, Electron `setBorderRadius`). Strip below: status pill (current step, or "Action required"), Take over / Resume, STOP, expand (full screen), close. No drag, pinch, S/M/L/XL or minimize any more. While a confirm / question / secure card is up the page area folds away (`.live.folded`); take-over keeps it.
 7. **Languages** (`ui/src/i18n/`): English, Hindi, Bengali, Spanish, French, German, Portuguese; Settings -> Language, default Auto (device language). Missing keys fall back to English. **Every screen is wired to `t()`**, but only English and Hindi have the full set of strings (~140 keys, a test enforces Hindi is complete). Bengali/Spanish/French/German/Portuguese cover navigation, chat, cards and the browser card (~50 keys); their inner-screen text (Settings, Providers, Tasks, Security...) shows English until someone adds the keys. **Next step: translate the missing keys for those five** (copy the `// screens` block from `hi.ts`). To add a language: new `xx.ts` (`Partial<Dict>`) + one line in `index.ts` (`DICTS` and `LANG_NAMES`). A test checks keys and `{placeholders}`.
 8. **Agent replies in the user's language** (`core/src/agent/prompt.ts`, `loop.ts`): the system prompt tells the model to answer in the language and script of the latest USER_TASK/USER_REPLY (Hinglish typed in Latin letters gets Hinglish). The model now fills `thought` (<= 60 chars) on every action; it is shown as the step label (redacted, display only; the policy gate never reads it). **Secure-input steps always keep the fixed label "Action required"** so a page-influenced model cannot dress up a password prompt. Tests added.
 9. **Bug found while testing in Chrome:** `scrollIntoView` returns a Promise in current Chrome/WebViews; `useEffect(() => el.scrollIntoView())` returned it as the cleanup function and crashed the whole UI on the first chat message ("destroy_ is not a function"). Fixed with braces in `Chat.tsx`. Never write an effect as an arrow that returns a call's result; use a block body.
@@ -181,7 +191,7 @@ Re-checked the previous work against the spec by running it, not by reading the 
 4. **Lost History/Memory/Task entries.** `Collection` did async read-modify-write with no ordering, so concurrent `history.log` calls overwrote each other (the agent logs chips and actions without awaiting). Writes are now queued. Test fails on old code.
 5. **Provider hang ignored timeout and STOP.** Capacitor's native POST bridge ignores `AbortSignal`, so a hung provider blocked fallback and STOP forever. `core/src/providers/http.ts` now races the request against the timeout and the abort. Two tests fail on old code.
 6. **App layout: bottom nav sat mid-screen** in a real browser (grid rows vs `main`). Now a flex column with safe-area padding (`--safe-area-inset-*` from Capacitor, `env()` fallback).
-7. **Live window jank on low-end devices.** Drag/resize/pinch wrote the whole settings JSON to storage and called the native `setBounds` on every move event. Now: storage written once on release, native bounds once per animation frame. Measured: 0 writes during a 30-move drag, 1 on release.
+7. **Live window jank on low-end devices.** (Old floating card; superseded by the docked card, which has no drag/resize at all. The native bounds are now sent only when the `.view` box changes.)
 8. **Resize handle overlapped the STOP button.** Footer now keeps a right gap.
 9. **Lite mode is on by default on low-RAM devices** (a saved user choice still wins). Test added.
 10. **History cap 5000 -> 2000** (every write rewrites the list; 5000 entries is ~2 MB).
