@@ -710,4 +710,20 @@ describe("runAgent without a page (plain chat)", () => {
     await runAgentRaw({ task: "t" }, { driver: fake.driver, router, ui, controller: new AgentController() });
     expect(fake.log).toEqual([]);
   });
+
+  it("read with no tab open does not invent a page; a failed navigation does not expose the old tab", async () => {
+    const a = await harness([A({ type: "read" }), A({ type: "done", summary: "ok" })]);
+    const { ui, events } = fakeUI();
+    await runAgentRaw({ task: "t" }, { driver: fakeDriver({}, "").driver, router: a.router, ui, controller: new AgentController() });
+    expect(a.prompts[1]).toContain("No page is open");
+    expect(events.some((e) => e.type === "browser")).toBe(false);
+
+    const b = await harness([A({ type: "navigate", url: "https://down.test/" }), A({ type: "done", summary: "ok" })]);
+    const fake = fakeDriver({ [stale]: { text: "Log in to Instagram" } }, stale);
+    const driver = { ...fake.driver, navigate: async () => { throw new Error("net::ERR_NAME_NOT_RESOLVED"); } };
+    await runAgentRaw({ task: "t", openTab: stale }, { driver, router: b.router, ui: fakeUI().ui, controller: new AgentController() });
+    expect(b.prompts[1]).toContain("No page is open");
+    expect(b.prompts[1]).not.toContain("Log in to Instagram");
+  });
 });
+

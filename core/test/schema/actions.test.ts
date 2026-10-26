@@ -60,6 +60,11 @@ describe("parseReply (what the agent loop accepts)", () => {
     expect(() => parseReply("Hello there!", false)).toThrow(ActionParseError);
   });
 
+  it("a first-step sentence with braces is still an answer; only a leading reasoning block is dropped", () => {
+    expect(parseReply("Use {name} as the placeholder.", true)).toEqual({ type: "done", summary: "Use {name} as the placeholder." });
+    expect(parseAction('{"type":"done","summary":"<think>x</think> kept"}')).toMatchObject({ summary: "<think>x</think> kept" });
+  });
+
   it("never turns a broken action into an answer, and the schema still applies inside prose", () => {
     expect(() => parseReply('{"type":"click","elementId":"x"', true)).toThrow(ActionParseError);
     expect(() => parseReply('ok {"type":"eval","code":"1"}', true)).toThrow(ActionParseError);

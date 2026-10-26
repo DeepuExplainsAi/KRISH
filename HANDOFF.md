@@ -4,7 +4,7 @@ Project: KRISH, source-only personal agent (Android + desktop). Spec: `docs/SPEC
 Rule: update this file at the end of every work session (status table + "Next").
 
 ## PHONE-TEST ROUND 2 (v0.1.3, 2026-10-24) — read this first
-Owner's findings from v0.1.2 and what was done (core 192, ui 36, desktop 8 pass; lint and typecheck clean). **Nothing here ran on a real phone yet.**
+Owner's findings from v0.1.2 and what was done (core 195, ui 36, desktop 8 pass; lint and typecheck clean). An independent code review found 8 issues; fixed: navigation now waits for the page to load before it counts as the page (`store.openAndWait`), a failed navigation never exposes the old tab, a plan made while the user took over is dropped, sensitive-page asks are capped per run, a rejected or tab-less first `read` does nothing, history-write failure cannot lock the chat, hand-picked models survive automatic tests (`ProviderConfig.modelsChosen`), braces in a prose answer no longer break parsing. Known, not fixed: no timeout around native browser calls (STOP cannot cancel a hung native call).. **Nothing here ran on a real phone yet.**
 | # | Finding | Fix | State |
 |---|---|---|---|
 | 1 | Old, vanished models kept being used | Model list marks `expiring` (OpenRouter `expiration_date` < 14 days) and never auto-picks it; `probeModels` now tries up to 9 ranked models, 3 at a time, and keeps the first two that answer a JSON probe (a 404 or a prose reply is skipped); a "model no longer available" error triggers a fresh list + probe by itself; at app start, providers that are not OK or not checked for a day are re-tested (`store.checkUntested`) | DONE in code; real providers not tried |

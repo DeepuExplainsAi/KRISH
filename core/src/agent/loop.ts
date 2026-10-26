@@ -49,6 +49,8 @@ interface Turn {
 }
 
 /** What the agent sees while it has no page open. */
+/** Most sign-in/payment questions one run asks before giving up (each page asks only once anyway). */
+const MAX_SENSITIVE_STOPS = 6;
 const NO_PAGE: PageObservation = { url: "", title: "", text: "", elements: [] };
 const noPageText = (openTab?: string) =>
   `No page is open for this task. Answer directly if you can. If the task needs a website, navigate to it.${openTab ? ` The user has this tab open (not read yet): ${openTab}. Use read only if the task is about that tab.` : ""}`;
@@ -115,6 +117,7 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
   let agentOpened = false;
   /** Pages where the user already took over once; asking again would only repeat the same prompt. */
   const takenOver = new Set<string>();
+  let sensitiveStops = 0;
   /** Sign-in / payment pages the user let the AI see for this run. Passwords are never shown anyway (redacted). */
   const consented = new Set<string>();
   /** Login pages already offered a saved login in this run: one try per page, so a wrong password is never retried in a loop. */
@@ -366,6 +369,7 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
         if (e instanceof AllProvidersFailedError) {
           const blockedBySensitive = e.attempts.some((a) => a.detail === "sensitive page not allowed");
           if (sensitive && blockedBySensitive) {
+            if (++sensitiveStops > MAX_SENSITIVE_STOPS) return finish("failed", "I kept landing on sign-in or payment pages. Finish them yourself, then send your request again.");
             const key = pageKey(obs.url);
             const where = key;
             if (!takenOver.has(key)) {
@@ -389,6 +393,12 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
         }
         throw e;
       }
+      // The user took over while the AI was planning: that plan is for a page that may have changed. Plan again after Resume.
+      if (controller.isPaused && action.type !== "done") {
+        await controller.whenRunning();
+        if (signal.aborted) throw new StoppedError();
+        continue;
+      }
       step += 1;
 
       const verdict = gate(action, { obs, homeUrl, drafts });
@@ -408,9 +418,11 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
         return finish("done", action.summary);
       }
 
-      if (!pageLive && action.type === "read") {
-        // The user's open tab becomes the page. The next step observes it.
+      // Without a page, "read" means "look at the tab the user has open". Only a tab that exists can be looked at.
+      const openingTab = !pageLive && action.type === "read" && action.elementId === undefined && verdict.verdict === "allow";
+      if (openingTab && opts.openTab) {
         pageLive = true;
+        ui.emit({ type: "browser" });
         chip(label, "done", id);
         history.push({ action: actionText, result: "now looking at the tab the user has open" });
         continue;
@@ -422,17 +434,22 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
         if (verdict.verdict === "block") {
           result = `blocked: ${verdict.reason}`;
           failed = true;
+        } else if (openingTab) {
+          result = "blocked: no page is open; navigate to a site first";
+          failed = true;
         } else if (verdict.verdict === "confirm" && !(await raceStop(ui.confirm(verdict.request, signal), signal))) {
           result = "user declined this action; ask what to change or finish";
         } else {
           if (verdict.verdict === "confirm" && verdict.request.kind === "navigate") homeUrl = verdict.request.preview; // previews of navigate confirmations are URLs
           if (BROWSER_ACTIONS.has(action.type)) ui.emit({ type: "browser" });
-          if (!pageLive && action.type === "navigate") {
-            homeUrl = action.url;
+          const openUrl = !pageLive && action.type === "navigate" ? action.url : undefined;
+          result = await execute(action, obs);
+          // Only a page that really opened becomes the page the agent reads; a failed navigation leaves the old tab alone.
+          if (openUrl) {
+            homeUrl = openUrl;
             agentOpened = true;
             pageLive = true;
           }
-          result = await execute(action, obs);
         }
       } catch (e) {
         if (e instanceof StoppedError) throw e;
@@ -463,6 +480,6 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
     if (e instanceof StoppedError) return finish("stopped", "stopped by user");
     return finish("failed", e instanceof Error ? redactText(e.message) : "unexpected error");
   } finally {
-    await driver.highlight(undefined).catch(() => undefined);
+    if (pageLive) await driver.highlight(undefined).catch(() => undefined); // a plain chat never touches the browser, not even to clean up
   }
 }

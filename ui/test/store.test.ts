@@ -10,6 +10,7 @@ function setup(script: object[]) {
   const prompts: string[] = [];
   const hooks: { fetch?: (url: string, init?: RequestInit) => Response | undefined } = {}; // tests can take over the network after the store exists
   let i = 0;
+  const pageListeners = new Set<(p: { url: string; title: string; loading: boolean }) => void>();
   const page: PageObservation = {
     url: "https://site.test/login", title: "Login", text: "Sign in",
     elements: [{ id: 0, tag: "input", type: "password", label: "Password" }],
@@ -26,10 +27,10 @@ function setup(script: object[]) {
       return reply(script[Math.min(i++, script.length - 1)]!);
     },
     browser: {
-      open: async () => {}, observe: async () => page, read: async () => "", click: async () => {}, type: async () => {},
+      open: async (url) => { for (const loading of [true, false]) for (const cb of pageListeners) cb({ url, title: "", loading }); }, observe: async () => page, read: async () => "", click: async () => {}, type: async () => {},
       fill: async (id, v) => void filled.push([id, v]), upload: async () => {}, highlight: async () => {}, setBounds: async () => {},
       setMode: async () => {}, setDesktopLayout: async () => {}, snapshot: async () => "", stopLoading: async () => {}, clearSiteData: async () => {},
-      onPage: () => () => {},
+      onPage: (cb) => (pageListeners.add(cb), () => void pageListeners.delete(cb)),
     },
     files: { pick: async () => undefined, read: async () => new Uint8Array(), save: async () => false },
     system: { deviceInfo: async () => ({ lowRam: false, totalMemMb: 4096, linuxSandbox: false }), requestNotifications: async () => true, scheduleDue: async () => {}, cancelDue: async () => {}, openExternal: async () => {} },
@@ -100,7 +101,7 @@ describe("AppStore", () => {
 
   it("secure prompt: user value reaches the page, never the model or history", async () => {
     const { store, filled, prompts } = setup([
-      { type: "read" },
+      { type: "navigate", url: "https://site.test/login" },
       { type: "ask_user", question: "Enter your password", secure: { kind: "password", elementId: 0 } },
       { type: "done", summary: "logged in" },
     ]);
@@ -142,7 +143,7 @@ describe("AppStore", () => {
   });
 
   it("STOP resolves pending prompts and ends the run", async () => {
-    const { store } = setup([{ type: "read" }, { type: "ask_user", question: "Code?", secure: { kind: "otp", elementId: 0 } }]);
+    const { store } = setup([{ type: "navigate", url: "https://site.test/login" }, { type: "ask_user", question: "Code?", secure: { kind: "otp", elementId: 0 } }]);
     await store.init();
     await store.addProvider({ name: "P", kind: "openai-compat", baseUrl: "https://p.test/v1" }, "k");
     await store.updateProvider({ ...store.getState().providers[0]!, defaultModel: "m1", allowSensitive: true });
@@ -182,7 +183,7 @@ describe("AppStore", () => {
   });
 
   it("New chat clears the thread and returns to Chat, but is ignored while a run is active", async () => {
-    const { store } = setup([{ type: "read" }, { type: "ask_user", question: "Code?", secure: { kind: "otp", elementId: 0 } }, { type: "done", summary: "ok" }]);
+    const { store } = setup([{ type: "navigate", url: "https://site.test/login" }, { type: "ask_user", question: "Code?", secure: { kind: "otp", elementId: 0 } }, { type: "done", summary: "ok" }]);
     await store.init();
     await store.addProvider({ name: "P", kind: "openai-compat", baseUrl: "https://p.test/v1" }, "k");
     await store.updateProvider({ ...store.getState().providers[0]!, defaultModel: "m1", allowSensitive: true });

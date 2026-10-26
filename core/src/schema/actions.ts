@@ -66,7 +66,8 @@ export type Action = z.infer<typeof ActionSchema>;
 
 export class ActionParseError extends Error {}
 
-const THINK = /<think(?:ing)?>[\s\S]*?<\/think(?:ing)?>/gi;
+/** Reasoning a model writes before its answer. Only a leading block is removed, so answer text is never edited. */
+const THINK = /^\s*(?:<think(?:ing)?>[\s\S]*?<\/think(?:ing)?>\s*)+/i;
 
 /** First balanced {...} object in the text (string-aware), for models that wrap their JSON in prose. */
 function firstObject(s: string): string | undefined {
@@ -110,12 +111,20 @@ export const parseAction = (raw: string): Action => parseJson(unwrap(raw));
  */
 export function parseReply(raw: string, firstStep: boolean): Action {
   const body = unwrap(raw);
+  // Plain prose is an answer only on the first step, and only when it does not look like an attempted action.
+  const prose = firstStep && body !== "" && !/"type"\s*:/.test(body);
   try {
     return parseJson(body);
   } catch (e) {
     const inner = firstObject(body);
-    if (inner) return parseJson(inner);
-    if (firstStep && body && !/"type"\s*:/.test(body)) return { type: "done", summary: body.slice(0, 6000) };
+    if (inner) {
+      try {
+        return parseJson(inner);
+      } catch (e2) {
+        if (!prose) throw e2; // "Use {name} as the placeholder." is a sentence, not a broken action
+      }
+    }
+    if (prose) return { type: "done", summary: body.slice(0, 6000) };
     throw e;
   }
 }

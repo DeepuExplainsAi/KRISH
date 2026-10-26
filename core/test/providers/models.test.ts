@@ -150,6 +150,15 @@ describe("probeModels", () => {
     expect(out.defaultModel).toBeUndefined();
     expect(out.health).toMatchObject({ ok: false, note: "free limit used up, try again later" });
   });
+  it("keeps hand-picked models that are still listed; replaces automatic ones; clears a model that is no longer offered", async () => {
+    const { deps: d } = deps({ "o.test": chat({}) });
+    const list = withList(["chat-9", "chat-8", "chat-7"]);
+    expect(await probeModels({ ...list, modelsChosen: true, defaultModel: "chat-7" }, "k", d)).toMatchObject({ defaultModel: "chat-7", fallbackModel: "chat-9" });
+    expect(await probeModels({ ...list, defaultModel: "chat-7" }, "k", d)).toMatchObject({ defaultModel: "chat-9", fallbackModel: "chat-8" });
+    expect(await probeModels({ ...list, modelsChosen: true, defaultModel: "gone-1" }, "k", d)).toMatchObject({ defaultModel: "chat-9" });
+    const dead = deps({ "o.test": chat({ "chat-9": 404, "chat-8": 404, "chat-7": 404 }) }).deps;
+    expect((await probeModels({ ...list, defaultModel: "old-1", fallbackModel: "old-2" }, "k", dead)).defaultModel).toBeUndefined();
+  });
   it("a rejected key stops after the first batch", async () => {
     const { calls, deps: d } = deps({ "o.test": () => json({}, 401) });
     const out = await probeModels(withList(["a-1", "a-2", "a-3", "a-4", "a-5"]), "bad", d);

@@ -307,7 +307,7 @@ export class AppStore {
     const key = p && (await this.platform.keys.get(id));
     if (!p || !key) return this.notify("Add an API key first");
     const next = await refreshModels(p, key, { fetch: this.platform.fetch });
-    const gone = (m?: string) => m !== undefined && next.models !== undefined && !next.models.items.some((i) => i.id === m);
+    const gone = (m?: string) => m !== undefined && next.models !== undefined && !next.models.items.some((i) => i.id === m && !i.expiring);
     await this.updateProvider(withAutoModels({ ...next, defaultModel: gone(next.defaultModel) ? undefined : next.defaultModel, fallbackModel: gone(next.fallbackModel) ? undefined : next.fallbackModel }));
   }
 
@@ -416,6 +416,28 @@ export class AppStore {
   }
 
   // ---- running the agent ----
+  /**
+   * Opens a page and returns once it has loaded, so the next read sees the new page and not the one that was open before.
+   * Waits up to 1.5 s for the load to start and 20 s for it to finish; a host that reports no load events returns after the first wait.
+   */
+  private async openAndWait(url: string) {
+    let started = false;
+    let finish: () => void = () => {};
+    const done = new Promise<void>((r) => (finish = r));
+    const off = this.platform.browser.onPage((p) => {
+      if (p.loading) started = true;
+      else if (started) finish();
+    });
+    const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+    try {
+      await this.platform.browser.open(url);
+      await Promise.race([done, wait(1500)]);
+      if (started) await Promise.race([done, wait(20_000)]);
+    } finally {
+      off();
+    }
+  }
+
   private driver(): PageDriver {
     const b = this.platform.browser;
     let fps = new Map<number, string | undefined>();
@@ -426,7 +448,7 @@ export class AppStore {
         if (this.state.settings.screenshots) o.screenshotDataUrl = await b.snapshot(768, 60).catch(() => undefined);
         return o;
       },
-      navigate: (url) => b.open(url),
+      navigate: (url) => this.openAndWait(url),
       read: (id) => b.read(id),
       click: (id) => b.click(id, fps.get(id)),
       type: (id, text, submit) => b.type(id, text, submit, fps.get(id)),
@@ -460,8 +482,8 @@ export class AppStore {
     if (opts.startUrl) this.openWindow();
     else this.closeWindow(); // a plain chat starts without the card (and without the tab left open before)
     this.push({ role: "user", text: command, files: files.length ? files.map(({ name, size }) => ({ name, size })) : undefined });
-    await this.history.log(runId, "run_start", command);
     try {
+      await this.history.log(runId, "run_start", command).catch(() => undefined); // a full disk must not lock the chat
       if (opts.startUrl) await this.platform.browser.open(opts.startUrl);
       const project = (await this.projects.list()).find((p) => p.id === this.state.settings.activeProjectId);
       const task = project?.instructions ? `${command}\n\n(Project "${project.name}": ${project.instructions})` : command;

@@ -105,8 +105,12 @@ export async function probeModels(config: ProviderConfig, apiKey: string, deps: 
     if (results.some((r) => r !== "ok" && r.kind === "auth")) break;
   }
   const at = (deps.now ?? Date.now)();
-  if (worked.length === 0) return { ...config, health: { ok: false, at, note } };
-  return { ...config, defaultModel: worked[0], fallbackModel: worked[1], health: { ok: true, at } };
+  // Hand-picked models stay while the provider still lists them; automatic choices are replaced by what really answered.
+  const items = config.models?.items ?? [];
+  const listed = (id?: string) => (config.modelsChosen && id && (items.length === 0 || items.some((m) => m.id === id && !m.expiring)) ? id : undefined);
+  const defaultModel = listed(config.defaultModel) ?? worked.find((w) => w !== listed(config.fallbackModel));
+  const fallbackModel = listed(config.fallbackModel) ?? worked.find((w) => w !== defaultModel);
+  return { ...config, defaultModel, fallbackModel, health: worked.length ? { ok: true, at } : { ok: false, at, note } };
 }
 
 /** Fills a missing default / fallback model from the fetched list; models the user chose are kept. */

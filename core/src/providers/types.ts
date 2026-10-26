@@ -27,6 +27,8 @@ export interface ProviderConfig {
   allowSensitive: boolean;
   defaultModel?: string;
   fallbackModel?: string;
+  /** The user picked default/fallback by hand: automatic tests keep those (while the provider still lists them) instead of choosing again. */
+  modelsChosen?: boolean;
   /** Optional user-set local daily request cap. */
   dailyLimit?: number;
   models?: ModelCache;
