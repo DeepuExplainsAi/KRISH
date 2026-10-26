@@ -20,6 +20,7 @@ Legend: **RUN** = executed in the build environment with the result observed. **
 | **Login persistence on desktop** (Electron, `persist:krish-agent` partition): app closed and reopened with the same profile. Cookies with an expiry ("remember me") and localStorage survived; session cookies (no expiry) did not, as in any browser | manual script under Xvfb | as described |
 | **Tier 0 worker in real Chrome** (built bundle): script result, infinite loop interrupted at 5 s, `fetch`/`XMLHttpRequest`/`WebSocket`/`importScripts` undefined | agent-browser | pass |
 | **UI layout in real Chrome at 467x922**: nav at the bottom, live window drag writes storage once per drag (0 during, 1 on release or on `pointercancel`; a second pointer and stray moves after cancel are ignored) | agent-browser | pass |
+| **Restyled UI in headless Chrome at 467x922 (2026-10-26)**: chat, secure card, confirm-to-pill collapse, browser card sizes S/M/L/XL/expand (stays on screen, restores position after full), real touch drag + corner resize, Menu, Hindi switch, Lite mode, New chat | CDP script (harness not committed) | pass; found and fixed a UI crash and a dead resize handle |
 | TypeScript strict type-check, ESLint | `npm run typecheck`, `npm run lint` | clean |
 | UI production build (default and with `KRISH_LOCAL_MODEL=1`) | `npm run build:ui` | builds; local model code absent from default bundle |
 | Kotlin sources compile for both flavors (Gradle 8.14.3, AGP 8.13.0, Kotlin 2.4.21, JDK 21, SDK 36); re-run 2026-10-25 | `./gradlew compileLiteDebugKotlin compileFullDebugKotlin` | BUILD SUCCESSFUL |
@@ -42,6 +43,7 @@ Legend: **RUN** = executed in the build environment with the result observed. **
 10. Tier 0 Worker inside the Android WebView and Electron (it ran in desktop Chrome; the memory-cap path was not exercised in a browser).
 11. `ci/workflows/*.yml` were never executed by GitHub (the push token lacked `workflow` scope).
 12. Accessibility, RTL, small screens, landscape.
+13. New UI on a real phone: touch drag/resize of the browser card, native browser view lining up with the card's `.view` box, Hindi/Bengali glyphs, long labels.
 
 ## Review findings that are only partly addressed
 

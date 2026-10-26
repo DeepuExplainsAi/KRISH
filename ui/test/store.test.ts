@@ -111,4 +111,29 @@ describe("AppStore", () => {
     await normal.store.init();
     expect(normal.store.getState().settings.liteMode).toBe(false);
   });
+
+  it("New chat clears the thread and returns to Chat, but is ignored while a run is active", async () => {
+    const { store } = setup([{ type: "ask_user", question: "Code?", secure: { kind: "otp", elementId: 0 } }, { type: "done", summary: "ok" }]);
+    await store.init();
+    await store.addProvider({ name: "P", kind: "openai-compat", baseUrl: "https://p.test/v1" }, "k");
+    await store.updateProvider({ ...store.getState().providers[0]!, defaultModel: "m1", allowSensitive: true });
+    const run = store.send("hello");
+    await tick(); await tick();
+    store.newChat();
+    expect(store.getState().items.length).toBeGreaterThan(0);
+    store.answer(store.getState().prompts[0]!.id, "123456");
+    await run;
+    store.go("home");
+    store.newChat();
+    expect(store.getState().items).toEqual([]);
+    expect(store.getState().screen).toBe("chat");
+  });
+
+  it("language defaults to auto and is saved", async () => {
+    const { store, platform } = setup([]);
+    await store.init();
+    expect(store.getState().settings.language).toBe("auto");
+    await store.saveSettings({ language: "hi" });
+    expect(JSON.parse((await platform.kv.get("settings"))!).language).toBe("hi");
+  });
 });

@@ -41,8 +41,23 @@ const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n)}…` : s
 /** Stops data from closing its own delimiter block. */
 const fence = (tag: string, body: string) => `<${tag}>\n${body.replace(/<\/?(PAGE_DATA|RESULT_DATA|MEMORY|USER_TASK|USER_REPLY)>/gi, "")}\n</${tag}>`;
 
-/** A normal question must never collect a secret: it goes to the AI and into history. */
-const SECRET_ASK = /\b(password|passcode|passphrase|otp|one[- ]time|verification code|2fa|cvv|cvc|card number|pin)\b/i;
+/**
+ * A normal question must never collect a secret: it goes to the AI and into history. The agent answers in the user's
+ * language, so the terms cover every UI language (en, hi, bn, es, fr, de, pt). Unicode-aware: `\b` is ASCII-only.
+ */
+const SECRET_TERMS = [
+  "password", "passcode", "passphrase", "otp", "one[- ]time", "verification code", "security code", "2fa", "cvv", "cvc", "card number", "pin",
+  "पासवर्ड", "पासकोड", "ओटीपी", "वन[- ]टाइम", "सत्यापन कोड", "वेरिफिकेशन कोड", "सुरक्षा कोड", "पिन", "कार्ड नंबर", "सीवीवी",
+  "পাসওয়ার্ড", "ওটিপি", "যাচাইকরণ কোড", "ভেরিফিকেশন কোড", "পিন", "কার্ড নম্বর",
+  "contraseña", "contrasena", "clave", "código de verificación", "codigo de verificacion", "código de seguridad", "número de tarjeta", "numero de tarjeta",
+  "mot de passe", "code de vérification", "code de verification", "code de sécurité", "numéro de carte", "numero de carte", "code pin",
+  "passwort", "kennwort", "bestätigungscode", "sicherheitscode", "kartennummer",
+  "senha", "código de verificação", "codigo de verificacao", "código de segurança", "número do cartão", "numero do cartao",
+];
+const SECRET_ASK = new RegExp(`(?<![\\p{L}\\p{N}\\p{M}])(?:${SECRET_TERMS.join("|")})(?![\\p{L}\\p{N}\\p{M}])`, "iu");
+
+/** Model-written step label: single line, no control / bidi / zero-width characters (they can reorder or hide text). */
+const cleanLabel = (s: string) => s.replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu, " ").replace(/\s+/g, " ").trim();
 
 const kindOfSecret = (k: SecretKind | undefined): "password" | "otp" | undefined =>
   k === "password" ? "password" : k === "otp" || k === "card" ? "otp" : undefined;
@@ -220,7 +235,12 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
       }
       step += 1;
 
-      const label = describe(action, obs);
+      const verdict = gate(action, { obs, homeUrl, drafts });
+      // Display-only (the policy gate never reads it). The model's own status line follows the user's language, but only
+      // for steps that need no approval: a step that asks, confirms or is blocked keeps the app's fixed wording, and
+      // secure-input steps always say "Action required", so model text can never dress up a trusted prompt.
+      const thought = verdict.verdict === "allow" && !(action.type === "ask_user" && action.secure) ? cleanLabel(action.thought ?? "") : "";
+      const label = thought ? clip(redactText(thought), 80) : describe(action, obs);
       const id = chip(label, action.type === "ask_user" && action.secure ? "action_required" : "running");
       const actionText = redactText(JSON.stringify(action.type === "type" || action.type === "paste" ? { ...action, text: clip(action.text, 200) } : action));
 
@@ -230,7 +250,6 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
         return finish("done", action.summary);
       }
 
-      const verdict = gate(action, { obs, homeUrl, drafts });
       let result: string;
       let failed = false;
       try {

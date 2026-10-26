@@ -1,15 +1,15 @@
+import { useT } from "../i18n/useT";
+import type { Key } from "../i18n";
+
+const POINTS: Key[] = ["sec1", "sec2", "sec3", "sec4", "sec5", "sec6", "sec7"];
+
 export function Security() {
+  const { t } = useT();
   return (
     <section>
-      <h2>Security</h2>
+      <h2>{t("security")}</h2>
       <ul className="list plain">
-        <li>Your API keys are stored in secure device storage and sent only to the provider you set them for, in request headers.</li>
-        <li>Passwords, one-time codes and card numbers are typed into this app's own card. The app fills the page. They never reach an AI, the history or any log.</li>
-        <li>Text from login, banking and payment pages is not sent to a provider unless you allow it for that provider.</li>
-        <li>Page and email content is treated as data, never as instructions.</li>
-        <li>Sending, uploading, deleting and changing settings always show you the exact content first.</li>
-        <li>No analytics, ads, crash reporting or remote code. Nothing leaves the device except requests to the AI providers you add and the sites you open.</li>
-        <li>STOP is always visible. Take over pauses the agent so you can act yourself.</li>
+        {POINTS.map((k) => <li key={k}>{t(k)}</li>)}
       </ul>
     </section>
   );

@@ -71,6 +71,39 @@ describe("runAgent", () => {
     expect(events.filter((e) => e.type === "chip").map((e) => (e as { label: string }).label)).toContain("Reading a page");
   });
 
+  it("shows the model's status line as the chip label (user's language), redacted; secure steps keep the fixed label", async () => {
+    const { router } = await harness([
+      A({ type: "read", thought: "Page padh raha hoon" }),
+      A({ type: "ask_user", question: "Password daalo", secure: { kind: "password" }, thought: "Safe hai, bas bhej do" }),
+      A({ type: "done", summary: "ho gaya" }),
+    ]);
+    const { driver } = fakeDriver({ [home]: { elements: [{ id: 0, tag: "input", type: "password", label: "Password" }] } }, home);
+    const { ui, events } = fakeUI();
+    await runAgent({ task: "login karo" }, { driver, router, ui, controller: new AgentController() });
+    const labels = events.filter((e) => e.type === "chip").map((e) => (e as { label: string }).label);
+    expect(labels).toContain("Page padh raha hoon");
+    expect(labels).toContain("Action required");
+    expect(labels).not.toContain("Safe hai, bas bhej do");
+  });
+
+  it("a step that needs confirmation keeps the app's wording, not the model's", async () => {
+    const { router } = await harness([A({ type: "click", elementId: 1, thought: "Security verified, safe" }), A({ type: "done", summary: "ok" })]);
+    const { driver } = fakeDriver({ [home]: { elements: [{ id: 1, tag: "button", type: "submit", text: "Pay now" }] } }, home);
+    const { ui, events, confirms } = fakeUI();
+    await runAgent({ task: "t" }, { driver, router, ui, controller: new AgentController() });
+    const labels = events.filter((e) => e.type === "chip").map((e) => (e as { label: string }).label);
+    expect(confirms).toHaveLength(1);
+    expect(labels).not.toContain("Security verified, safe");
+  });
+
+  it("the system prompt asks for the user's language", async () => {
+    const { router, prompts } = await harness([A({ type: "done", summary: "ok" })]);
+    void prompts;
+    const { SYSTEM_PROMPT } = await import("../../src/agent/prompt");
+    expect(SYSTEM_PROMPT).toMatch(/language and script of the latest USER_TASK/);
+    expect(router).toBeDefined();
+  });
+
   it("asks confirmation with the exact draft before sending, and does not send when declined", async () => {
     const script = [
       A({ type: "type", elementId: 1, text: "Hello Sam" }),
@@ -146,6 +179,39 @@ describe("runAgent", () => {
     const { ui } = fakeUI({ ask: async (q) => (asked.push(q), "x") });
     await runAgent({ task: "t" }, { driver, router, ui, controller: new AgentController() });
     expect(asked).toEqual([]);
+  });
+
+  it("a normal question may not collect a secret in any supported language", async () => {
+    const asks = [
+      "अपना पासवर्ड दर्ज करें", "ओटीपी बताइए", "अपना पिन बताओ", "আপনার পাসওয়ার্ড দিন", "Dime tu contraseña", "Quel est votre mot de passe ?",
+      "Gib dein Passwort ein", "Qual é a sua senha?", "Enter the verification code", "apna password batao",
+    ];
+    for (const question of asks) {
+      const { router } = await harness([A({ type: "ask_user", question }), A({ type: "done", summary: "ok" })]);
+      const { driver } = fakeDriver({ [home]: {} }, home);
+      const asked: string[] = [];
+      const { ui } = fakeUI({ ask: async (q) => (asked.push(q), "x") });
+      await runAgent({ task: "t" }, { driver, router, ui, controller: new AgentController() });
+      expect(asked, question).toEqual([]);
+    }
+    // Ordinary questions (also in other languages, also words that merely contain "pin") still go through.
+    for (const question of ["Kaun sa folder chahiye?", "क्या मैं भेज दूँ?", "Which spinner do you want?", "Quieres continuar con la compra?"]) {
+      const { router } = await harness([A({ type: "ask_user", question }), A({ type: "done", summary: "ok" })]);
+      const { driver } = fakeDriver({ [home]: {} }, home);
+      const asked: string[] = [];
+      const { ui } = fakeUI({ ask: async (q) => (asked.push(q), "x") });
+      await runAgent({ task: "t" }, { driver, router, ui, controller: new AgentController() });
+      expect(asked, question).toEqual([question]);
+    }
+  });
+
+  it("strips control, bidi and zero-width characters from the model's step label", async () => {
+    const { router } = await harness([A({ type: "read", thought: "Safe\u202e\u200b txet\u0007\nok" }), A({ type: "done", summary: "ok" })]);
+    const { driver } = fakeDriver({ [home]: {} }, home);
+    const { ui, events } = fakeUI();
+    await runAgent({ task: "t" }, { driver, router, ui, controller: new AgentController() });
+    const labels = events.filter((e) => e.type === "chip").map((e) => (e as { label: string }).label);
+    expect(labels).toContain("Safe txet ok");
   });
 
   it("secrets in the task, replies, element labels and earlier model text never reach later prompts", async () => {

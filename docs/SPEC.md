@@ -4,7 +4,8 @@ PRODUCT
 A free-to-run personal agent. The user logs into their own accounts once inside the app's built-in browser. Then they give plain-language commands and the agent reads pages, fills forms, pastes text, uploads user-selected files (zip, video, images, docs), and types prompts into AI chat sites, always asking confirmation before risky steps. No backend server; the user brings their own API keys. Everything the agent does is visible inside the app.
 
 BRANDING AND ORIGINALITY (mandatory)
-- Original name, logo, colors, copy and UI. Do not use the names, logos, UI text or screenshots of Hark, Claude, Anthropic or any other product.
+- Original name, logo, copy and icons. Do not use the names, logos, UI text or screenshots of Hark, Claude, Anthropic or any other product.
+- **Owner decision (2026-10-26):** the visual style (sky gradient, frosted glass, black pills, floating browser card, top tab pill, menu list) is deliberately modelled on hark.com, which the owner uses. Only the style is shared: name, text, icons (own SVG paths in `ui/src/components/icons.tsx`) and code are original. Do not copy Hark assets or wording.
 - Feature ideas may come ONLY from public product pages and announcements: https://hark.com and https://iphoneincanada.ca/2026/10/21/claude-duet-proactive-ai-agent-app (Claude Duet). Build original implementations of these public concepts: persistent memory; chat thread; user-made mini-apps ("panels"); a web-task agent; scheduled tasks; projects; an optional opt-in morning brief; approval before major actions; never sending passwords or card numbers to the model.
 - Do NOT decompile, unpack, intercept or analyze any Hark or Claude app, APK, binary or private API.
 - Use REA (https://github.com/morluto/rea; install only from the official repo, rea.tools, or the npm package rea-agents) ONLY to study the open-source references below.
@@ -63,7 +64,7 @@ SAFETY RULES (these override everything else)
 13. No obfuscated code. No downloading and running binaries at build or run time.
 
 SCREENS
-Home, Chat (with live window), Panels, Projects, Scheduled Tasks, History, Providers, Settings, Security.
+Home, Chat (with live window), Projects as top tabs; Panels, Scheduled Tasks, History, Providers, Settings, Security under the Menu (avatar button). New chat button (+) top left. UI language selectable (Settings); the agent answers in the language the user writes.
 
 BUILD ORDER (finish and self-review each step first)
 1. Core: provider adapters, fallback, live model refresh, strict action schema, unit tests with mocked providers (429, 5xx, bad JSON, failed refresh).

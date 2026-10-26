@@ -7,11 +7,16 @@ import {
 import type { Platform } from "../platform";
 import { Tier0Sandbox } from "../sandbox/tier0";
 import { createWebGpuEngine, webgpuAvailable } from "../local/webgpu";
+import type { LangPref } from "../i18n";
 
 export type WindowSize = "mini" | "medium" | "large" | "full";
 
 export interface Settings {
+  /** UI language. "auto" follows the device. The agent answers in the language the user writes, independent of this. */
+  language: LangPref;
   liteMode: boolean;
+  /** Show the browser card as soon as the agent starts working (like a live view). Off: open it by tapping a step. */
+  autoOpenWindow: boolean;
   screenshots: boolean;
   desktopLayout: boolean;
   window: { size: WindowSize; x: number; y: number; w: number; h: number };
@@ -25,7 +30,9 @@ export interface Settings {
 }
 
 export const DEFAULT_SETTINGS: Settings = {
+  language: "auto",
   liteMode: false,
+  autoOpenWindow: true,
   screenshots: false,
   desktopLayout: false,
   window: { size: "medium", x: 16, y: 96, w: 340, h: 320 },
@@ -35,7 +42,7 @@ export const DEFAULT_SETTINGS: Settings = {
   localModelConsent: false,
 };
 
-export type Screen = "home" | "chat" | "panels" | "projects" | "tasks" | "history" | "providers" | "settings" | "security";
+export type Screen = "home" | "chat" | "menu" | "panels" | "projects" | "tasks" | "history" | "providers" | "settings" | "security";
 
 export type Prompt =
   | { id: number; type: "confirm"; req: ConfirmRequest; resolve: (ok: boolean) => void }
@@ -71,8 +78,14 @@ export interface State {
   localStatus: string;
 }
 
+/** Most recent step chip of the chat (old WebViews lack Array.prototype.findLast). */
+export const lastChip = (items: ChatItem[]): ChatItem | undefined => {
+  for (let i = items.length - 1; i >= 0; i--) if (items[i]!.chip) return items[i];
+  return undefined;
+};
+
 export const WINDOW_PRESETS: Record<WindowSize, (vw: number, vh: number) => { w: number; h: number }> = {
-  mini: () => ({ w: 180, h: 130 }),
+  mini: () => ({ w: 220, h: 168 }),
   medium: (vw) => ({ w: Math.min(vw - 24, 360), h: 320 }),
   large: (vw, vh) => ({ w: vw - 16, h: Math.round(vh * 0.62) }),
   full: (vw, vh) => ({ w: vw, h: vh }),
@@ -165,6 +178,8 @@ export class AppStore {
     ]);
     // First run on a low-RAM device starts in Lite mode; once the user has saved settings their choice wins.
     const settings = { ...DEFAULT_SETTINGS, liteMode: info.lowRam, ...(s ? JSON.parse(s) : {}) } as Settings;
+    // First run: park the card in the lower half so the chat above it stays readable.
+    if (!s && typeof window !== "undefined") settings.window = { ...settings.window, y: Math.max(96, window.innerHeight - settings.window.h - 96) };
     // Tier 1 is disabled on low-RAM devices regardless of the saved flag.
     if (info.lowRam) settings.linuxSandbox = false;
     this.unPage = this.platform.browser.onPage((page) => this.set({ page }));
@@ -253,10 +268,17 @@ export class AppStore {
     this.set({ settings });
     if (persist) await this.platform.kv.set(SETTINGS_KEY, JSON.stringify(settings));
   }
+  /** Position before going full screen, so leaving full puts the card back where it was. */
+  private beforeFull?: { x: number; y: number };
   async setWindowSize(size: WindowSize) {
-    const { w, h } = WINDOW_PRESETS[size](window.innerWidth, window.innerHeight);
-    const x = size === "full" ? 0 : this.state.settings.window.x;
-    const y = size === "full" ? 0 : this.state.settings.window.y;
+    const vw = window.innerWidth, vh = window.innerHeight;
+    const cur = this.state.settings.window;
+    const { w, h } = WINDOW_PRESETS[size](vw, vh);
+    if (size === "full" && cur.size !== "full") this.beforeFull = { x: cur.x, y: cur.y };
+    const from = size === "full" ? { x: 0, y: 0 } : cur.size === "full" && this.beforeFull ? this.beforeFull : cur;
+    // Keep the whole card on screen whatever the size (a large card must not hang off the bottom).
+    const x = size === "full" ? 0 : Math.max(0, Math.min(from.x, vw - w));
+    const y = size === "full" ? 0 : Math.max(0, Math.min(from.y, vh - h));
     await this.setWindowRect({ size, w, h, x, y });
   }
 
@@ -362,6 +384,7 @@ export class AppStore {
     const controller = (this.controller = new AgentController());
     this.chipItems.clear();
     this.set({ running: true, paused: false, status: "running", screen: "chat" });
+    if (this.state.settings.autoOpenWindow) this.openWindow();
     this.push({ role: "user", text: command });
     await this.history.log(runId, "run_start", command);
     try {
@@ -392,6 +415,13 @@ export class AppStore {
     this.set({ paused: false, status: "running" });
   }
   clearChat = () => this.set({ items: [] });
+  /** Starts an empty chat. Ignored while a run is active (STOP first). History keeps the old run. */
+  newChat = () => {
+    if (this.state.running) return;
+    this.chipItems.clear();
+    this.clearChat();
+    this.go("chat");
+  };
 
   // ---- sandbox files (system picker in, system picker out) ----
   async addSandboxFile() {
