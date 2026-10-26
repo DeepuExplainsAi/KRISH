@@ -34,6 +34,7 @@ interface Linux {
   run(a: { script: string; files: Record<string, string> }): Promise<{ output: string; files: Record<string, string> }>;
 }
 interface System {
+  openExternal(o: { url: string }): Promise<void>;
   deviceInfo(): Promise<DeviceInfo>;
   requestNotifications(): Promise<{ granted: boolean }>;
   scheduleDue(a: { id: string; at: number; title: string }): Promise<void>;
@@ -109,6 +110,7 @@ export function createCapacitorPlatform(): Platform {
       deviceInfo: () => Sys.deviceInfo(),
       requestNotifications: async () => (await Sys.requestNotifications()).granted,
       scheduleDue: (id, at, title) => Sys.scheduleDue({ id, at, title }),
+      openExternal: (url) => Sys.openExternal({ url }),
       cancelDue: (id) => Sys.cancelDue({ id }),
     },
   };

@@ -2,13 +2,14 @@ import { useEffect, useState } from "react";
 import { Chat } from "./screens/Chat";
 import { History } from "./screens/History";
 import { Home } from "./screens/Home";
-import { Menu } from "./screens/Menu";
+import { Menu, MENU_GROUPS } from "./screens/Menu";
 import { Panels } from "./screens/Panels";
 import { Projects } from "./screens/Projects";
 import { Providers } from "./screens/Providers";
 import { Security } from "./screens/Security";
 import { Settings } from "./screens/Settings";
 import { Tasks } from "./screens/Tasks";
+import { Vault } from "./screens/Vault";
 import { LiveWindow } from "./components/LiveWindow";
 import { IconBack, IconPlus, IconStop } from "./components/icons";
 import { useT } from "./i18n/useT";
@@ -19,11 +20,11 @@ import { useApp, useAppState } from "./state/useStore";
 
 /** Main tabs. Every other screen is reached from the Menu (avatar button). */
 const TABS: [Screen, Key][] = [["home", "home"], ["chat", "chat"], ["projects", "projects"]];
-const SUB = new Set<Screen>(["panels", "tasks", "history", "providers", "settings", "security"]);
+const SUB = new Set<Screen>(["vault", "panels", "tasks", "history", "providers", "settings", "security"]);
 
 const SCREENS: Record<Screen, () => React.JSX.Element> = {
   home: Home, chat: Chat, menu: Menu, panels: Panels, projects: Projects, tasks: Tasks,
-  history: History, providers: Providers, settings: Settings, security: Security,
+  history: History, providers: Providers, settings: Settings, security: Security, vault: Vault,
 };
 
 const STATUS_KEY = { idle: "statusIdle", running: "statusWorking", action_required: "actionRequired", paused: "statusPaused" } as const;
@@ -46,7 +47,7 @@ export function App() {
   if (!s.ready) return <div className="boot">{t("starting")}</div>;
   const Screen = SCREENS[s.screen];
   return (
-    <div className={s.settings.liteMode ? "app lite" : "app"}>
+    <div className={`app${s.settings.liteMode ? " lite" : ""}${s.windowOpen && !s.windowMinimized ? " has-window" : ""}`}>
       <header className="topbar">
         <button className="round" aria-label={t("newChat")} title={t("newChat")} disabled={s.running} onClick={() => { app.newChat(); setChatKey((k) => k + 1); }}><IconPlus /></button>
         <nav className="seg">
@@ -63,10 +64,17 @@ export function App() {
         </div>
       )}
       {s.notice && <div className="notice glass" onClick={() => app.notify(undefined)}>{s.notice}</div>}
+      <div className="body">
+      <aside className="side" aria-label={t("menu")}>
+        {MENU_GROUPS.flat().map(([screen, label, Icon]) => (
+          <button key={screen} className={s.screen === screen ? "on" : ""} onClick={() => app.go(screen)}><Icon />{t(label)}</button>
+        ))}
+      </aside>
       <main>
         {SUB.has(s.screen) && <button className="back" onClick={() => app.go("menu")}><IconBack />{t("menu")}</button>}
         <Screen key={s.screen === "chat" ? `chat${chatKey}` : s.screen} />
       </main>
+      </div>
       <LiveWindow />
     </div>
   );

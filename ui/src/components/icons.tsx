@@ -27,3 +27,4 @@ export const IconClock = () => <Svg><circle cx="12" cy="12" r="9" /><path d="M12
 export const IconHistory = () => <Svg><path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1M3.5 4.5v4h4" /><path d="M12 8v4l2.5 1.5" /></Svg>;
 export const IconKey = () => <Svg><circle cx="8" cy="15" r="4" /><path d="m11 12 9-9M16 7l3 3" /></Svg>;
 export const IconGear = () => <Svg><circle cx="12" cy="12" r="3" /><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M18.7 5.3l-2.1 2.1M7.4 16.6l-2.1 2.1" /></Svg>;
+export const IconVault = () => <Svg><rect x="3.5" y="4" width="17" height="16" rx="3" /><circle cx="12" cy="12" r="3.2" /><path d="M12 8.8V7M12 17v-1.8M8.8 12H7M17 12h-1.8" /></Svg>;

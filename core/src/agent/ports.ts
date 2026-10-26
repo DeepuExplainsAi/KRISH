@@ -33,7 +33,22 @@ export interface Sandbox {
   run(task: SandboxTask, signal?: AbortSignal): Promise<string>;
 }
 
-export type ConfirmKind = "send" | "upload" | "sandbox" | "navigate" | "consent" | "settings";
+export type ConfirmKind = "send" | "upload" | "sandbox" | "navigate" | "consent" | "settings" | "memory" | "vault";
+
+/** KrishVault as the agent loop sees it. Passwords only ever go from here into the page (never to a model, log or history). */
+export interface VaultPort {
+  readonly exists: boolean;
+  readonly unlocked: boolean;
+  unlock(passphrase: string): Promise<boolean>;
+  logins(url: string): { id: string; label: string; username: string; password: string }[];
+}
+
+/** Persistent memory as the agent loop sees it. The loop numbers the listed items m1, m2... for the model; ids stay internal. */
+export interface MemoryPort {
+  list(): Promise<{ id: string; text: string }[]>;
+  add(text: string): Promise<void>;
+  remove(id: string): Promise<void>;
+}
 
 export interface ConfirmRequest {
   kind: ConfirmKind;

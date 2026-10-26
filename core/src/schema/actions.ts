@@ -8,6 +8,8 @@ export const ACTION_TYPES = [
   "paste",
   "upload_selected_file",
   "run_sandbox_task",
+  "memory_add",
+  "memory_remove",
   "wait",
   "ask_user",
   "done",
@@ -48,6 +50,8 @@ export const ActionSchema = z.discriminatedUnion("type", [
     writesFiles: z.boolean(),
     thought,
   }),
+  z.strictObject({ type: z.literal("memory_add"), text: z.string().min(1).max(500), thought }),
+  z.strictObject({ type: z.literal("memory_remove"), ids: z.array(z.string().regex(/^m\d{1,3}$/)).min(1).max(20), thought }),
   z.strictObject({ type: z.literal("wait"), ms: z.number().int().min(0).max(10_000), thought }),
   z.strictObject({
     type: z.literal("ask_user"),

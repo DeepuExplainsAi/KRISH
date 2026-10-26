@@ -24,6 +24,8 @@ No backend server. You bring your own API keys. Everything the agent does is vis
 - Model output is untrusted strict JSON, validated against a schema and an allowlist. Nothing is evaluated.
 - Page, email, chat-site and sandbox text is wrapped as data. Only the message you type in the app is a command.
 - Passwords, OTPs and card numbers never reach a model: the app shows its own masked card and fills the page itself.
+- KrishVault keeps your logins encrypted with one master passphrase and fills them into a login page after you confirm; the AI never sees them.
+- Tell Krish in chat to remember, update or forget something and it changes its memory.
 - Sends, uploads, deletes, settings changes and shell commands show the exact content first (Confirm / Cancel).
 - Keys live in Android Keystore-backed storage (desktop: OS keychain), only ever in request headers.
 - No analytics, telemetry, ads, crash reporters, remote config or remote code. See [SECURITY.md](SECURITY.md).

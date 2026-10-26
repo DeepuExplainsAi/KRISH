@@ -3,6 +3,8 @@ package app.krish.agent
 import android.Manifest
 import android.app.ActivityManager
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.work.Data
@@ -40,6 +42,15 @@ class KrishSystemPlugin : Plugin() {
                 .put("sdk", Build.VERSION.SDK_INT)
                 .put("linuxSandbox", BuildConfig.LINUX_SANDBOX),
         )
+    }
+
+    /** Opens an https page in the user's own browser (key pages). Only https; never inside the agent's WebView. */
+    @PluginMethod fun openExternal(call: PluginCall) {
+        val uri = runCatching { Uri.parse(call.getString("url")) }.getOrNull()
+        if (uri == null || uri.scheme != "https" || uri.host.isNullOrEmpty() || uri.userInfo != null) return call.reject("only https URLs are allowed")
+        runCatching { activity.startActivity(Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+            .onSuccess { call.resolve() }
+            .onFailure { call.reject("no browser available") }
     }
 
     /** Only called from the morning-brief opt-in. Below Android 13 no permission exists. */

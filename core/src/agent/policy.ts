@@ -113,6 +113,8 @@ export function gate(action: Action, ctx: GateContext): Gate {
         ? { verdict: "confirm", request: { kind: "sandbox", title: action.tool === "shell" ? "Run this command in the Linux sandbox?" : "Run task that creates or changes sandbox files?", preview: `${action.tool}:\n${action.code}` } }
         : { verdict: "allow" };
 
+    case "memory_add": // confirmed inside the loop, where the exact text (or the items to forget) is known
+    case "memory_remove":
     case "read":
     case "wait":
     case "ask_user":

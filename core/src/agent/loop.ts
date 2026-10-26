@@ -6,13 +6,14 @@ import { AbortedError } from "../providers/types";
 import { AllProvidersFailedError, type ProviderRouter } from "../providers/router";
 import { parseAction, type Action } from "../schema/actions";
 import { AgentController, raceStop, StoppedError } from "./controller";
-import { gate, sandboxWrites, siteOf } from "./policy";
-import type { AgentStatus, AgentUI, ChipState, PageDriver, Sandbox, SelectedFile } from "./ports";
+import { findLoginFields } from "../vault/vault";
+import { gate, sameSite, sandboxWrites, siteOf } from "./policy";
+import type { AgentStatus, AgentUI, ChipState, MemoryPort, PageDriver, Sandbox, SelectedFile, VaultPort } from "./ports";
 import { SYSTEM_PROMPT } from "./prompt";
 
 export interface AgentOptions {
   task: string;
-  /** Persistent memory text (data, not instructions). */
+  /** Persistent memory text (data, not instructions). Used only when `deps.memory` is absent. */
   memory?: string;
   screenshots?: boolean;
   /** Files the user attached to this task (picked in the system picker). The model sees names and sizes only. */
@@ -26,6 +27,10 @@ export interface AgentDeps {
   ui: AgentUI;
   controller: AgentController;
   sandbox?: Sandbox;
+  /** Lets the agent save and forget memory items when the user asks. The MEMORY block is then numbered m1, m2... */
+  memory?: MemoryPort;
+  /** Saved logins (KrishVault). The app fills them into the login form; the model never sees them. */
+  vault?: VaultPort;
 }
 
 export interface AgentResult {
@@ -57,6 +62,9 @@ const SECRET_TERMS = [
   "senha", "código de verificação", "codigo de verificacao", "código de segurança", "número do cartão", "numero do cartao",
 ];
 const SECRET_ASK = new RegExp(`(?<![\\p{L}\\p{N}\\p{M}])(?:${SECRET_TERMS.join("|")})(?![\\p{L}\\p{N}\\p{M}])`, "iu");
+
+/** The user's task is about logging in. Without this (or a page the agent itself navigated to) a login form that merely happens to be open is left alone. */
+const LOGIN_INTENT = /log[\s-]*(me\s+|us\s+)?(in|on)|sign[\s-]*(me\s+|us\s+)?in|logg?in|vault|लॉग\s?इन|लॉगिन|साइन\s?इन/iu;
 
 /** Model-written step label: single line, no control / bidi / zero-width characters (they can reorder or hide text). */
 export const cleanLabel = (s: string) => s.replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu, " ").replace(/\s+/g, " ").trim();
@@ -91,6 +99,14 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
   let userReply = "";
   let homeUrl = "";
   let step = 0;
+  /** Login pages already offered a saved login in this run: one try per page, so a wrong password is never retried in a loop. */
+  const vaultTried = new Set<string>();
+  const loginAsked = LOGIN_INTENT.test(opts.task);
+  let startUrl = "";
+  /** Values the app typed into a page for the user (saved logins, secure-card entries). Scrubbed from everything bound for a model. */
+  const typed = new Set<string>();
+  const scrub = (text: string) => [...typed].reduce((t, v) => t.split(v).join("[REDACTED]"), text);
+  let memoryShown: { id: string; text: string }[] = [];
 
   const chip = (label: string, state: ChipState, id = ++chipId) => {
     ui.emit({ type: "chip", id, label, state });
@@ -113,6 +129,8 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
       case "paste": return "Pasting text";
       case "upload_selected_file": return "Uploading a file";
       case "run_sandbox_task": return "Running a sandbox task";
+      case "memory_add": return "Saving to memory";
+      case "memory_remove": return "Removing from memory";
       case "wait": return "Waiting";
       case "ask_user": return a.secure ? "Action required" : "Asking you";
       case "done": return "Finished";
@@ -133,7 +151,7 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
         await driver.navigate(a.url);
         return `navigated to ${redactText(a.url)}`;
       case "read":
-        return clip(redactText(await driver.read(a.elementId)), lim.readMaxChars);
+        return clip(scrub(redactText(await driver.read(a.elementId))), lim.readMaxChars);
       case "click":
         await withHighlight(a.elementId, () => driver.click(a.elementId));
         drafts.length = 0;
@@ -171,6 +189,24 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
         const out = await deps.sandbox.run({ tool: a.tool, code: a.code, writesFiles: sandboxWrites(a) }, signal);
         return clip(redactText(out), lim.sandboxOutputMaxChars);
       }
+      case "memory_add": {
+        if (!deps.memory) return "memory unavailable";
+        const text = clip(redactText(a.text), 500);
+        if (!(await raceStop(ui.confirm({ kind: "memory", title: "Remember this?", preview: text }, signal), signal))) return "user declined; nothing was saved";
+        await deps.memory.add(text);
+        return `saved to memory: ${text}`;
+      }
+      case "memory_remove": {
+        if (!deps.memory) return "memory unavailable";
+        const picked = a.ids.map((key) => ({ key, item: memoryShown[Number(key.slice(1)) - 1] }));
+        const unknown = picked.filter((p) => !p.item).map((p) => p.key);
+        if (unknown.length) return `no such memory item: ${unknown.join(", ")}; ids must come from MEMORY. Nothing was removed.`;
+        const chosen = [...new Map(picked.map((p) => [p.item!.id, p.item!])).values()];
+        const preview = chosen.map((m) => `- ${m.text}`).join("\n");
+        if (!(await raceStop(ui.confirm({ kind: "memory", title: "Forget this?", preview }, signal), signal))) return "user declined; nothing was removed";
+        for (const m of chosen) await deps.memory.remove(m.id);
+        return `removed from memory:\n${preview}`;
+      }
       case "wait":
         await new Promise((r) => setTimeout(r, a.ms));
         return `waited ${a.ms} ms`;
@@ -204,12 +240,67 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
     );
     if (value === undefined) return "user cancelled secure input";
     try {
+      if (value.length >= 3) typed.add(value);
       await driver.fillSecret(field.id, value); // value is never stored, logged or sent to a model
     } catch {
       // Page-originated error text could echo the value (a hostile page can hook setters), so it is never passed on.
       return "could not fill the field; the page may have changed. Try again or ask the user to take over";
     }
     return "the user entered the value; it was filled into the page (not visible to you)";
+  }
+
+  /** One offer per login page (query and fragment ignored) and at most 3 per run, so a page that rewrites its URL cannot make the agent ask forever. */
+  const pageKey = (url: string) => { const u = new URL(url); return `${u.origin}${u.pathname}`; };
+
+  /**
+   * Fills a saved login into the login form, with the user's OK. The app does it natively: the model sees only that it happened.
+   * Returns true when something was done (re-observe). Before filling, the page is looked at again: the unlock and confirm cards can
+   * take a long time and the page may have moved on, so the fields and the site are re-checked against the page that is live now.
+   */
+  async function autofillLogin(obs: PageObservation): Promise<boolean> {
+    const vault = deps.vault;
+    const form = vault?.exists ? findLoginFields(obs.elements) : undefined;
+    if (!vault || !form || !sameSite(obs.url, homeUrl) || vaultTried.has(pageKey(obs.url)) || vaultTried.size >= 3) return false;
+    if (!loginAsked && obs.url === startUrl) return false; // an unrelated task (e.g. "remember this") never triggers a login
+    vaultTried.add(pageKey(obs.url));
+    const host = new URL(obs.url).hostname;
+    if (!vault.unlocked) {
+      const pass = await raceStop(ui.askSecure({ kind: "password", title: "Unlock KrishVault to use your saved login", site: "KrishVault", field: "Master passphrase" }, signal), signal);
+      if (pass === undefined || !(await vault.unlock(pass))) {
+        history.push({ action: "KrishVault autofill", result: "KrishVault stayed locked; no saved login was used" });
+        return false;
+      }
+    }
+    const logins = vault.logins(obs.url);
+    const chosen = logins[0];
+    if (!chosen) return false;
+    const who = logins.length > 1 ? `${chosen.label} (${chosen.username}); ${logins.length - 1} more saved` : `${chosen.label} (${chosen.username})`;
+    const ok = await raceStop(ui.confirm({ kind: "vault", title: `Fill your saved login on ${host}?`, preview: who }, signal), signal);
+    if (!ok) {
+      history.push({ action: "KrishVault autofill", result: "user declined the saved login" });
+      return false;
+    }
+    const id = chip("Filling saved login", "running");
+    const abort = (why: string) => {
+      chip("Filling saved login", "error", id);
+      history.push({ action: "KrishVault autofill", result: why });
+      return true;
+    };
+    try {
+      const live = await driver.observe();
+      const liveForm = findLoginFields(live.elements);
+      // Credentials are read from the vault only now, and only if it is still unlocked and the live page is the approved site.
+      const login = vault.unlocked && sameSite(live.url, homeUrl) ? vault.logins(live.url).find((e) => e.id === chosen.id) : undefined;
+      if (!liveForm || !login) return abort("the page changed or KrishVault was locked before the login could be filled; nothing was filled");
+      for (const v of [login.username, login.password]) if (v.length >= 3) typed.add(v);
+      if (liveForm.username && login.username) await driver.fillSecret(liveForm.username.id, login.username);
+      await driver.fillSecret(liveForm.password.id, login.password);
+    } catch {
+      return abort("could not fill the form; the page may have changed");
+    }
+    chip("Filling saved login", "done", id);
+    history.push({ action: "KrishVault autofill", result: "the saved username and password were filled into the login form (not visible to you). Submit the form next." });
+    return true;
   }
 
   try {
@@ -219,17 +310,22 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
 
       const obs = await driver.observe();
       homeUrl ||= obs.url;
+      startUrl ||= obs.url;
+      if (await autofillLogin(obs)) continue;
       const sensitive = isSensitivePage(obs);
       const text = formatObservation(obs);
+      // The numbers the model sees are fixed for this step, so "m2" always means the line it read.
+      memoryShown = deps.memory ? await deps.memory.list() : [];
+      const memoryText = deps.memory ? memoryShown.map((m, i) => `m${i + 1}: ${m.text}`).join("\n") : opts.memory;
       const turns = history.slice(-DEFAULTS.agent.historyWindow).map((t, i) => `${i + 1}. ${t.action}\n   -> ${fence("RESULT_DATA", t.result)}`);
-      const prompt = [
+      const prompt = scrub([
         fence("USER_TASK", redactText(opts.task)),
-        opts.memory ? fence("MEMORY", opts.memory) : "",
+        memoryText ? fence("MEMORY", memoryText) : "",
         attached.length ? fence("USER_FILES", attachedList) : "",
         userReply ? fence("USER_REPLY", userReply) : "",
         turns.length ? `Previous steps:\n${turns.join("\n")}` : "",
         fence("PAGE_DATA", text),
-      ].filter(Boolean).join("\n\n");
+      ].filter(Boolean).join("\n\n"));
       userReply = "";
 
       let action: Action;
@@ -237,7 +333,7 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
         const run = await router.run(
           [
             { role: "system", content: SYSTEM_PROMPT },
-            { role: "user", content: prompt, imageDataUrl: opts.screenshots && !sensitive ? obs.screenshotDataUrl : undefined },
+            { role: "user", content: prompt, imageDataUrl: opts.screenshots && !sensitive && typed.size === 0 ? obs.screenshotDataUrl : undefined },
           ],
           parseAction,
           { sensitive, signal },

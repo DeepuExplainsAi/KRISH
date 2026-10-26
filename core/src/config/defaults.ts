@@ -18,19 +18,29 @@ export const DEFAULTS = {
     circuitThreshold: 3,
     circuitOpenMs: 60_000,
   },
-  /** Provider presets: URL only, user adds key and picks models from the live list. */
+  /**
+   * Provider catalog: URL only, the user adds the key and picks models from the live list.
+   * `keyUrl` = the provider's own page where the user creates a key. `free` = what is free (limits change: check the page).
+   * Links and limits last checked 2026-10-26 (see HANDOFF).
+   */
   presets: [
-    { name: "Google Gemini", kind: "gemini", baseUrl: "https://generativelanguage.googleapis.com" },
-    { name: "Groq", kind: "openai-compat", baseUrl: "https://api.groq.com/openai/v1" },
-    { name: "OpenRouter", kind: "openai-compat", baseUrl: "https://openrouter.ai/api/v1" },
-    { name: "Cerebras", kind: "openai-compat", baseUrl: "https://api.cerebras.ai/v1" },
-    { name: "Mistral", kind: "openai-compat", baseUrl: "https://api.mistral.ai/v1" },
+    { name: "Google Gemini", kind: "gemini", baseUrl: "https://generativelanguage.googleapis.com", keyUrl: "https://aistudio.google.com/apikey", free: "Free tier (not in EU/UK/CH)" },
+    { name: "Groq", kind: "openai-compat", baseUrl: "https://api.groq.com/openai/v1", keyUrl: "https://console.groq.com/keys", free: "Free: about 30 req/min" },
+    { name: "OpenRouter", kind: "openai-compat", baseUrl: "https://openrouter.ai/api/v1", keyUrl: "https://openrouter.ai/keys", free: "Free models (:free): about 20/min, 200/day" },
+    { name: "OpenCode Zen", kind: "openai-compat", baseUrl: "https://opencode.ai/zen/v1", keyUrl: "https://opencode.ai/auth", free: "Some models free for a limited time (they may log prompts)" },
+    { name: "Cerebras", kind: "openai-compat", baseUrl: "https://api.cerebras.ai/v1", keyUrl: "https://cloud.cerebras.ai/", free: "Free: about 30 req/min" },
+    { name: "Mistral", kind: "openai-compat", baseUrl: "https://api.mistral.ai/v1", keyUrl: "https://console.mistral.ai/api-keys", free: "Free tier: about 1 req/s" },
     {
       name: "GitHub Models",
       kind: "openai-compat",
       baseUrl: "https://models.github.ai/inference",
       modelsUrl: "https://models.github.ai/catalog/models",
+      keyUrl: "https://github.com/settings/tokens",
+      free: "Free with a GitHub token (models scope)",
     },
+    { name: "NVIDIA NIM", kind: "openai-compat", baseUrl: "https://integrate.api.nvidia.com/v1", keyUrl: "https://build.nvidia.com/", free: "Free credits" },
+    { name: "Hugging Face", kind: "openai-compat", baseUrl: "https://router.huggingface.co/v1", keyUrl: "https://huggingface.co/settings/tokens", free: "About $0.10 free credit per month" },
+    { name: "SambaNova", kind: "openai-compat", baseUrl: "https://api.sambanova.ai/v1", keyUrl: "https://cloud.sambanova.ai/apis", free: "Free tier" },
   ],
   /** Regex sources (case-insensitive). Edit freely. */
   patterns: {

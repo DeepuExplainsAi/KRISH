@@ -7,7 +7,7 @@ const headers = (key: string) => ({ authorization: `Bearer ${key}` });
 function toBody(model: string, req: CompletionRequest) {
   return {
     model,
-    temperature: 0.2,
+    temperature: 0,
     messages: req.messages.map((m) => ({
       role: m.role,
       content: m.imageDataUrl

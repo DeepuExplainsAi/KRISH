@@ -47,6 +47,7 @@ export function createWebPlatform(): Platform {
       deviceInfo: async () => ({ lowRam: false, totalMemMb: 0, linuxSandbox: false }),
       requestNotifications: async () => false,
       scheduleDue: async () => {},
+      openExternal: async (url) => void window.open(url, "_blank", "noopener,noreferrer"),
       cancelDue: async () => {},
     },
   };

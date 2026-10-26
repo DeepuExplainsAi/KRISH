@@ -15,3 +15,4 @@ local.properties
 android/app/src/main/assets/public/
 android/capacitor-cordova-android-plugins/
 desktop/out/
+ui/dist-harness/

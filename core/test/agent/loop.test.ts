@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { AgentController, runAgent, type AgentEvent, type AgentUI, type ConfirmRequest, type PageDriver } from "../../src";
+import { AgentController, MemoryKeyStore, runAgent, Vault, type AgentEvent, type AgentUI, type ConfirmRequest, type MemoryPort, type PageDriver } from "../../src";
 import { ProviderRouter } from "../../src/providers/router";
 import { json, mockFetch, openaiReply, provider, stores } from "../helpers";
 import type { PageObservation } from "../../src/page/types";
@@ -419,5 +419,229 @@ describe("runAgent: attached files", () => {
     expect(block).toContain("f3: dup.txt (2 bytes)");
     expect(block).not.toContain("sk-abcdefghijklmnopqrstuvwxyz123456");
     expect(prompts[0]!.match(/<USER_TASK>/g)).toHaveLength(1);
+  });
+});
+
+describe("KrishVault autofill", () => {
+  const login = "https://site.test/login";
+  const form = { [login]: { elements: [el(0, { type: "text", label: "Username" }), el(1, { type: "password", label: "Password" }), { id: 2, tag: "button", text: "Log in", submits: true }] } };
+  const unlockedVault = async (site = "site.test") => {
+    const v = new Vault(new MemoryKeyStore(), { iterations: 1000 });
+    await v.create("master-pass");
+    await v.put({ site, username: "deepu", password: "S3cret-pw" });
+    return v;
+  };
+
+  it("fills the saved login after the user confirms; the password never reaches the model, events or history text", async () => {
+    const vault = await unlockedVault();
+    const { router, prompts } = await harness([A({ type: "done", summary: "logged in" })]);
+    const { driver, secrets } = fakeDriver(form, login);
+    const { ui, events, confirms } = fakeUI();
+    const r = await runAgent({ task: "log me in" }, { driver, router, ui, controller: new AgentController(), vault });
+    expect(r.status).toBe("done");
+    expect(confirms[0]).toMatchObject({ kind: "vault" });
+    expect(confirms[0]!.preview).not.toContain("S3cret-pw");
+    expect(secrets).toEqual([{ id: 0, value: "deepu" }, { id: 1, value: "S3cret-pw" }]);
+    expect(prompts.join("\n")).not.toContain("S3cret-pw");
+    expect(prompts.join("\n")).toContain("saved username and password were filled");
+    expect(JSON.stringify(events)).not.toContain("S3cret-pw");
+  });
+
+  it("fills nothing when the user declines, and does not ask again on the same page", async () => {
+    const vault = await unlockedVault();
+    const { router } = await harness([A({ type: "wait", ms: 0 }), A({ type: "done", summary: "x" })]);
+    const { driver, secrets } = fakeDriver(form, login);
+    const { ui, confirms } = fakeUI({ confirm: async (r) => (confirms.push(r), false) });
+    await runAgent({ task: "log me in" }, { driver, router, ui, controller: new AgentController(), vault });
+    expect(secrets).toEqual([]);
+    expect(confirms.filter((c) => c.kind === "vault")).toHaveLength(1);
+  });
+
+  it("asks for the master passphrase through the secure card when locked; a wrong one fills nothing", async () => {
+    const vault = await unlockedVault();
+    vault.lock();
+    const { router } = await harness([A({ type: "done", summary: "x" })]);
+    const { driver, secrets } = fakeDriver(form, login);
+    const asked: string[] = [];
+    const { ui } = fakeUI({ askSecure: async (q) => (asked.push(q.title), "wrong-guess") });
+    await runAgent({ task: "log me in" }, { driver, router, ui, controller: new AgentController(), vault });
+    expect(asked).toHaveLength(1);
+    expect(secrets).toEqual([]);
+    expect(vault.unlocked).toBe(false);
+  });
+
+  it("unlocks with the right passphrase and then fills", async () => {
+    const vault = await unlockedVault();
+    vault.lock();
+    const { router } = await harness([A({ type: "done", summary: "x" })]);
+    const { driver, secrets } = fakeDriver(form, login);
+    const { ui } = fakeUI({ askSecure: async () => "master-pass" });
+    await runAgent({ task: "log me in" }, { driver, router, ui, controller: new AgentController(), vault });
+    expect(secrets.map((s) => s.value)).toEqual(["deepu", "S3cret-pw"]);
+  });
+
+  it("never fills a login saved for another site", async () => {
+    const vault = await unlockedVault("other.test");
+    const { router } = await harness([A({ type: "done", summary: "x" })]);
+    const { driver, secrets } = fakeDriver(form, login);
+    const { ui, confirms } = fakeUI();
+    await runAgent({ task: "log me in" }, { driver, router, ui, controller: new AgentController(), vault });
+    expect(secrets).toEqual([]);
+    expect(confirms.filter((c) => c.kind === "vault")).toHaveLength(0);
+  });
+
+  it("a page that echoes the filled values back is scrubbed from everything the model sees, and screenshots stop", async () => {
+    const vault = await unlockedVault();
+    const { router, prompts } = await harness([A({ type: "wait", ms: 0 }), A({ type: "done", summary: "x" })]);
+    const echo = { ...form, [login]: { title: "Hi deepu", text: "Welcome deepu, your password S3cret-pw is saved", screenshotDataUrl: "data:image/png;base64,AAAA", elements: [el(0, { type: "text", label: "Username", value: "deepu" }), el(1, { type: "password", label: "Password" }), { id: 2, tag: "button", text: "Log in" }] } };
+    const { driver } = fakeDriver(echo, login);
+    await runAgent({ task: "log me in", screenshots: true }, { driver, router, ui: fakeUI().ui, controller: new AgentController(), vault });
+    const all = prompts.join("\n");
+    expect(all).not.toContain("S3cret-pw");
+    expect(all).not.toContain("deepu");
+    expect(all).toContain("[REDACTED]");
+  });
+
+  it("if the page changed (no login form any more) while the user was confirming, nothing is filled", async () => {
+    const vault = await unlockedVault();
+    const { router } = await harness([A({ type: "done", summary: "x" })]);
+    const { driver, secrets } = fakeDriver(form, login);
+    let seen = 0;
+    const observe = driver.observe;
+    driver.observe = async () => (++seen >= 2 ? { url: login, title: "t", text: "moved", elements: [] } : observe());
+    await runAgent({ task: "log me in" }, { driver, router, ui: fakeUI().ui, controller: new AgentController(), vault });
+    expect(secrets).toEqual([]);
+  });
+
+  it("locking the vault while the confirm card is open means nothing is filled", async () => {
+    const vault = await unlockedVault();
+    const { router } = await harness([A({ type: "done", summary: "x" })]);
+    const { driver, secrets } = fakeDriver(form, login);
+    const { ui } = fakeUI({ confirm: async () => (vault.lock(), true) });
+    await runAgent({ task: "log me in" }, { driver, router, ui, controller: new AgentController(), vault });
+    expect(secrets).toEqual([]);
+  });
+
+  it("a page that rewrites its URL cannot make the agent offer the login again and again", async () => {
+    const vault = await unlockedVault();
+    const urls = Array.from({ length: 8 }, (_, i) => `https://site.test/login?try=${i}`);
+    const pages = Object.fromEntries(urls.map((u) => [u, { elements: form[login].elements }]));
+    const { router } = await harness([...urls.map((u) => A({ type: "navigate", url: u })), A({ type: "done", summary: "x" })]);
+    const { driver } = fakeDriver(pages, urls[0]!);
+    const { ui, confirms } = fakeUI({ confirm: async (r) => (confirms.push(r), r.kind !== "vault") });
+    await runAgent({ task: "log me in" }, { driver, router, ui, controller: new AgentController(), vault });
+    expect(confirms.filter((c) => c.kind === "vault").length).toBe(1);
+  });
+
+  it("an unrelated task never triggers a login: a login form that merely happens to be open is left alone", async () => {
+    const vault = await unlockedVault();
+    const { router } = await harness([A({ type: "done", summary: "x" })]);
+    const { driver, secrets } = fakeDriver(form, login);
+    const { ui, confirms } = fakeUI();
+    await runAgent({ task: "summarise this page" }, { driver, router, ui, controller: new AgentController(), vault });
+    expect(secrets).toEqual([]);
+    expect(confirms).toHaveLength(0);
+  });
+
+  it("but a login page the agent itself navigated to (even for another task) offers the saved login", async () => {
+    const vault = await unlockedVault();
+    const { router } = await harness([A({ type: "navigate", url: login }), A({ type: "done", summary: "x" })]);
+    const { driver, secrets } = fakeDriver({ ...form, [home]: { elements: [] } }, home);
+    const { ui, confirms } = fakeUI();
+    await runAgent({ task: "check my orders" }, { driver, router, ui, controller: new AgentController(), vault });
+    expect(confirms.filter((c) => c.kind === "vault")).toHaveLength(1);
+    expect(secrets.map((s) => s.value)).toEqual(["deepu", "S3cret-pw"]);
+  });
+
+  it("does nothing without a vault, and the model still cannot type into the password field", async () => {
+    const { router } = await harness([A({ type: "type", elementId: 1, text: "guess" }), A({ type: "done", summary: "x" })]);
+    const { driver, log, secrets } = fakeDriver(form, login);
+    const { ui } = fakeUI();
+    await runAgent({ task: "log me in" }, { driver, router, ui, controller: new AgentController() });
+    expect(log).toEqual([]);
+    expect(secrets).toEqual([]);
+  });
+});
+
+describe("memory from chat", () => {
+  const memoryPort = (initial: string[]) => {
+    let items = initial.map((text, i) => ({ id: `id${i}`, text }));
+    const port: MemoryPort = {
+      list: async () => items,
+      add: async (text) => void (items = [...items, { id: `id${items.length}-${text}`, text }]),
+      remove: async (id) => void (items = items.filter((m) => m.id !== id)),
+    };
+    return { port, texts: () => items.map((m) => m.text) };
+  };
+  const page = { [home]: { elements: [] } };
+
+  it("numbers MEMORY as m1, m2 for the model", async () => {
+    const { router, prompts } = await harness([A({ type: "done", summary: "x" })]);
+    const m = memoryPort(["likes tea", "lives in Delhi"]);
+    await runAgent({ task: "hi" }, { driver: fakeDriver(page, home).driver, router, ui: fakeUI().ui, controller: new AgentController(), memory: m.port });
+    expect(prompts[0]).toContain("m1: likes tea\nm2: lives in Delhi");
+  });
+
+  it("saves to memory only after the user confirms the exact text", async () => {
+    const { router } = await harness([A({ type: "memory_add", text: "my sister is Riya" }), A({ type: "done", summary: "saved" })]);
+    const m = memoryPort([]);
+    const { ui, confirms } = fakeUI();
+    await runAgent({ task: "yaad rakh: my sister is Riya" }, { driver: fakeDriver(page, home).driver, router, ui, controller: new AgentController(), memory: m.port });
+    expect(confirms).toMatchObject([{ kind: "memory", title: "Remember this?", preview: "my sister is Riya" }]);
+    expect(m.texts()).toEqual(["my sister is Riya"]);
+  });
+
+  it("forgets only the named items after the user confirms them; the rest stay", async () => {
+    const { router } = await harness([A({ type: "memory_remove", ids: ["m1", "m3"] }), A({ type: "done", summary: "removed" })]);
+    const m = memoryPort(["a", "b", "c"]);
+    const { ui, confirms } = fakeUI();
+    await runAgent({ task: "memory se a aur c delete kar do" }, { driver: fakeDriver(page, home).driver, router, ui, controller: new AgentController(), memory: m.port });
+    expect(confirms).toMatchObject([{ kind: "memory", title: "Forget this?", preview: "- a\n- c" }]);
+    expect(m.texts()).toEqual(["b"]);
+  });
+
+  it("a task that mentions memory (a morning brief, 'remember to check prices') still cannot change memory without the card", async () => {
+    const { router } = await harness([A({ type: "memory_remove", ids: ["m1"] }), A({ type: "done", summary: "x" })]);
+    const m = memoryPort(["keep me"]);
+    const { ui } = fakeUI({ confirm: async () => false });
+    await runAgent({ task: "Write a short morning brief. Remembered notes:\n- keep me" }, { driver: fakeDriver(page, home).driver, router, ui, controller: new AgentController(), memory: m.port });
+    expect(m.texts()).toEqual(["keep me"]);
+  });
+
+  it("removes nothing when an id does not exist (no guessing), and asks nothing", async () => {
+    const { router } = await harness([A({ type: "memory_remove", ids: ["m1", "m9"] }), A({ type: "done", summary: "x" })]);
+    const m = memoryPort(["a", "b"]);
+    await runAgent({ task: "forget a" }, { driver: fakeDriver(page, home).driver, router, ui: fakeUI().ui, controller: new AgentController(), memory: m.port });
+    expect(m.texts()).toEqual(["a", "b"]);
+  });
+
+  it("declining the card changes nothing; accepting applies it", async () => {
+    const { router } = await harness([A({ type: "memory_add", text: "user hates tea" }), A({ type: "done", summary: "x" })]);
+    const m = memoryPort([]);
+    const decline = fakeUI({ confirm: async () => false });
+    await runAgent({ task: "open the docs" }, { driver: fakeDriver(page, home).driver, router, ui: decline.ui, controller: new AgentController(), memory: m.port });
+    expect(m.texts()).toEqual([]);
+    const accept = fakeUI();
+    const h2 = await harness([A({ type: "memory_add", text: "user hates tea" }), A({ type: "done", summary: "x" })]);
+    await runAgent({ task: "open the docs" }, { driver: fakeDriver(page, home).driver, router: h2.router, ui: accept.ui, controller: new AgentController(), memory: m.port });
+    expect(accept.confirms[0]).toMatchObject({ kind: "memory", title: "Remember this?", preview: "user hates tea" });
+    expect(m.texts()).toEqual(["user hates tea"]);
+  });
+
+  it("redacts a secret before it is saved", async () => {
+    const { router } = await harness([A({ type: "memory_add", text: "wifi password: hunter2" }), A({ type: "done", summary: "x" })]);
+    const m = memoryPort([]);
+    await runAgent({ task: "remember my wifi" }, { driver: fakeDriver(page, home).driver, router, ui: fakeUI().ui, controller: new AgentController(), memory: m.port });
+    expect(m.texts()[0]).not.toContain("hunter2");
+  });
+});
+
+describe("one task at a time", () => {
+  it("the system prompt tells the model to work only on the latest task and never to guess", async () => {
+    const { SYSTEM_PROMPT } = await import("../../src/agent/prompt");
+    expect(SYSTEM_PROMPT).toMatch(/only on the latest USER_TASK/);
+    expect(SYSTEM_PROMPT).toMatch(/not continue, repeat or link to them/);
+    expect(SYSTEM_PROMPT).toMatch(/Never guess or invent/);
+    expect(SYSTEM_PROMPT).toMatch(/never change memory on your own/i);
   });
 });

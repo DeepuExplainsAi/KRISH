@@ -8,7 +8,7 @@ const CHANNELS = new Set([
   "browser:highlight", "browser:setBounds", "browser:setMode", "browser:setDesktopLayout", "browser:snapshot",
   "browser:stopLoading", "browser:clearSiteData",
   "files:pick", "files:read", "files:save",
-  "system:deviceInfo", "system:scheduleDue", "system:cancelDue",
+  "system:deviceInfo", "system:scheduleDue", "system:cancelDue", "system:openExternal",
   "shell:available", "shell:run",
 ]);
 

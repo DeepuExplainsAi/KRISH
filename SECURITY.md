@@ -31,6 +31,12 @@ hostile files, a curious provider, and bugs of ours**. Not in scope: a rooted/co
 | Trusted UI is never covered by page pixels: the native view is positioned from the live `.view` box (not header/footer), and the card collapses to a pill while a confirm, question or secure card is open (not for CAPTCHA take-over). | `LiveWindow.tsx` | **untested on device** |
 | Android upload: one-shot authorization bound to the page origin, 5 s expiry, cleared on navigation, STOP and site-data clearing. A chooser from another origin gets nothing. | `PickedFiles.kt`, `AgentWebView.kt` | **untested on device** |
 
+### KrishVault (2026-10-27)
+- Logins are encrypted with a master passphrase (PBKDF2-SHA256 600k -> AES-256-GCM) and then stored via the platform key store. Decrypted only in memory while unlocked; auto-lock after 15 min.
+- The model never receives a saved password or username: the app fills the form (`fillSecret`) after a confirm card, and only on the same registrable site as the saved login and the site the run started on. One attempt per page.
+- Every memory change the model proposes shows a confirm card with the exact text first.
+- Values the app typed for the user are scrubbed from model input; a page that transforms a value before showing it (encoding, splitting) is not caught (gap: native fill is not bound to a document token).
+
 ## Sandbox tiers
 
 - **Tier 0 (always on):** a fresh Web Worker per task. Bundled JS/WASM only: fflate (zip/unzip) and QuickJS compiled to WebAssembly for scripts.

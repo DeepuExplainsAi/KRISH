@@ -18,7 +18,7 @@ function toBody(req: CompletionRequest) {
   return {
     ...(system && { systemInstruction: { parts: [{ text: system }] } }),
     contents,
-    generationConfig: { responseMimeType: "application/json", temperature: 0.2 },
+    generationConfig: { responseMimeType: "application/json", temperature: 0 },
   };
 }
 

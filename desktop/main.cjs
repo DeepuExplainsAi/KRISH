@@ -1,5 +1,5 @@
 "use strict";
-const { app, BrowserWindow, WebContentsView, ipcMain, dialog, safeStorage, session, Notification, protocol, net } = require("electron");
+const { app, BrowserWindow, WebContentsView, ipcMain, dialog, safeStorage, session, Notification, protocol, net, shell } = require("electron");
 const { execFile } = require("node:child_process");
 const crypto = require("node:crypto");
 const fs = require("node:fs");
@@ -240,6 +240,7 @@ function registerIpc() {
     const delay = Math.min(Math.max(0, at - Date.now()), 2 ** 31 - 1);
     timers.set(id, setTimeout(() => { if (Notification.isSupported()) new Notification({ title: String(title || "Something is due"), body: "Open Krish to review" }).show(); }, delay));
   });
+  handle("system:openExternal", ({ url }) => { if (!lib.isHttps(url)) throw new Error("only https URLs are allowed"); return shell.openExternal(url); });
   handle("system:cancelDue", ({ id }) => { clearTimeout(timers.get(id)); timers.delete(id); });
 
   handle("shell:available", () => dockerPresent());

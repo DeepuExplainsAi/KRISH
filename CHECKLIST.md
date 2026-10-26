@@ -21,6 +21,7 @@ Legend: **RUN** = executed in the build environment with the result observed. **
 | **Tier 0 worker in real Chrome** (built bundle): script result, infinite loop interrupted at 5 s, `fetch`/`XMLHttpRequest`/`WebSocket`/`importScripts` undefined | agent-browser | pass |
 | **UI layout in real Chrome at 467x922**: nav at the bottom, live window drag writes storage once per drag (0 during, 1 on release or on `pointercancel`; a second pointer and stray moves after cancel are ignored) | agent-browser | pass |
 | **Restyled UI in headless Chrome at 467x922 (2026-10-26)**: chat, secure card, confirm-to-pill collapse, browser card sizes S/M/L/XL/expand (stays on screen, restores position after full), real touch drag + corner resize, Menu, Hindi switch, Lite mode, New chat | CDP script (harness not committed) | pass; found and fixed a UI crash and a dead resize handle |
+| **KrishVault, memory by chat, Auto theme, PC layout, API Keys catalog (2026-10-27)** | `npm test` (core 167, ui 32) + headless-Chrome flow harness `ui/harness` on phone 467x922 and PC 1280x800, light + dark | pass; vault autofill never put the password in a prompt; memory add/update/forget works; every memory change needs a confirm card |
 | TypeScript strict type-check, ESLint | `npm run typecheck`, `npm run lint` | clean |
 | UI production build (default and with `KRISH_LOCAL_MODEL=1`) | `npm run build:ui` | builds; local model code absent from default bundle |
 | Kotlin sources compile for both flavors (Gradle 8.14.3, AGP 8.13.0, Kotlin 2.4.21, JDK 21, SDK 36); re-run 2026-10-25 | `./gradlew compileLiteDebugKotlin compileFullDebugKotlin` | BUILD SUCCESSFUL |
@@ -30,6 +31,7 @@ Legend: **RUN** = executed in the build environment with the result observed. **
 | Merged manifest permissions | inspected merged manifests | only INTERNET and POST_NOTIFICATIONS (WorkManager extras removed) |
 
 ## NOT RUN: needs a real device or display (please test)
+- **(new 2026-10-27)** Kotlin `KrishSystemPlugin.openExternal` not compiled; vault on real Android Keystore / Electron safeStorage; "Get key" opening the real browser; vault autofill on a real login page.
 
 1. **Everything on an Android device.** The APK was not installed or launched.
 2. Agent WebView on Android (including: login survives closing and reopening the app; `CookieManager.flush()` was added in `onPageFinished` and NOT recompiled after the change, the JDK was gone): loading sites, `evaluateJavascript` round trip, element highlight, live-window positioning under the UI (native `setBounds` margins), drag/pinch/resize feel, Mini snapshot mode, safe-area insets with Capacitor's SystemBars.

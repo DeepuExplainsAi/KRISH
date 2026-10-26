@@ -1,4 +1,4 @@
-/* Look: soft sky gradient, frosted glass, black pills (inspired by hark.com). Lite mode swaps blur for solid fills. */
+/* Look: soft sky gradient, frosted glass, black pills. Lite mode swaps blur for solid fills. */
 :root {
   --sky: linear-gradient(180deg, #5b7f9d 0%, #86a8c6 24%, #cfdff0 50%, #d6c4ac 78%, #ad937a 100%);
   --ink: #0f141a; --mute: #475163; --strong: #14171c; --on-strong: #fff; --white: #fff;
@@ -139,6 +139,45 @@ h2 { font-size: 1.35rem; }
 .live.mini .takeover { display: none; }
 .handle { position: absolute; right: 6px; bottom: 6px; width: 34px; height: 34px; cursor: nwse-resize; background: linear-gradient(135deg, transparent 52%, var(--handle) 52%, var(--handle) 58%, transparent 58%, transparent 70%, var(--handle) 70%, var(--handle) 76%, transparent 76%); }
 .live-pill { position: fixed; z-index: 50; right: 12px; bottom: 76px; max-width: 70vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border-radius: 99px; background: var(--strong); color: var(--on-strong); border-color: var(--strong); padding: .6rem 1rem; box-shadow: 0 6px 20px rgba(15,25,40,.35); }
+
+/* body: phone = one column (the sidebar is hidden); wide screens = sidebar + content */
+.body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.side { display: none; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: .6rem; }
+.grid > .card { margin: 0; }
+
+/* Wide screens (PC): content is centered and capped, so nothing stretches across the whole window */
+@media (min-width: 900px) {
+  .app { max-width: 1240px; margin: 0 auto; }
+  .topbar { padding: .9rem 1.25rem; }
+  .body { flex-direction: row; gap: 1rem; padding: 0 1.25rem 1.25rem; }
+  .side { display: flex; flex-direction: column; gap: .25rem; width: 220px; flex: none; align-self: flex-start; padding: .6rem; border-radius: 28px; background: var(--glass); backdrop-filter: var(--blur); border: 1px solid var(--glass-line); }
+  .side button { display: flex; align-items: center; gap: .65rem; width: 100%; justify-content: flex-start; background: none; border: 0; border-radius: 16px; padding: .6rem .8rem; min-height: 44px; text-align: left; }
+  .side button:hover { background: var(--field); }
+  .side button.on { background: var(--strong); color: var(--on-strong); }
+  main { padding: 0; display: flex; justify-content: center; }
+  main > section { width: 100%; max-width: 860px; align-self: flex-start; }
+  main > section.chat { max-width: 780px; align-self: stretch; }
+  .app.has-window main { justify-content: flex-start; }
+  .app.has-window main > section.chat { max-width: 500px; }
+  .msg { max-width: 78%; }
+  .back { display: none; }
+  .avatar { display: none; }
+  .topbar { justify-content: center; position: relative; }
+  .topbar > .round { position: absolute; left: 1.25rem; }
+  .notice { margin: 0 1.25rem .5rem; }
+}
+
+/* API Keys catalog */
+button.plain { background: none; border: 0; width: 100%; text-align: left; padding: 0; min-height: 44px; color: inherit; }
+.letter { display: inline-grid; place-items: center; width: 36px; height: 36px; border-radius: 12px; background: var(--strong); color: var(--on-strong); font-weight: 700; flex: none; }
+.badge { font-size: .72rem; padding: .15rem .5rem; border-radius: 999px; background: var(--field); border: 1px solid var(--glass-line); }
+.providers { padding-bottom: 5rem; }
+.pills { position: sticky; bottom: .5rem; display: flex; gap: .25rem; width: fit-content; margin: 1rem auto 0; padding: .3rem; border-radius: 999px; background: var(--glass); backdrop-filter: var(--blur); border: 1px solid var(--glass-line); }
+.pills button { border: 0; background: none; border-radius: 999px; padding: .5rem 1rem; min-height: 40px; }
+.pills button.on { background: var(--strong); color: var(--on-strong); }
+@media (min-width: 900px) { .grid.wide { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 899px) { .grid.wide { grid-template-columns: 1fr; } }
 
 /* Lite mode: no blur, no animation, no shadows; glass becomes a solid fill so text stays readable. */
 .app.lite *, .app.lite *::before, .app.lite *::after { animation: none !important; transition: none !important; backdrop-filter: none !important; box-shadow: none !important; }

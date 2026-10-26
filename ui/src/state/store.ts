@@ -1,8 +1,8 @@
 import {
   AgentController, autoFetchOnce, cleanLabel, DEFAULT_BRIEF, History, Memory, newId, Panels, ProviderRouter, Projects, refreshModels,
-  runAgent, Scheduler, nextRun, nextBriefAt, briefCommand,
+  runAgent, Scheduler, nextRun, nextBriefAt, briefCommand, Vault,
   type AgentEvent, type AgentUI, type BriefSettings, type ChipState, type ConfirmRequest, type PageDriver, type ProviderConfig,
-  type SecureKind, type SelectedFile, type Sandbox, setLocalEngine, type ModelInfo,
+  type MemoryPort, type SecureKind, type SelectedFile, type Sandbox, setLocalEngine, type ModelInfo,
 } from "@krish/core";
 import type { Platform } from "../platform";
 import { Tier0Sandbox } from "../sandbox/tier0";
@@ -14,7 +14,11 @@ export const MAX_ATTACHMENTS = 10;
 
 export type WindowSize = "mini" | "medium" | "large" | "full";
 
+/** Bump when a default changes and old saved values must be migrated (see `migrateSettings`). */
+export const SETTINGS_VERSION = 2;
+
 export interface Settings {
+  version: number;
   /** UI language. "auto" follows the device. The agent answers in the language the user writes, independent of this. */
   language: LangPref;
   /** "system" follows the device light/dark setting. */
@@ -35,8 +39,9 @@ export interface Settings {
 }
 
 export const DEFAULT_SETTINGS: Settings = {
+  version: SETTINGS_VERSION,
   language: "auto",
-  theme: "light",
+  theme: "system",
   liteMode: false,
   autoOpenWindow: true,
   screenshots: false,
@@ -48,7 +53,16 @@ export const DEFAULT_SETTINGS: Settings = {
   localModelConsent: false,
 };
 
-export type Screen = "home" | "chat" | "menu" | "panels" | "projects" | "tasks" | "history" | "providers" | "settings" | "security";
+/**
+ * Settings saved by an older build. v1 saved the then-default theme "light" for everybody, so it cannot be told apart from a
+ * real choice: it moves to Auto once. Anything saved later is a real choice and is kept.
+ */
+export function migrateSettings(saved: Partial<Settings>): Partial<Settings> {
+  if ((saved.version ?? 1) >= SETTINGS_VERSION) return saved;
+  return { ...saved, version: SETTINGS_VERSION, theme: saved.theme === undefined || saved.theme === "light" ? "system" : saved.theme };
+}
+
+export type Screen = "home" | "chat" | "menu" | "vault" | "panels" | "projects" | "tasks" | "history" | "providers" | "settings" | "security";
 
 export type Prompt =
   | { id: number; type: "confirm"; req: ConfirmRequest; resolve: (ok: boolean) => void }
@@ -94,12 +108,26 @@ export const lastChip = (items: ChatItem[]): ChatItem | undefined => {
   return undefined;
 };
 
+/** Screens at least this wide get the desktop layout: centered content, a side panel next to the chat, a docked browser card. */
+export const WIDE = 900;
+
 export const WINDOW_PRESETS: Record<WindowSize, (vw: number, vh: number) => { w: number; h: number }> = {
   mini: () => ({ w: 220, h: 168 }),
-  medium: (vw) => ({ w: Math.min(vw - 24, 360), h: 320 }),
-  large: (vw, vh) => ({ w: vw - 16, h: Math.round(vh * 0.62) }),
+  medium: (vw, vh) => (vw >= WIDE ? { w: 440, h: Math.min(400, vh - 120) } : { w: Math.min(vw - 24, 360), h: 320 }),
+  large: (vw, vh) => (vw >= WIDE ? { w: Math.min(Math.round(vw * 0.62), 980), h: Math.round(vh * 0.8) } : { w: vw - 16, h: Math.round(vh * 0.62) }),
   full: (vw, vh) => ({ w: vw, h: vh }),
 };
+
+/** The app column on wide screens is centered and at most this wide (styles.css `.app`). */
+export const APP_MAX = 1240;
+
+/** Where the card starts on a first run: right edge of the app column on a wide screen, lower half on a phone. */
+export function firstWindow(vw: number, vh: number): Settings["window"] {
+  const { w, h } = WINDOW_PRESETS.medium(vw, vh);
+  if (vw < WIDE) return { size: "medium", w, h, x: 16, y: Math.max(96, vh - h - 96) };
+  const right = (vw + Math.min(vw, APP_MAX)) / 2 - 20;
+  return { size: "medium", w, h, x: Math.round(right - w), y: 84 };
+}
 
 const SETTINGS_KEY = "settings";
 const PROVIDERS_KEY = "providers";
@@ -140,8 +168,12 @@ export class AppStore {
   readonly panels: Panels;
   readonly scheduler: Scheduler;
   readonly router: ProviderRouter;
+  /** KrishVault: saved logins, encrypted with the user's master passphrase, stored through the platform key store. */
+  readonly vault: Vault;
 
   constructor(readonly platform: Platform) {
+    this.vault = new Vault(platform.keys);
+    this.vault.onChange(() => this.set({}));
     this.memory = new Memory(platform.kv);
     this.history = new History(platform.kv);
     this.projects = new Projects(platform.kv);
@@ -187,9 +219,9 @@ export class AppStore {
       this.platform.kv.get(SETTINGS_KEY), this.platform.kv.get(PROVIDERS_KEY), this.platform.system.deviceInfo(),
     ]);
     // First run on a low-RAM device starts in Lite mode; once the user has saved settings their choice wins.
-    const settings = { ...DEFAULT_SETTINGS, liteMode: info.lowRam, ...(s ? JSON.parse(s) : {}) } as Settings;
-    // First run: park the card in the lower half so the chat above it stays readable.
-    if (!s && typeof window !== "undefined") settings.window = { ...settings.window, y: Math.max(96, window.innerHeight - settings.window.h - 96) };
+    const settings = { ...DEFAULT_SETTINGS, liteMode: info.lowRam, ...(s ? migrateSettings(JSON.parse(s)) : {}) } as Settings;
+    // First run: park the card where it does not cover the chat (lower half on a phone, right side on a wide screen).
+    if (!s && typeof window !== "undefined") settings.window = firstWindow(window.innerWidth, window.innerHeight);
     // Tier 1 is disabled on low-RAM devices regardless of the saved flag.
     if (info.lowRam) settings.linuxSandbox = false;
     this.unPage = this.platform.browser.onPage((page) => this.set({ page }));
@@ -197,11 +229,13 @@ export class AppStore {
       ready: true, settings, providers: p ? JSON.parse(p) : [], deviceLowRam: info.lowRam,
       linuxAvailable: info.linuxSandbox && !info.lowRam,
     });
+    await this.vault.load();
     await this.applyLocalModel();
     await this.rearmSchedules();
   }
 
   dispose() {
+    this.vault.lock();
     this.unPage?.();
     clearInterval(this.snapTimer);
   }
@@ -387,6 +421,16 @@ export class AppStore {
     };
   }
 
+  /** Memory for the agent: it saves or forgets only what the user's chat message asks (see the loop). Global facts and the active project's. */
+  private memoryPort(): MemoryPort {
+    const project = () => this.state.settings.activeProjectId;
+    return {
+      list: async () => (await this.memory.recall(project())).map(({ id, text }) => ({ id, text })),
+      add: async (text) => void (await this.memory.add(text)),
+      remove: (id) => this.memory.remove(id),
+    };
+  }
+
   /** `command` must be text the user typed in this app (or their own saved task/panel). */
   async send(command: string, opts: { startUrl?: string; files?: SelectedFile[] } = {}) {
     if (this.state.running || !command.trim()) return;
@@ -402,12 +446,11 @@ export class AppStore {
     await this.history.log(runId, "run_start", command);
     try {
       if (opts.startUrl) await this.platform.browser.open(opts.startUrl);
-      const memory = await this.memory.forPrompt(this.state.settings.activeProjectId);
       const project = (await this.projects.list()).find((p) => p.id === this.state.settings.activeProjectId);
       const task = project?.instructions ? `${command}\n\n(Project "${project.name}": ${project.instructions})` : command;
       await runAgent(
-        { task, memory, files, screenshots: this.state.settings.screenshots },
-        { driver: this.driver(), router: this.router, ui: this.buildUI(runId), controller, sandbox: this.sandbox },
+        { task, files, screenshots: this.state.settings.screenshots },
+        { driver: this.driver(), router: this.router, ui: this.buildUI(runId), controller, sandbox: this.sandbox, memory: this.memoryPort(), vault: this.vault },
       );
     } finally {
       this.controller = undefined;

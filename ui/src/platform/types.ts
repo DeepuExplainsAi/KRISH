@@ -64,5 +64,7 @@ export interface Platform {
     requestNotifications(): Promise<boolean>;
     scheduleDue(id: string, at: number, title: string): Promise<void>;
     cancelDue(id: string): Promise<void>;
+    /** Opens an https page in the user's own browser (never in the agent's browser, which must not see the user's logins). */
+    openExternal(url: string): Promise<void>;
   };
 }

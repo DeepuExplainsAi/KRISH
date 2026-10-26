@@ -73,17 +73,21 @@ export class Memory {
   list = () => this.items.all();
   remove = (id: string) => this.items.remove(id);
   clear = () => this.items.clear();
-  /** Memory text for the model prompt: global facts plus the active project's. Newest last, size-capped. */
-  async forPrompt(projectId?: string, maxChars = 2000): Promise<string> {
+  /** Global facts plus the active project's, newest kept first while they fit `maxChars`; returned oldest to newest. */
+  async recall(projectId?: string, maxChars = 2000): Promise<MemoryItem[]> {
     const rows = (await this.items.all()).filter((m) => !m.projectId || m.projectId === projectId);
-    const lines: string[] = [];
+    const picked: MemoryItem[] = [];
     let used = 0;
     for (const m of rows.reverse()) {
       if (used + m.text.length > maxChars) break;
-      lines.push(`- ${m.text}`);
+      picked.push(m);
       used += m.text.length;
     }
-    return lines.reverse().join("\n");
+    return picked.reverse();
+  }
+  /** Memory text for the model prompt: global facts plus the active project's. Newest last, size-capped. */
+  async forPrompt(projectId?: string, maxChars = 2000): Promise<string> {
+    return (await this.recall(projectId, maxChars)).map((m) => `- ${m.text}`).join("\n");
   }
 }
 

@@ -1,7 +1,7 @@
 import { MemoryKeyStore, MemoryKV, type PageObservation } from "@krish/core";
 import { describe, expect, it } from "vitest";
 import type { Platform } from "../src/platform/types";
-import { AppStore } from "../src/state/store";
+import { APP_MAX, AppStore, firstWindow, migrateSettings, SETTINGS_VERSION } from "../src/state/store";
 
 const reply = (o: object) => new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(o) } }] }), { status: 200 });
 
@@ -29,7 +29,7 @@ function setup(script: object[]) {
       onPage: () => () => {},
     },
     files: { pick: async () => undefined, read: async () => new Uint8Array(), save: async () => false },
-    system: { deviceInfo: async () => ({ lowRam: false, totalMemMb: 4096, linuxSandbox: false }), requestNotifications: async () => true, scheduleDue: async () => {}, cancelDue: async () => {} },
+    system: { deviceInfo: async () => ({ lowRam: false, totalMemMb: 4096, linuxSandbox: false }), requestNotifications: async () => true, scheduleDue: async () => {}, cancelDue: async () => {}, openExternal: async () => {} },
   };
   return { store: new AppStore(platform), filled, prompts, platform };
 }
@@ -214,7 +214,54 @@ describe("attachments", () => {
     expect(store.getState().attachments.map((f) => f.name)).toEqual(["clip.mp4"]);
   });
 
-  it("the default theme is light", () => {
-    expect(setup([]).store.getState().settings.theme).toBe("light");
+  it("the default theme is Auto (follows the device)", () => {
+    expect(setup([]).store.getState().settings.theme).toBe("system");
+  });
+
+  it("an old saved 'light' (the previous default) moves to Auto once; a later choice is kept", () => {
+    expect(migrateSettings({ theme: "light" })).toMatchObject({ theme: "system", version: SETTINGS_VERSION });
+    expect(migrateSettings({ theme: "dark" })).toMatchObject({ theme: "dark", version: SETTINGS_VERSION });
+    expect(migrateSettings({ version: SETTINGS_VERSION, theme: "light" })).toEqual({ version: SETTINGS_VERSION, theme: "light" });
+  });
+
+  it("the window card starts docked at the right of the centered column on PC and in the lower half on a phone", () => {
+    const pc = firstWindow(1600, 900);
+    expect(pc.x + pc.w).toBe(Math.round((1600 + APP_MAX) / 2 - 20));
+    expect(pc.y).toBe(84);
+    const phone = firstWindow(467, 922);
+    expect(phone).toMatchObject({ x: 16 });
+    expect(phone.y).toBeGreaterThan(300);
+    expect(phone.w).toBeLessThanOrEqual(467 - 24);
+  });
+});
+
+describe("KrishVault in the store", () => {
+  it("is created in the store and kept in the key store as ciphertext, never in kv", async () => {
+    const { store, platform } = setup([]);
+    await store.init();
+    expect(store.vault.exists).toBe(false);
+    await store.vault.create("master-pass");
+    await store.vault.put({ site: "site.test", username: "me", password: "Sup3r-Secret" });
+    expect((await platform.keys.get("krishVault"))!).not.toContain("Sup3r-Secret");
+    expect(await platform.kv.get("krishVault")).toBeUndefined();
+    store.vault.lock();
+    expect(store.vault.unlocked).toBe(false);
+  });
+
+  it("a chat run fills the saved login into the page natively after the user confirms (value never in the prompt)", async () => {
+    const { store, filled, prompts } = setup([{ type: "navigate", url: "https://site.test/login" }, { type: "done", summary: "ok" }]);
+    await store.init();
+    await store.addProvider({ name: "P", kind: "openai-compat", baseUrl: "https://p.test/v1" }, "k");
+    await store.updateProvider({ ...store.getState().providers[0]!, defaultModel: "m1", allowSensitive: true });
+    await store.vault.create("master-pass");
+    await store.vault.put({ site: "site.test", username: "me", password: "Sup3r-Secret" });
+    const run = store.send("log me in to site.test");
+    await tick(); await tick();
+    const card = store.getState().prompts[0]!;
+    expect(card).toMatchObject({ type: "confirm", req: { kind: "vault" } });
+    store.answer(card.id, true);
+    await run;
+    expect(filled.map(([, v]) => v)).toContain("Sup3r-Secret");
+    expect(prompts.join("\n")).not.toContain("Sup3r-Secret");
   });
 });

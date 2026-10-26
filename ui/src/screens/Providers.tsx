@@ -67,42 +67,80 @@ function ProviderCard({ p, first, last }: { p: ProviderConfig; first: boolean; l
   );
 }
 
-export function Providers() {
+type Tab = "all" | "free" | "added" | "custom";
+const TABS: Tab[] = ["all", "free", "added", "custom"];
+type Preset = (typeof DEFAULTS.presets)[number];
+
+/** One catalog row: tap to expand; "Get key" opens the provider's key page in the user's own browser, then the key goes in below. */
+function CatalogRow({ preset, added }: { preset: Preset; added: boolean }) {
   const app = useApp();
-  const s = useAppState();
   const { t } = useT();
-  const [preset, setPreset] = useState(0);
-  const [custom, setCustom] = useState({ name: "", baseUrl: "" });
+  const [open, setOpen] = useState(false);
   const [key, setKey] = useState("");
-  const chosen = DEFAULTS.presets[preset];
-  const add = (e: React.FormEvent) => {
+  const [busy, setBusy] = useState(false);
+  const submit = (e: React.FormEvent) => {
     e.preventDefault();
-    const base = preset < 0 || !chosen
-      ? { name: custom.name || "Custom", kind: "openai-compat" as const, baseUrl: custom.baseUrl }
-      : { name: chosen.name, kind: chosen.kind, baseUrl: chosen.baseUrl, ...("modelsUrl" in chosen ? { modelsUrl: chosen.modelsUrl } : {}) };
-    if (!base.baseUrl.startsWith("https://")) return app.notify(t("providerHttps"));
-    void app.addProvider(base, key).then(() => setKey(""));
+    setBusy(true);
+    const base = { name: preset.name, kind: preset.kind, baseUrl: preset.baseUrl, ...("modelsUrl" in preset ? { modelsUrl: preset.modelsUrl } : {}) };
+    void app.addProvider(base, key).then(() => (setKey(""), setOpen(false))).finally(() => setBusy(false));
   };
   return (
-    <section>
+    <div className="card">
+      <button className="row between plain" onClick={() => setOpen(!open)} aria-expanded={open}>
+        <span className="row"><span className="letter">{preset.name[0]}</span><span><strong>{preset.name}</strong> <span className="muted">{added ? `· ${t("providerAdded")}` : ""}</span><br /><span className="muted">{preset.free}</span></span></span>
+        {preset.free && <span className="badge">{t("free")}</span>}
+      </button>
+      {open && (
+        <form onSubmit={submit}>
+          <button type="button" className="primary" onClick={() => void app.platform.system.openExternal(preset.keyUrl)}>{t("getKey")}</button>
+          <input type="password" autoComplete="off" placeholder={t("apiKey")} value={key} onChange={(e) => setKey(e.target.value)} />
+          <button className="primary" type="submit" disabled={!key || busy}>{t("addAndLoad")}</button>
+        </form>
+      )}
+    </div>
+  );
+}
+
+function CustomForm() {
+  const app = useApp();
+  const { t } = useT();
+  const [custom, setCustom] = useState({ name: "", baseUrl: "" });
+  const [key, setKey] = useState("");
+  const add = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!custom.baseUrl.startsWith("https://")) return app.notify(t("providerHttps"));
+    void app.addProvider({ name: custom.name || "Custom", kind: "openai-compat", baseUrl: custom.baseUrl }, key).then(() => (setKey(""), setCustom({ name: "", baseUrl: "" })));
+  };
+  return (
+    <form className="card" onSubmit={add}>
+      <h4>{t("otherPreset")}</h4>
+      <input placeholder={t("name")} value={custom.name} onChange={(e) => setCustom({ ...custom, name: e.target.value })} />
+      <input placeholder={t("baseUrlPlaceholder")} value={custom.baseUrl} inputMode="url" autoCapitalize="off" onChange={(e) => setCustom({ ...custom, baseUrl: e.target.value })} />
+      <input type="password" autoComplete="off" placeholder={t("apiKey")} value={key} onChange={(e) => setKey(e.target.value)} />
+      <button className="primary" type="submit" disabled={!key || !custom.baseUrl}>{t("addAndLoad")}</button>
+    </form>
+  );
+}
+
+export function Providers() {
+  const s = useAppState();
+  const { t } = useT();
+  const [tab, setTab] = useState<Tab>("all");
+  const names = new Set(s.providers.map((p) => p.name));
+  const catalog = DEFAULTS.presets.filter((p) => tab === "all" || (tab === "free" && p.free));
+  return (
+    <section className="providers">
       <h2>{t("providers")}</h2>
       <p className="muted">{t("providersIntro")}</p>
-      {s.providers.map((p, i) => <ProviderCard key={p.id} p={p} first={i === 0} last={i === s.providers.length - 1} />)}
-      <form className="card" onSubmit={add}>
-        <h4>{t("addProvider")}</h4>
-        <select value={preset} onChange={(e) => setPreset(Number(e.target.value))}>
-          {DEFAULTS.presets.map((p, i) => <option key={p.name} value={i}>{p.name}</option>)}
-          <option value={-1}>{t("otherPreset")}</option>
-        </select>
-        {preset < 0 && (
-          <>
-            <input placeholder={t("name")} value={custom.name} onChange={(e) => setCustom({ ...custom, name: e.target.value })} />
-            <input placeholder={t("baseUrlPlaceholder")} value={custom.baseUrl} onChange={(e) => setCustom({ ...custom, baseUrl: e.target.value })} />
-          </>
-        )}
-        <input type="password" autoComplete="off" placeholder={t("apiKey")} value={key} onChange={(e) => setKey(e.target.value)} />
-        <button className="primary" type="submit" disabled={!key}>{t("addAndLoad")}</button>
-      </form>
+      {(tab === "added" || tab === "all") && s.providers.length > 0 && (
+        <div className="grid wide">{s.providers.map((p, i) => <ProviderCard key={p.id} p={p} first={i === 0} last={i === s.providers.length - 1} />)}</div>
+      )}
+      {tab === "added" && s.providers.length === 0 && <p className="muted">{t("noProvidersYet")}</p>}
+      {tab !== "added" && tab !== "custom" && <div className="grid wide">{catalog.map((p) => <CatalogRow key={p.name} preset={p} added={names.has(p.name)} />)}</div>}
+      {(tab === "custom" || tab === "all") && <CustomForm />}
+      <nav className="pills" aria-label={t("providers")}>
+        {TABS.map((x) => <button key={x} className={tab === x ? "on" : ""} onClick={() => setTab(x)}>{t(`tab_${x}` as never)}</button>)}
+      </nav>
     </section>
   );
 }

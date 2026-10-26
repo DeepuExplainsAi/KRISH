@@ -69,6 +69,7 @@ export function createDesktopPlatform(bridge: Bridge): Platform {
       requestNotifications: async () => true,
       scheduleDue: (id, at, title) => inv("system:scheduleDue", { id, at, title }),
       cancelDue: (id) => inv("system:cancelDue", { id }),
+      openExternal: (url) => inv("system:openExternal", { url }),
     },
   };
 }
