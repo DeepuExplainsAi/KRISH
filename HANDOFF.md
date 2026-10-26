@@ -10,17 +10,15 @@ Last updated: 2026-10-24. Update this block after every step.
 | # | Step | State |
 |---|---|---|
 | 0 | Read HANDOFF.md, BUILD.md, ci/workflows/*.yml | DONE |
-| 1 | `gh auth status` has `workflow` scope | **BLOCKED**: token scopes are `gist, read:org, repo`. Pushing `.github/workflows/*` is refused without `workflow`. |
-| 2 | Copy `ci/workflows/*.yml` to `.github/workflows/`, push, run `check`, fix Kotlin (`openExternal` never compiled) | TODO |
-| 3 | Add `.github/workflows/release.yml` (tag `v*` + workflow_dispatch `tag`; Android lite/full debug, Windows x64 zip, Linux x64 tar.gz, SHA256SUMS.txt; pre-release) | TODO |
-| 4 | Fix loop until all runs are green; tests stay green (core 167, ui 32, desktop 8) | TODO |
-| 5 | Download and verify release files (see prompt step 5) | TODO |
+| 1 | `gh` token has `workflow` scope | DONE (owner granted via `gh auth refresh -s workflow`) |
+| 2 | Workflows copied to `.github/workflows/`, pushed; `check` green incl. both Kotlin flavors (`openExternal` compiles) | DONE: https://github.com/DeepuExplainsAi/KRISH/actions/runs/40338496897 |
+| 3 | `.github/workflows/release.yml` + `.github/release-notes.md` | WRITTEN, not yet run |
+| 4 | `build-apk` and `build-desktop` (manual runs) | DONE, green: runs 40338795116 and 40338801195. No fixes were needed. |
+| 5 | Download and verify release files (prompt step 5) | TODO (after release.yml runs) |
 | 6 | README "Download" section, BUILD.md section 5, session log here | TODO |
-| 7 | Tag `v0.1.0`, release.yml publishes, notes state: unsigned debug, not tested on real devices, known gaps | TODO |
+| 7 | Tag `v0.1.0` -> release.yml publishes pre-release | TODO |
 
-**Unblock (owner):** give the AI a GitHub token with `repo` + `workflow`: either a classic PAT (github.com/settings/tokens -> Generate new token (classic) -> tick `repo` and `workflow`), or on a machine where `gh` is logged in: `gh auth refresh -h github.com -s workflow`. Then re-run the same prompt. Nothing else is needed from the owner.
-
-**Doing now / next action:** nothing is half-done; repo is unchanged except this block. After the scope is available start at step 2. Work on `main`, small commits, no force-push.
+**Doing now / next action:** write README Download section + BUILD.md section 5, then `git tag v0.1.0 && git push origin v0.1.0`, watch `release`, download and verify the files, then fill the session log. Decisions: `ci/workflows/` is kept as a copy of the source; `.github/workflows/` is what runs (keep both in sync or delete `ci/workflows/`). `android-actions/setup-android` was dropped (third party); the runner SDK is used. `/releases/latest` ignores pre-releases, so link to `/releases`.
 
 **Owner requirements for the README "Download" section (step 6):**
 - Professional and engaging; only content that helps the reader download and install. No filler, no badges for the sake of badges.
