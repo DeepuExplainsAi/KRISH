@@ -29,6 +29,8 @@ export interface ProviderConfig {
   dailyLimit?: number;
   models?: ModelCache;
   modelsError?: string;
+  /** Result of the last real call (a connection test or an agent step). Drives the green tick in the UI. */
+  health?: { ok: boolean; at: number; note?: string };
   /** Set after the single automatic fetch on first key add. */
   modelsAutoFetched?: boolean;
 }
@@ -53,6 +55,7 @@ export type ProviderErrorKind =
   | "timeout"
   | "network"
   | "auth"
+  | "payment"
   | "bad_request"
   | "bad_json";
 
@@ -85,4 +88,18 @@ export interface AdapterCall {
 export interface Adapter {
   complete(call: AdapterCall, model: string, req: CompletionRequest): Promise<string>;
   listModels(call: AdapterCall): Promise<ModelInfo[]>;
+}
+
+/** One short line for the user. The raw provider body stays in `Attempt.detail` and never reaches the chat. */
+export function friendlyReason(kind: ProviderErrorKind, status?: number): string {
+  switch (kind) {
+    case "rate_limit": return "free limit used up, try again later";
+    case "auth": return "key rejected";
+    case "payment": return "needs paid credit";
+    case "timeout": return "too slow";
+    case "network": return "no connection";
+    case "server": return "provider is down";
+    case "bad_json": return "unusable reply";
+    default: return status ? `model not usable (HTTP ${status})` : "model not usable";
+  }
 }

@@ -143,6 +143,23 @@ describe("ProviderRouter fallback", () => {
     await expect(router.run(msgs, parseAction)).rejects.toThrow(/Gemini: disabled · Groq: no model selected/);
   });
 
+  it("the error is one short line per provider; the raw provider body never reaches the message", async () => {
+    const big = JSON.stringify({ error: { message: "x".repeat(300) } });
+    const { router } = await setup({ "a.test": () => json(big, 429), "b.test": () => json({}, 402) }, [provider("a", { name: "Gemini" }), provider("b", { name: "Zen" })]);
+    const msg = String(await router.run(msgs, parseAction).catch((e: Error) => e.message));
+    expect(msg).toBe("No AI provider could answer. Gemini: free limit used up, try again later · Zen: needs paid credit");
+  });
+
+  it("reports every real result to onResult", async () => {
+    const seen: [string, boolean, string | undefined][] = [];
+    const { fn } = mockFetch({ "a.test": () => json({}, 401), "b.test": () => openaiReply(DONE) });
+    const ps = [provider("a"), provider("b")];
+    const s = await stores(["a", "b"]);
+    const router = new ProviderRouter({ ...s, fetch: fn, providers: () => ps, onResult: (id, ok, note) => seen.push([id, ok, note]) });
+    await router.run(msgs, parseAction);
+    expect(seen).toEqual([["a", false, "key rejected"], ["b", true, undefined]]);
+  });
+
   it("a provider without a chosen model gets one from its fetched list", async () => {
     const { router } = await setup({ "a.test": () => openaiReply(DONE) }, [
       provider("a", { defaultModel: undefined, models: { fetchedAt: 1, items: [{ id: "chat-2" }, { id: "chat-1" }] } }),
@@ -213,7 +230,7 @@ describe("error classification while reading the body", () => {
     const router = new ProviderRouter({ keys, kv, providers: () => [provider("a")], config: { requestTimeoutMs: 40 }, fetch: hungBody(401) });
     const r = await settle(router.run(msgs, parseAction));
     expect(r).not.toBe("HUNG");
-    expect(String((r as { e: Error }).e)).toMatch(/timeout|timed out/i);
+    expect(String((r as { e: Error }).e)).toMatch(/too slow/i);
     expect(String((r as { e: Error }).e)).not.toMatch(/auth/i);
   });
 

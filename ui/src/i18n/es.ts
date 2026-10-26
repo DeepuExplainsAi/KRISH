@@ -16,4 +16,5 @@ export const es: Partial<Dict> = {
   panels: "Paneles", tasks: "Tareas programadas", history: "Historial", providers: "Proveedores", settings: "Ajustes", security: "Seguridad",
   language: "Idioma", languageAuto: "Automático (idioma del dispositivo)", theme: "Tema", themeSystem: "Sistema (según el dispositivo)", themeLight: "Claro", themeDark: "Oscuro", attachFile: "Adjuntar archivo (foto, vídeo, audio, zip, cualquiera)", attachments: "Archivos adjuntos", removeFile: "Quitar {name}", autoOpenWindow: "Abrir la tarjeta del navegador cuando el agente abra un sitio", starting: "Iniciando…",
   roleMain: "Principal", roleBackup: "Respaldo {n}",
+  dismiss: "Descartar", connected: "Conectado", checking: "Comprobando…", testConnection: "Probar", notWorking: "No funciona: {why}",
 };

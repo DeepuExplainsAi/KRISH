@@ -7,6 +7,7 @@ import {
   type ChatMessage,
   type FetchLike,
   type ProviderConfig,
+  friendlyReason,
   type ProviderErrorKind,
 } from "./types";
 
@@ -18,6 +19,8 @@ export interface RouterDeps {
   providers: () => ProviderConfig[];
   now?: () => number;
   config?: Partial<RouterConfig>;
+  /** Called after every real attempt, so the UI can show a green tick or the reason. */
+  onResult?: (providerId: string, ok: boolean, note?: string) => void;
 }
 
 export interface Attempt {
@@ -25,15 +28,26 @@ export interface Attempt {
   providerName: string;
   model?: string;
   outcome: "ok" | "skipped" | ProviderErrorKind;
+  /** Raw reason (may be long). Logs only; never shown in chat. */
   detail?: string;
+  /** One short line for the user. */
+  reason?: string;
 }
 
 /** Start of the error shown when no provider could answer; the UI offers a shortcut to API Keys for it. */
 export const NO_PROVIDER_PREFIX = "No AI provider could answer.";
 
+/** One short line per provider (its last attempt): "Gemini: free limit used up · Groq: key rejected". */
+function summarize(attempts: Attempt[]): string {
+  const last = new Map<string, Attempt>();
+  for (const a of attempts) last.set(a.providerId, a);
+  const lines = [...last.values()].map((a) => `${a.providerName}: ${a.reason ?? a.detail ?? a.outcome}`);
+  return lines.length ? lines.join(" · ") : "No provider added yet.";
+}
+
 export class AllProvidersFailedError extends Error {
   constructor(readonly attempts: Attempt[]) {
-    super(`${NO_PROVIDER_PREFIX} ${attempts.map((a) => `${a.providerName}: ${a.detail ?? a.outcome}`).join(" · ") || "None added yet"}. Check API Keys.`);
+    super(`${NO_PROVIDER_PREFIX} ${summarize(attempts)}`);
   }
 }
 
@@ -154,12 +168,15 @@ export class ProviderRouter {
             throw new ProviderError("bad_json", "model output rejected by schema");
           }
           this.onSuccess(p.id);
+          this.deps.onResult?.(p.id, true);
           attempts.push({ providerId: p.id, providerName: p.name, model, outcome: "ok" });
           return { value, providerId: p.id, model, attempts };
         } catch (e) {
           if (e instanceof AbortedError) throw e;
           lastError = e instanceof ProviderError ? e : new ProviderError("network", "unexpected provider failure");
-          attempts.push({ providerId: p.id, providerName: p.name, model, outcome: lastError.kind, detail: lastError.message });
+          const reason = friendlyReason(lastError.kind, lastError.status);
+          attempts.push({ providerId: p.id, providerName: p.name, model, outcome: lastError.kind, detail: lastError.message, reason });
+          this.deps.onResult?.(p.id, false, reason);
           if (lastError.kind === "auth") break; // same key: fallback model will not help
         }
       }

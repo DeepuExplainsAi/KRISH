@@ -37,7 +37,13 @@ export function Chat() {
           ) : (
             <div key={i.id} className={`msg ${i.role}${i.failed ? " failed" : ""}`}>
               {i.text}
-              {i.failed && i.text?.startsWith(NO_PROVIDER_PREFIX) && <button type="button" className="primary" onClick={() => app.go("providers")}>{t("openApiKeys")}</button>}
+              {i.via && <small className="via">{i.via}</small>}
+              {i.failed && (
+                <span className="row">
+                  {i.text?.startsWith(NO_PROVIDER_PREFIX) && <button type="button" className="primary" onClick={() => app.go("providers")}>{t("openApiKeys")}</button>}
+                  <button type="button" onClick={() => app.dismissItem(i.id)}>{t("dismiss")}</button>
+                </span>
+              )}
               {i.files?.map((f) => <span key={f.name} className="file-chip static"><IconClip /><span className="txt">{f.name}</span><small>{fmtSize(f.size)}</small></span>)}
             </div>
           ),

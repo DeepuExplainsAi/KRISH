@@ -1,5 +1,5 @@
 import {
-  AgentController, autoFetchOnce, cleanLabel, DEFAULT_BRIEF, History, Memory, newId, Panels, ProviderRouter, Projects, refreshModels, withAutoModels,
+  AgentController, autoFetchOnce, cleanLabel, DEFAULT_BRIEF, History, Memory, newId, Panels, ProviderRouter, Projects, refreshModels, probeModels, withAutoModels,
   runAgent, Scheduler, nextRun, nextBriefAt, briefCommand, Vault,
   type AgentEvent, type AgentUI, type BriefSettings, type ChipState, type ConfirmRequest, type PageDriver, type ProviderConfig,
   type MemoryPort, type SecureKind, type SelectedFile, type Sandbox, setLocalEngine, type ModelInfo,
@@ -75,6 +75,8 @@ export interface ChatItem {
   chip?: { label: string; state: ChipState };
   /** The run ended in an error: shown as an error note, not as an answer. */
   failed?: boolean;
+  /** Which provider and model produced this answer (shown small under it). */
+  via?: string;
 }
 
 export interface State {
@@ -89,6 +91,8 @@ export interface State {
   running: boolean;
   paused: boolean;
   /** The browser card is shown (in the layout, never floating). */
+  /** Provider ids whose connection is being tested right now. */
+  checking: string[];
   windowOpen: boolean;
   /** The card fills the screen. */
   windowExpanded: boolean;
@@ -116,7 +120,7 @@ const PROVIDERS_KEY = "providers";
 export class AppStore {
   state: State = {
     ready: false, screen: "home", settings: DEFAULT_SETTINGS, providers: [], items: [], attachments: [], prompts: [],
-    running: false, paused: false, windowOpen: false, windowExpanded: false,
+    running: false, paused: false, checking: [], windowOpen: false, windowExpanded: false,
     page: { url: "", title: "", loading: false }, status: "idle", deviceLowRam: false, linuxAvailable: false,
     localModels: [], localStatus: "",
   };
@@ -162,6 +166,7 @@ export class AppStore {
     this.router = new ProviderRouter({
       keys: platform.keys, kv: platform.kv, fetch: platform.fetch,
       providers: () => this.routerProviders(),
+      onResult: (id, ok, note) => this.recordHealth(id, ok, note),
     });
   }
 
@@ -215,6 +220,7 @@ export class AppStore {
       linuxAvailable: info.linuxSandbox && !info.lowRam,
     });
     await this.vault.load();
+    void this.checkUntested();
     await this.applyLocalModel();
     await this.rearmSchedules();
   }
@@ -253,10 +259,40 @@ export class AppStore {
     await this.platform.keys.set(id, apiKey);
     const base: ProviderConfig = { ...cfg, id, enabled: true, allowSensitive: false };
     await this.saveProviders([...this.state.providers, base]);
-    // One automatic model fetch, only when the key is first added.
-    // Then the best default / fallback model is picked, so the new provider answers right away.
-    const fetched = await autoFetchOnce(base, apiKey, { fetch: this.platform.fetch });
-    await this.updateProvider(withAutoModels(fetched));
+    // One automatic model fetch, only when the key is first added, then a real test of the best models.
+    await this.check(id, async (p) => autoFetchOnce(p, apiKey, { fetch: this.platform.fetch }));
+  }
+
+  /** Fetches (optionally), then really asks the best models: the first two that answer become default and fallback. */
+  private async check(id: string, prepare?: (p: ProviderConfig) => Promise<ProviderConfig>) {
+    this.set({ checking: [...this.state.checking, id] });
+    try {
+      let p = this.state.providers.find((x) => x.id === id);
+      const key = await this.platform.keys.get(id);
+      if (!p || !key) return;
+      if (prepare) p = await prepare(p);
+      await this.updateProvider(await probeModels(p, key, { fetch: this.platform.fetch }));
+    } finally {
+      this.set({ checking: this.state.checking.filter((x) => x !== id) });
+    }
+  }
+
+  /** Providers saved before connection tests existed get one real test, one after the other, in the background. */
+  private async checkUntested() {
+    for (const p of this.state.providers.filter((x) => x.enabled && !x.health)) await this.check(p.id).catch(() => undefined);
+  }
+
+  /** "Test" button: refetch the list and probe again. Replaces models the user did not pick by hand only when none works. */
+  testProvider = (id: string) => this.check(id, async (p) => {
+    const key = (await this.platform.keys.get(id)) ?? "";
+    return refreshModels(p, key, { fetch: this.platform.fetch });
+  });
+
+  /** Every real agent call updates the tick; written only when the state changes. */
+  private recordHealth(id: string, ok: boolean, note?: string) {
+    const p = this.state.providers.find((x) => x.id === id);
+    if (!p || (p.health?.ok === ok && p.health.note === note)) return;
+    void this.updateProvider({ ...p, health: { ok, at: Date.now(), note } });
   }
 
   async updateProvider(p: ProviderConfig) {
@@ -341,6 +377,7 @@ export class AppStore {
   }
 
   private cardShownThisRun = false;
+  private via?: string;
   private chipItems = new Map<number, number>();
   private onAgentEvent(runId: string, e: AgentEvent) {
     if (e.type === "chip") {
@@ -353,10 +390,15 @@ export class AppStore {
         this.set({ items: [...this.state.items, { id, role: "agent", chip: { label: e.label, state: e.state } }] });
       }
       void this.history.log(runId, "chip", e.label, undefined, e.state);
+    } else if (e.type === "provider") {
+      const name = this.routerProviders().find((p) => p.id === e.providerId)?.name ?? "";
+      this.via = name ? `${name} · ${e.model}` : e.model;
     } else if (e.type === "action") {
       void this.history.log(runId, "action", e.action.type, e.result);
     } else if (e.type === "end") {
-      this.push({ role: "agent", text: e.summary, ...(e.status === "failed" || e.status === "max_steps" ? { failed: true } : {}) });
+      const bad = e.status === "failed" || e.status === "max_steps";
+      this.push({ role: "agent", text: e.summary, ...(bad ? { failed: true } : this.via ? { via: this.via } : {}) });
+      this.via = undefined;
       void this.history.log(runId, "run_end", e.status, e.summary);
     }
   }
@@ -438,6 +480,7 @@ export class AppStore {
     this.set({ paused: false, status: "running" });
   }
   clearChat = () => this.set({ items: [] });
+  dismissItem = (id: number) => this.set({ items: this.state.items.filter((i) => i.id !== id) });
   /** Opens the system picker (any file type). Throws if the platform cannot read the file; the UI shows the message. */
   async attach() {
     if (this.picking || this.state.running || this.state.attachments.length >= MAX_ATTACHMENTS) return;

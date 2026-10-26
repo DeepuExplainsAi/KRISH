@@ -8,6 +8,7 @@ const reply = (o: object) => new Response(JSON.stringify({ choices: [{ message: 
 function setup(script: object[]) {
   const filled: [number, string][] = [];
   const prompts: string[] = [];
+  const hooks: { fetch?: (url: string, init?: RequestInit) => Response | undefined } = {}; // tests can take over the network after the store exists
   let i = 0;
   const page: PageObservation = {
     url: "https://site.test/login", title: "Login", text: "Sign in",
@@ -18,6 +19,8 @@ function setup(script: object[]) {
     kv: new MemoryKV(),
     keys: new MemoryKeyStore(),
     fetch: async (url, init) => {
+      const forced = hooks.fetch?.(url, init);
+      if (forced) return forced;
       if (url.endsWith("/models")) return new Response(JSON.stringify({ data: [{ id: "m1" }] }), { status: 200 });
       prompts.push(JSON.parse(String(init?.body)).messages[1].content);
       return reply(script[Math.min(i++, script.length - 1)]!);
@@ -31,7 +34,7 @@ function setup(script: object[]) {
     files: { pick: async () => undefined, read: async () => new Uint8Array(), save: async () => false },
     system: { deviceInfo: async () => ({ lowRam: false, totalMemMb: 4096, linuxSandbox: false }), requestNotifications: async () => true, scheduleDue: async () => {}, cancelDue: async () => {}, openExternal: async () => {} },
   };
-  return { store: new AppStore(platform), filled, prompts, platform };
+  return { store: new AppStore(platform), filled, prompts, platform, hooks };
 }
 
 const tick = () => new Promise((r) => setTimeout(r, 10));
@@ -49,34 +52,50 @@ describe("AppStore", () => {
 
   it("a provider added with a key is ready at once: enabled, last in the fallback list, best model chosen", async () => {
     const { store, platform } = setup([]);
-    platform.fetch = async () => new Response(JSON.stringify({ data: [{ id: "chat-small-mini" }, { id: "chat-3-pro" }, { id: "embed-1" }] }), { status: 200 });
+    platform.fetch = async (url) =>
+      url.endsWith("/models")
+        ? new Response(JSON.stringify({ data: [{ id: "chat-small-mini" }, { id: "chat-3-pro" }, { id: "embed-1" }] }), { status: 200 })
+        : reply({ ok: true });
     await store.init();
     await store.addProvider({ name: "A", kind: "openai-compat", baseUrl: "https://a.test/v1" }, "k1");
     await store.addProvider({ name: "B", kind: "openai-compat", baseUrl: "https://b.test/v1" }, "k2");
     const [a, b] = store.getState().providers;
     expect([a!.name, b!.name]).toEqual(["A", "B"]);
-    expect(b).toMatchObject({ enabled: true, defaultModel: "chat-3-pro", fallbackModel: "chat-small-mini" });
+    expect(b).toMatchObject({ enabled: true, defaultModel: "chat-3-pro", fallbackModel: "chat-small-mini", health: { ok: true } });
   });
 
-  it("a plain answer does not open the browser card; loading a page does, once per run", async () => {
-    const plain = setup([{ type: "done", summary: "Hello! How can I help?" }]);
-    await plain.store.init();
-    await plain.store.addProvider({ name: "P", kind: "openai-compat", baseUrl: "https://p.test/v1" }, "k");
-    await plain.store.updateProvider({ ...plain.store.getState().providers[0]!, allowSensitive: true }); // the fake page is a login form
-    await plain.store.send("hi");
-    const s = plain.store.getState();
-    expect(s.windowOpen).toBe(false);
-    expect(s.items.map((i) => i.text ?? i.chip?.label)).toEqual(["hi", "Hello! How can I help?"]); // no step pill for a plain answer
+  it("only models that really answer are chosen; a provider that answers nothing shows why, not a tick", async () => {
+    const { store, platform } = setup([]);
+    platform.fetch = async (url, init) => {
+      if (url.endsWith("/models")) return new Response(JSON.stringify({ data: [{ id: "chat-9" }, { id: "chat-8" }, { id: "chat-7" }] }), { status: 200 });
+      const model = JSON.parse(String(init?.body)).model as string;
+      return model === "chat-7" ? reply({ ok: true }) : new Response("{}", { status: model === "chat-9" ? 429 : 402 });
+    };
+    await store.init();
+    await store.addProvider({ name: "A", kind: "openai-compat", baseUrl: "https://a.test/v1" }, "k");
+    expect(store.getState().providers[0]).toMatchObject({ defaultModel: "chat-7", fallbackModel: undefined, health: { ok: true } });
 
-    const web = setup([{ type: "navigate", url: "https://site.test/x" }, { type: "done", summary: "ok" }]);
-    let onPage: (p: { url: string; title: string; loading: boolean; canGoBack: boolean }) => void = () => {};
-    web.platform.browser.onPage = (cb) => ((onPage = cb), () => {});
-    web.platform.browser.open = async (url) => onPage({ url, title: "", loading: false, canGoBack: false });
-    await web.store.init();
-    await web.store.addProvider({ name: "P", kind: "openai-compat", baseUrl: "https://p.test/v1" }, "k");
-    await web.store.updateProvider({ ...web.store.getState().providers[0]!, allowSensitive: true });
-    await web.store.send("open the site");
-    expect(web.store.getState().windowOpen).toBe(true);
+    platform.fetch = async (url) => (url.endsWith("/models") ? new Response(JSON.stringify({ data: [{ id: "chat-1" }] }), { status: 200 }) : new Response("{}", { status: 402 }));
+    await store.addProvider({ name: "Z", kind: "openai-compat", baseUrl: "https://z.test/v1" }, "k");
+    expect(store.getState().providers[1]).toMatchObject({ health: { ok: false, note: "needs paid credit" } });
+    expect(store.getState().providers[1]!.defaultModel).toBeUndefined();
+    expect(store.getState().checking).toEqual([]);
+  });
+
+  it("a real agent call updates the tick; a failed call clears it with the reason; the message can be dismissed", async () => {
+    const { store, hooks } = setup([{ type: "done", summary: "Hello" }]);
+    hooks.fetch = (_url, init) => (JSON.parse(String(init?.body ?? "{}")).messages?.length === 1 ? reply({ ok: true }) : undefined); // the one-message connection test
+    await store.init();
+    await store.addProvider({ name: "P", kind: "openai-compat", baseUrl: "https://p.test/v1" }, "k");
+    await store.updateProvider({ ...store.getState().providers[0]!, allowSensitive: true });
+    expect(store.getState().providers[0]!.health?.ok).toBe(true);
+    hooks.fetch = () => new Response("{}", { status: 429 });
+    await store.send("hi");
+    expect(store.getState().providers[0]!.health).toMatchObject({ ok: false, note: "free limit used up, try again later" });
+    const failed = store.getState().items.find((i) => i.failed)!;
+    expect(failed.text).toBe("No AI provider could answer. P: free limit used up, try again later");
+    store.dismissItem(failed.id);
+    expect(store.getState().items.some((i) => i.failed)).toBe(false);
   });
 
   it("secure prompt: user value reaches the page, never the model or history", async () => {

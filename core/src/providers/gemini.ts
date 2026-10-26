@@ -5,18 +5,22 @@ const stripPrefix = (name: string) => name.replace(/^models\//, "");
 const headers = (key: string) => ({ "x-goog-api-key": key });
 const base = (call: AdapterCall) => call.config.baseUrl.replace(/\/+$/, "");
 
-function toBody(req: CompletionRequest) {
+function toBody(req: CompletionRequest, inlineSystem = false) {
   const system = req.messages.filter((m) => m.role === "system").map((m) => m.content).join("\n\n");
+  let first = true;
   const contents = req.messages
     .filter((m) => m.role !== "system")
     .map((m) => {
-      const parts: unknown[] = [{ text: m.content }];
+      // Some models (Gemma, previews) reject systemInstruction: the rules go in front of the first user turn instead.
+      const text = inlineSystem && system && first && m.role === "user" ? `${system}\n\n${m.content}` : m.content;
+      first = first && m.role !== "user";
+      const parts: unknown[] = [{ text }];
       const img = m.imageDataUrl?.match(/^data:([\w/+.-]+);base64,(.+)$/);
       if (img) parts.push({ inlineData: { mimeType: img[1], data: img[2] } });
       return { role: m.role === "assistant" ? "model" : "user", parts };
     });
   return {
-    ...(system && { systemInstruction: { parts: [{ text: system }] } }),
+    ...(system && !inlineSystem && { systemInstruction: { parts: [{ text: system }] } }),
     contents,
     generationConfig: { responseMimeType: "application/json", temperature: 0 },
   };
@@ -25,10 +29,10 @@ function toBody(req: CompletionRequest) {
 export const geminiAdapter: Adapter = {
   async complete(call, model, req) {
     const url = `${base(call)}/v1beta/models/${encodeURIComponent(stripPrefix(model))}:generateContent`;
-    const data = (await request(call, url, {
-      method: "POST",
-      headers: headers(call.apiKey),
-      body: toBody(req),
+    const send = (inline: boolean) => request(call, url, { method: "POST", headers: headers(call.apiKey), body: toBody(req, inline) });
+    const data = (await send(false).catch((e: unknown) => {
+      if (e instanceof ProviderError && e.status === 400 && /instruction/i.test(e.message)) return send(true);
+      throw e;
     })) as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
     const text = data.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("");
     if (!text) throw new ProviderError("bad_json", "empty completion");

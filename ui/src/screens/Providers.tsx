@@ -26,9 +26,21 @@ function ModelPicker({ p }: { p: ProviderConfig }) {
   );
 }
 
+/** Green tick = the last real call worked. Spinner while testing. Red note with the reason otherwise. */
+function Status({ p }: { p: ProviderConfig }) {
+  const s = useAppState();
+  const { t } = useT();
+  if (s.checking.includes(p.id)) return <span className="muted">{t("checking")}</span>;
+  if (!p.health) return null;
+  return p.health.ok
+    ? <span className="tick" title={t("connected")} aria-label={t("connected")}>✓</span>
+    : <span className="error small" role="status">{t("notWorking", { why: p.health.note ?? "?" })}</span>;
+}
+
 /** `rank` = position among enabled providers (0 = tried first); `index` = position in the full list. */
 function ProviderCard({ p, index, rank, last }: { p: ProviderConfig; index: number; rank: number; last: boolean }) {
   const app = useApp();
+  const s = useAppState();
   const { t } = useT();
   const [key, setKey] = useState("");
   const [open, setOpen] = useState(false);
@@ -37,7 +49,7 @@ function ProviderCard({ p, index, rank, last }: { p: ProviderConfig; index: numb
   return (
     <div className="card">
       <div className="row between">
-        <span className="row"><strong>{p.name}</strong>{p.enabled && <span className="badge">{rank === 0 ? t("roleMain") : t("roleBackup", { n: String(rank) })}</span>}</span>
+        <span className="row"><strong>{p.name}</strong><Status p={p} />{p.enabled && <span className="badge">{rank === 0 ? t("roleMain") : t("roleBackup", { n: String(rank) })}</span>}</span>
         <span className="row">
           <button disabled={index === 0} onClick={() => void app.moveProvider(p.id, -1)} aria-label={t("moveUp")} title={t("moveUp")}>↑</button>
           <button disabled={last} onClick={() => void app.moveProvider(p.id, 1)} aria-label={t("moveDown")} title={t("moveDown")}>↓</button>
@@ -54,6 +66,7 @@ function ProviderCard({ p, index, rank, last }: { p: ProviderConfig; index: numb
         <button type="submit" disabled={!key}>{t("saveKey")}</button>
       </form>
       <div className="row">
+        <button onClick={() => void app.testProvider(p.id)} disabled={s.checking.includes(p.id)}>{t("testConnection")}</button>
         <button onClick={() => void app.refreshProviderModels(p.id)}>{t("refreshModels")}</button>
         <button onClick={() => setOpen(!open)}>{open ? t("hide") : t("pickModels")}</button>
         <button onClick={() => void app.router.usageToday(p.id).then(setUsage)}>{usage === undefined ? t("usageToday") : t("usageCount", { count: String(usage) })}</button>

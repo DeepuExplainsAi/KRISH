@@ -59,6 +59,8 @@ h1, h2, h3, h4 { margin: .6rem 0 .3rem; }
 h2 { font-size: 1.35rem; }
 .muted { color: var(--mute); font-size: .9rem; }
 .error { color: var(--err); }
+.error.small { font-size: .78rem; }
+.tick { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: var(--ok); color: #0d2a17; font-size: .8rem; font-weight: 700; flex: none; }
 .row { display: flex; gap: .4rem; align-items: center; flex-wrap: wrap; }
 .row input { flex: 1; min-width: 0; }
 .row.end { justify-content: flex-end; }
@@ -92,7 +94,8 @@ h2 { font-size: 1.35rem; }
 .msg { padding: .7rem 1rem; border-radius: 22px; max-width: 88%; white-space: pre-wrap; word-break: break-word; line-height: 1.4; }
 .msg.user { align-self: flex-end; background: var(--user-bubble); border: 1px solid var(--glass-line); }
 .msg.agent, .empty { align-self: flex-start; background: var(--surface); }
-.msg.failed { color: var(--err); display: flex; flex-direction: column; align-items: flex-start; gap: .5rem; }
+.msg .via { display: block; margin-top: .35rem; font-size: .72rem; color: var(--mute); }
+.msg.failed { color: var(--err); display: flex; flex-direction: column; align-items: flex-start; gap: .5rem; max-width: 92%; overflow-wrap: anywhere; font-size: .92rem; }
 .empty { padding: .7rem 1rem; border-radius: 22px; max-width: 88%; margin: 0; }
 .chip { align-self: flex-start; display: inline-flex; align-items: center; gap: .5rem; max-width: 92%; border-radius: 99px; padding: .45rem 1rem; min-height: 40px; background: var(--glass); border: 1px solid var(--glass-line); font-size: .92rem; text-align: left; }
 .chip .txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

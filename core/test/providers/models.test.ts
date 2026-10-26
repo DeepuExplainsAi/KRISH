@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { autoFetchOnce, pickModels, refreshModels, searchModels, withAutoModels } from "../../src/providers/models";
+import { adapters, autoFetchOnce, pickModels, probeModels, refreshModels, searchModels, withAutoModels } from "../../src/providers/models";
 import { json, mockFetch, provider } from "../helpers";
 
 const deps = (handlers: Parameters<typeof mockFetch>[0]) => {
@@ -93,8 +93,8 @@ describe("pickModels / withAutoModels", () => {
   const ids = (...x: string[]) => x.map((id) => ({ id }));
   it("prefers a newer, bigger, stable chat model and skips embeddings, audio and image models", () => {
     const r = pickModels(ids("text-embedding-004", "gemini-2.5-flash-lite", "gemini-2.5-pro", "gemini-2.5-flash", "gemini-3-pro-preview", "gemini-2.5-flash-preview-tts"));
-    expect(r.defaultModel).toBe("gemini-3-pro-preview");
-    expect(r.fallbackModel).toBe("gemini-2.5-pro");
+    expect(r.defaultModel).toBe("gemini-2.5-pro"); // stable beats preview
+    expect(r.fallbackModel).toBe("gemini-2.5-flash");
   });
   it("uses only free models when the provider marks some as free", () => {
     const r = pickModels([{ id: "big-paid-pro-5" }, { id: "llama-3.3-70b:free", free: true }, { id: "tiny-8b:free", free: true }]);
@@ -111,5 +111,51 @@ describe("pickModels / withAutoModels", () => {
     const chosen = { ...base, defaultModel: "m-1" };
     expect(withAutoModels(chosen)).toMatchObject({ defaultModel: "m-1", fallbackModel: "m-2" });
     expect(withAutoModels({ ...chosen, fallbackModel: "x" })).toEqual({ ...chosen, fallbackModel: "x" });
+  });
+});
+
+describe("probeModels", () => {
+  const withList = (ids: string[]) => provider("o", { defaultModel: undefined, models: { fetchedAt: 1, items: ids.map((id) => ({ id })) } });
+  const chat = (ok: Record<string, number>) => (_url: string, init?: RequestInit) => {
+    const model = JSON.parse(String(init?.body)).model as string;
+    return ok[model] === undefined ? openaiOk() : json({}, ok[model]!);
+  };
+  const openaiOk = () => json({ choices: [{ message: { content: '{"ok":true}' } }] });
+
+  it("keeps the first two models that really answer and skips rate-limited and unpaid ones", async () => {
+    const { deps: d } = deps({ "o.test": chat({ "chat-9": 429, "chat-8": 402 }) });
+    const out = await probeModels(withList(["chat-9", "chat-8", "chat-7", "chat-6", "chat-5"]), "k", d);
+    expect(out).toMatchObject({ defaultModel: "chat-7", fallbackModel: "chat-6", health: { ok: true } });
+  });
+  it("nothing works: no model chosen, health says why", async () => {
+    const { deps: d } = deps({ "o.test": chat({ "chat-2": 429, "chat-1": 429 }) });
+    const out = await probeModels(withList(["chat-2", "chat-1"]), "k", d);
+    expect(out.defaultModel).toBeUndefined();
+    expect(out.health).toMatchObject({ ok: false, note: "free limit used up, try again later" });
+  });
+  it("a rejected key stops after one call", async () => {
+    const { calls, deps: d } = deps({ "o.test": () => json({}, 401) });
+    const out = await probeModels(withList(["a-1", "a-2", "a-3"]), "bad", d);
+    expect(calls).toHaveLength(1);
+    expect(out.health).toMatchObject({ ok: false, note: "key rejected" });
+  });
+});
+
+describe("Gemini system instruction", () => {
+  it("retries once with the rules inside the first user turn when the model rejects systemInstruction", async () => {
+    const bodies: Record<string, unknown>[] = [];
+    const { deps: d } = deps({
+      "g.test": (_u, init) => {
+        const b = JSON.parse(String(init?.body));
+        bodies.push(b);
+        return b.systemInstruction ? json({ error: { message: "Developer instruction is not enabled for models/x" } }, 400) : json({ candidates: [{ content: { parts: [{ text: "{}" }] } }] });
+      },
+    });
+    const cfg = provider("g", { kind: "gemini", baseUrl: "https://g.test" });
+    const text = await adapters.gemini.complete({ config: cfg, apiKey: "k", fetch: d.fetch, timeoutMs: 1000 }, "x", { messages: [{ role: "system", content: "RULES" }, { role: "user", content: "hi" }] });
+    expect(text).toBe("{}");
+    expect(bodies).toHaveLength(2);
+    expect(JSON.stringify(bodies[1])).toContain("RULES\\n\\nhi");
+    expect(bodies[1]!.systemInstruction).toBeUndefined();
   });
 });

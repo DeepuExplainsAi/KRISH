@@ -3,6 +3,15 @@
 Project: KRISH, source-only personal agent (Android + desktop). Spec: `docs/SPEC.md`.
 Rule: update this file at the end of every work session (status table + "Next").
 
+## PHONE-TEST FIXES (v0.1.2, 2026-10-24) — read this first
+Owner tested v0.1.1 on a phone and sent screenshots. Findings and fixes (all in code and tests; core 179, ui 35, desktop 8):
+- **Wrong models were auto-picked** (Gemini `antigravity-preview` = 400 "Developer instruction is not enabled", OpenRouter obscure free model = 429, OpenCode Zen paid model = 402). Fix: name-based ranking is only a first guess; `probeModels` (`core/src/providers/models.ts`) now sends one tiny real request to the best-ranked models and keeps the first two that answer as default and fallback. Rate-limited, unpaid and rejected models are skipped. It runs when a key is added, on the new "Test" button, and once at start for providers saved earlier.
+- **Green tick**: `ProviderConfig.health {ok, at, note}`; set by the probe and updated after every real agent call (`RouterDeps.onResult`). Providers screen shows a green tick, "Checking…", or a red "Not working: <reason>".
+- **Long red error text**: `AllProvidersFailedError` now says one short line per provider ("Gemini: free limit used up, try again later"). Raw provider bodies stay in `Attempt.detail` only. Error bubbles have a Dismiss button. HTTP 402 is its own kind (`payment`).
+- **Gemini models that reject `systemInstruction`**: one retry with the rules put into the first user turn (`gemini.ts`).
+- Answers show the provider and model small under them (`ChatItem.via`).
+- **Not done / unverified**: the fallback chain was only checked with mocks and the harness; the real providers (free tiers) rate-limit often, so "free limit used up" is expected sometimes. A real phone test is still needed.
+
 ## REDESIGN RUN — DONE IN CODE, v0.1.1 RELEASED (2026-10-24); WAITING FOR PHONE TEST
 Owner feedback after testing the v0.1.0 APK on a phone (screenshots of Krish vs the reference app in HANDOFF/CREDITS terms only; never write that name in app code or release notes).
 Method: public CSS/JS bundle of the reference app's login page was fetched and read (REA `analyze-javascript-application` timed out at 300 s on the 650 KB bundle; the CSS tokens, keyframes and easings were read directly). The chat screen itself is behind a login, so its layout was taken from the owner's screenshots only. Do not bypass the login.

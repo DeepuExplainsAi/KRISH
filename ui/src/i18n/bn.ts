@@ -16,4 +16,5 @@ export const bn: Partial<Dict> = {
   panels: "প্যানেল", tasks: "নির্ধারিত কাজ", history: "ইতিহাস", providers: "প্রোভাইডার", settings: "সেটিংস", security: "নিরাপত্তা",
   language: "ভাষা", languageAuto: "অটো (ডিভাইসের ভাষা)", theme: "থিম", themeSystem: "সিস্টেম (ডিভাইস অনুযায়ী)", themeLight: "লাইট", themeDark: "ডার্ক", attachFile: "ফাইল যোগ করুন (ছবি, ভিডিও, অডিও, জিপ, যেকোনো)", attachments: "সংযুক্ত ফাইল", removeFile: "{name} সরান", autoOpenWindow: "এজেন্ট কোনো সাইট খুললে ব্রাউজার কার্ড খুলুন", starting: "শুরু হচ্ছে…",
   roleMain: "প্রধান", roleBackup: "ব্যাকআপ {n}",
+  dismiss: "সরান", connected: "সংযুক্ত", checking: "পরীক্ষা চলছে…", testConnection: "টেস্ট", notWorking: "কাজ করছে না: {why}",
 };

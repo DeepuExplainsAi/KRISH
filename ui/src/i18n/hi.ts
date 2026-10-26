@@ -141,4 +141,5 @@ export const hi: Partial<Dict> = {
   tab_free: "मुफ़्त",
   tab_added: "जोड़े गए",
   tab_custom: "कस्टम",
+  dismiss: "हटाएँ", connected: "जुड़ा हुआ", checking: "जाँच रहे हैं…", testConnection: "टेस्ट", notWorking: "काम नहीं कर रहा: {why}",
 };

@@ -13,6 +13,7 @@ function parseRetryAfter(value: string | null, now = Date.now()): number | undef
 export function classifyStatus(status: number): ProviderError["kind"] {
   if (status === 429) return "rate_limit";
   if (status === 401 || status === 403) return "auth";
+  if (status === 402) return "payment";
   if (status === 408) return "timeout";
   if (status >= 500) return "server";
   return "bad_request";
