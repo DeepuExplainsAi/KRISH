@@ -1,4 +1,4 @@
-**Unsigned DEBUG builds. They were NOT tested on a real phone or on a real Windows/Linux desktop.** CI only confirms that they build and that the files are structurally valid.
+**Unsigned DEBUG builds. They were NOT tested on a real phone or on a real Windows/Linux desktop.** What was checked: the files build in CI, both APKs are valid and carry the expected application IDs, the Windows and Linux packages contain the app, and the Linux build starts and keeps running for 25 seconds under a virtual display. Nothing beyond that.
 
 ## Files
 | File | For |

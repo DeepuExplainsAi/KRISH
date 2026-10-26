@@ -3,27 +3,28 @@
 Project: KRISH, source-only personal agent (Android + desktop). Spec: `docs/SPEC.md`.
 Rule: update this file at the end of every work session (status table + "Next").
 
-## RELEASE RUN (in progress) — read this before anything else
-Task: follow `docs/AI-RELEASE-PROMPT.md` in order. Goal: CI live, builds fixed, GitHub Release with APKs + desktop apps.
-Last updated: 2026-10-24. Update this block after every step.
+## RELEASE RUN — DONE 2026-10-24 (v0.1.0 published)
+Followed `docs/AI-RELEASE-PROMPT.md`. Release: https://github.com/DeepuExplainsAi/KRISH/releases/tag/v0.1.0 (pre-release).
+Next AI: the release task is finished. Remaining work is the device testing below and the older "Still open" list. To cut another release: `git tag v0.1.1 && git push origin v0.1.1`.
 
 | # | Step | State |
 |---|---|---|
-| 0 | Read HANDOFF.md, BUILD.md, ci/workflows/*.yml | DONE |
-| 1 | `gh` token has `workflow` scope | DONE (owner granted via `gh auth refresh -s workflow`) |
-| 2 | Workflows copied to `.github/workflows/`, pushed; `check` green incl. both Kotlin flavors (`openExternal` compiles) | DONE: https://github.com/DeepuExplainsAi/KRISH/actions/runs/40338496897 |
-| 3 | `.github/workflows/release.yml` + `.github/release-notes.md` | WRITTEN, not yet run |
-| 4 | `build-apk` and `build-desktop` (manual runs) | DONE, green: runs 40338795116 and 40338801195. No fixes were needed. |
-| 5 | Download and verify release files (prompt step 5) | TODO (after release.yml runs) |
-| 6 | README "Download" section, BUILD.md section 5, session log here | TODO |
-| 7 | Tag `v0.1.0` -> release.yml publishes pre-release | TODO |
+| 1 | `gh` token has `workflow` scope | DONE (owner ran `gh auth refresh -h github.com -s workflow`) |
+| 2 | Workflows in `.github/workflows/`; `check` green incl. both Kotlin flavors (`openExternal` compiles) | DONE: https://github.com/DeepuExplainsAi/KRISH/actions/runs/40338496897 |
+| 3 | `.github/workflows/release.yml` + `.github/release-notes.md` | DONE |
+| 4 | Fix loop | Nothing needed fixing in app code; only change: `android-actions/setup-android` (third party) replaced by the runner's preinstalled SDK + `sdkmanager "platforms;android-36" "build-tools;36.0.0"` |
+| 5 | Verify artifacts | DONE, see below |
+| 6 | README Download section, BUILD.md section 5 | DONE |
+| 7 | Tag v0.1.0 -> release run | DONE: https://github.com/DeepuExplainsAi/KRISH/actions/runs/40339247503 (android, desktop linux, desktop win32, publish all green) |
 
-**Doing now / next action:** write README Download section + BUILD.md section 5, then `git tag v0.1.0 && git push origin v0.1.0`, watch `release`, download and verify the files, then fill the session log. Decisions: `ci/workflows/` is kept as a copy of the source; `.github/workflows/` is what runs (keep both in sync or delete `ci/workflows/`). `android-actions/setup-android` was dropped (third party); the runner SDK is used. `/releases/latest` ignores pre-releases, so link to `/releases`.
+Runs: check 40338496897, build-apk 40338795116, build-desktop 40338801195, release 40339247503.
 
-**Owner requirements for the README "Download" section (step 6):**
-- Professional and engaging; only content that helps the reader download and install. No filler, no badges for the sake of badges.
-- Use the words people actually search for in October 2026 (for example: free AI agent, open source, Android APK, Windows, Linux, browser automation, bring your own API key, privacy). Check real search wording with a search tool before writing; do not invent claims about popularity or features.
-- Still true to the release notes: unsigned debug builds, not tested on real devices. Do not say "Hark" anywhere.
+### Session log (release run)
+- Decisions: `.github/workflows/` is what runs; `ci/workflows/` stays as a copy of check/build-apk/build-desktop (keep in sync or delete). `release.yml` exists only in `.github/workflows/`. Release is a pre-release; `/releases/latest` ignores pre-releases, so README links to `/releases` and to the `v0.1.0` asset URLs (update those when you tag a new version).
+- Release files (sizes): lite APK 5,170,602 B; full APK 9,346,270 B; Windows zip 158,839,156 B; Linux tar.gz 124,450,536 B. SHA256 in `SHA256SUMS.txt` on the release page; `sha256sum -c` passed on the downloaded files.
+- **Verified (run):** both APKs are valid zips with `AndroidManifest.xml` and `classes.dex`; applicationId `app.krish.agent.lite` (no native libs) and `app.krish.agent` (arm64-v8a libs only); minSdk 26, target 36; both `debuggable=true` (debug builds). Windows zip has `Krish.exe` and `resources/app.asar`; Linux tar has an executable `Krish` and `resources/app.asar`. Inside both asars: `package.json`, `desktop/{main,lib,preload}.cjs`, `ui/dist/index.html`, `core/page-script/krish-page.js` (packager makes `app.asar`, not a `resources/app/` folder). The Linux build was started under `xvfb-run` with `--no-sandbox --disable-gpu --disable-dev-shm-usage --js-flags=--jitless` and was still running after 25 s (killed by timeout), no missing-file error, only dbus warnings (no desktop bus in the sandbox). Without `--js-flags=--jitless` it dies with the sandbox's V8 CodeRange OOM (environment limit, see Gotchas).
+- **NOT verified:** installing or running the APKs on any device or emulator; running `Krish.exe` on Windows; the Linux build on a real desktop or with the app window rendered; everything in the "NOT verified" lists in the session logs below.
+- Release notes (`.github/release-notes.md`) say plainly: unsigned debug builds, not tested on real devices, known gaps.
 
 ## Environment notes
 - Cloud sandbox: Node 24, ~480 MB RAM, 1 CPU, ~2 GB free disk. JDK 21 and the Android SDK are NOT preinstalled; install them to /opt/jdk and /opt/android-sdk (see "Restart here"). Electron runs under `xvfb-run`.
@@ -37,7 +38,7 @@ Last updated: 2026-10-24. Update this block after every step.
 | 2 | Android plugins (WebView, files, Keystore, WorkManager), flavors, manifest | DONE; Kotlin compiles (both flavors, re-run 2026-10-25); never run on a device |
 | 3 | UI: live window, chat (file attach), prompts, all screens | DONE; **restyled 2026-10-26, desktop layout + KrishVault + API Keys catalog 2026-10-27 (see session logs)**; builds; store tested; layout + touch drag/resize checked in headless Chrome at 467x922; real phone untested |
 | 4 | History, Lite mode, memory, Projects, Tasks, morning brief | DONE |
-| 4b | KrishVault (encrypted logins + autofill), memory by chat, one-task-at-a-time rules, Auto theme, PC layout, API Keys catalog | DONE 2026-10-27; tested; Kotlin `openExternal` NOT compiled (see log) |
+| 4b | KrishVault (encrypted logins + autofill), memory by chat, one-task-at-a-time rules, Auto theme, PC layout, API Keys catalog | DONE 2026-10-27; tested; Kotlin `openExternal` compiles (CI `check` green 2026-10-24) |
 | 5 | Desktop (Electron) | DONE; RUN under Xvfb: 12-check smoke test passes. Not run: safeStorage keychain, file dialogs, file upload via debugger, Docker tier |
 | 6a | Tier 0 sandbox | DONE; tested in Node AND the built worker ran in real Chrome (6*7=42, infinite loop interrupted at 5 s, no fetch/XHR/WebSocket/importScripts) |
 | 6b | Tier 1 Alpine+proot | WRITTEN; checksums verified; proot never executed (needs an arm64 Android device) |
@@ -175,7 +176,6 @@ Checked and fine: no secrets/eval/telemetry/addJavascriptInterface in the repo; 
 - Run the APK on a real Android device and work through CHECKLIST.md "NOT RUN" (1-6, 8, 9, 12). Highest risk first: file upload tap, Keystore round trip, proot execution, live-window position under the UI.
 - Desktop on real hardware: safeStorage keychain, file dialogs, `debugger.setFileInputFiles` upload, Docker tier.
 - Real provider calls with real keys (request shapes follow public docs and mocks only).
-- Move `ci/workflows/*.yml` to `.github/workflows/`: the available git token has no `workflow` scope. Copy command is in BUILD.md section 5.
 - Android has no isolated JS world and no network-level site allowlist (SECURITY.md gaps 0, 0b): platform limits, mitigated by policy.
 - `npm audit`: 3 moderate, dev-only (`@capacitor/cli` -> `xcode` -> `uuid`); see DEPENDENCIES.md.
 - Phase 2 `phone-control/` is a stub by design.
