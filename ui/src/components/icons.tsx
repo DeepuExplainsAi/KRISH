@@ -9,6 +9,7 @@ const Svg = ({ children, size = 20 }: { children: ReactNode; size?: number }) =>
 export const IconPlus = () => <Svg><path d="M12 5v14M5 12h14" /></Svg>;
 export const IconClose = ({ size }: { size?: number }) => <Svg size={size}><path d="M6 6l12 12M18 6L6 18" /></Svg>;
 export const IconGlobe = () => <Svg><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3c3 3.2 3 14.8 0 18M12 3c-3 3.2-3 14.8 0 18" /></Svg>;
+export const IconClip = () => <Svg><path d="m20 11-8.6 8.6a5 5 0 0 1-7-7L13 4a3.3 3.3 0 0 1 4.7 4.7l-8.6 8.6a1.7 1.7 0 0 1-2.4-2.4L14.2 7.5" /></Svg>;
 export const IconSend = () => <Svg><path d="M12 19V5M5 12l7-7 7 7" /></Svg>;
 export const IconExpand = () => <Svg><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" /></Svg>;
 export const IconShrink = () => <Svg><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" /></Svg>;

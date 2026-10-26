@@ -87,6 +87,26 @@ describe("page script", () => {
     expect(document.querySelector("[data-krish-overlay]")).toBeNull();
   });
 
+  it("lists a hidden file input (with nearby text as its label) but still skips other hidden elements", () => {
+    document.body.innerHTML = '<div>Add your photo <input type="file" style="display:none"></div><button style="display:none">Nope</button><input type="file" aria-label="Doc">';
+    const els = obs().elements;
+    expect(els.map((e) => e.type)).toEqual(["file", "file"]);
+    expect(els[0]).toMatchObject({ hidden: true, label: "Add your photo" });
+    expect(els[1]!.hidden).toBeUndefined();
+    expect(els[1]!.label).toBe("Doc");
+    expect(() => k().rect(els[0]!.id as number)).toThrow(/no label/); // never taps an unrelated parent/sibling
+  });
+
+  it("a hidden file input with a real <label> is tapped through that label; hidden file inputs are capped so real fields stay visible", () => {
+    document.body.innerHTML = '<label for="u">Choose</label><input id="u" type="file" style="display:none">';
+    const id = obs().elements[0]!.id as number;
+    expect(JSON.parse(k().rect(id)).x).toBeTypeOf("number");
+    document.body.innerHTML = '<input type="file" style="display:none">'.repeat(50) + '<input type="password" aria-label="Pw">';
+    const els = obs().elements;
+    expect(els.filter((e) => e.hidden)).toHaveLength(5);
+    expect(els.some((e) => e.type === "password")).toBe(true);
+  });
+
   it("stale ids fail loudly; non-file inputs cannot open the chooser", () => {
     const o = obs();
     document.body.innerHTML = "";

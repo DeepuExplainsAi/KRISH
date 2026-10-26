@@ -47,7 +47,7 @@ button:disabled { opacity: .45; cursor: default; }
 button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible { outline: 2px solid var(--strong); outline-offset: 2px; }
 button.primary, .primary, button.dark, button.on { background: var(--strong); color: var(--on-strong); border-color: var(--strong); }
 button.ghost { background: transparent; }
-button.stop, .stop { display: inline-flex; align-items: center; gap: .35rem; background: var(--err); border-color: var(--err); color: var(--white); font-weight: 700; }
+button.stop, .stop { display: inline-flex; align-items: center; gap: .35rem; background: var(--glass); backdrop-filter: var(--blur); border: 1px solid var(--glass-line); color: var(--ink); font-weight: 600; }
 button.link { background: none; border: 0; text-align: left; padding: 0; width: 100%; border-radius: 0; }
 input, textarea, select { width: 100%; margin: .25rem 0; }
 textarea { min-height: 4.5rem; }
@@ -110,6 +110,15 @@ h2 { font-size: 1.35rem; }
 .composer .icon { background: none; border: 0; }
 .composer .send { background: var(--strong); color: var(--on-strong); border-color: var(--strong); }
 
+/* attached files */
+.attachments { display: flex; gap: .4rem; overflow-x: auto; padding: 0 .1rem .45rem; }
+.file-chip { display: inline-flex; align-items: center; gap: .4rem; flex: none; max-width: 70%; min-height: 36px; padding: .2rem .35rem .2rem .7rem; border-radius: 99px; background: var(--glass); backdrop-filter: var(--blur); border: 1px solid var(--glass-line); font-size: .85rem; }
+.file-chip svg { flex: none; width: 16px; height: 16px; }
+.file-chip .txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-chip small { color: var(--mute); flex: none; }
+.file-chip button { display: grid; place-items: center; width: 28px; height: 28px; min-height: 0; padding: 0; border-radius: 50%; background: none; border: 0; flex: none; }
+.file-chip.static { display: flex; width: fit-content; margin-top: .4rem; padding: .2rem .7rem; background: var(--field); }
+
 /* live browser window */
 .live { position: fixed; z-index: 50; display: flex; flex-direction: column; background: var(--live-bg); border: 1px solid var(--glass-line); border-radius: 28px; overflow: hidden; box-shadow: 0 12px 40px var(--shadow); touch-action: none; }
 .live.full { border-radius: 0; border: 0; }
@@ -127,7 +136,6 @@ h2 { font-size: 1.35rem; }
 .live-foot .status .txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .live-foot .round { width: 40px; height: 40px; flex: none; }
 .live-foot .round.wide { width: auto; }
-.live-foot .round.stop { background: var(--err); border-color: var(--err); color: var(--white); }
 .live.mini .takeover { display: none; }
 .handle { position: absolute; right: 6px; bottom: 6px; width: 34px; height: 34px; cursor: nwse-resize; background: linear-gradient(135deg, transparent 52%, var(--handle) 52%, var(--handle) 58%, transparent 58%, transparent 70%, var(--handle) 70%, var(--handle) 76%, transparent 76%); }
 .live-pill { position: fixed; z-index: 50; right: 12px; bottom: 76px; max-width: 70vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border-radius: 99px; background: var(--strong); color: var(--on-strong); border-color: var(--strong); padding: .6rem 1rem; box-shadow: 0 6px 20px rgba(15,25,40,.35); }
@@ -136,5 +144,5 @@ h2 { font-size: 1.35rem; }
 .app.lite *, .app.lite *::before, .app.lite *::after { animation: none !important; transition: none !important; backdrop-filter: none !important; box-shadow: none !important; }
 .app.lite .glass, .app.lite .card, .app.lite .seg, .app.lite .round, .app.lite .composer, .app.lite .chip, .app.lite .back, .app.lite main > section:not(.chat):not(.menu), .app.lite .msg.user { background: var(--glass-solid); }
 .app.lite .round.dark, .app.lite .chip.action_required, .app.lite .chip.running.latest { background: var(--strong); }
-.app.lite .round.stop, .app.lite button.stop { background: var(--err); }
+.app.lite .round.stop, .app.lite button.stop { background: var(--glass-solid); }
 @media (prefers-reduced-motion: reduce) { .dots i { animation: none; } }

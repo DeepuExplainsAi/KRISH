@@ -58,6 +58,11 @@ describe("fields and pages", () => {
     expect(isSensitivePage({ url: "garbage", elements: [] })).toBe(true);
   });
 
+  it("formatObservation marks a hidden file input so the model can still target it", () => {
+    const out = formatObservation({ url: "https://x.com/", title: "t", text: "", elements: [el({ tag: "input", type: "file", label: "Add your photo", hidden: true })] });
+    expect(out).toMatch(/input\(file\) "Add your photo".*hidden-input/);
+  });
+
   it("formatObservation never leaks secrets", () => {
     const out = formatObservation({
       url: "https://x.com/a?token=abc12345",

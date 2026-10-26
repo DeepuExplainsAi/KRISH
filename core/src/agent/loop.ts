@@ -7,7 +7,7 @@ import { AllProvidersFailedError, type ProviderRouter } from "../providers/route
 import { parseAction, type Action } from "../schema/actions";
 import { AgentController, raceStop, StoppedError } from "./controller";
 import { gate, sandboxWrites, siteOf } from "./policy";
-import type { AgentStatus, AgentUI, ChipState, PageDriver, Sandbox } from "./ports";
+import type { AgentStatus, AgentUI, ChipState, PageDriver, Sandbox, SelectedFile } from "./ports";
 import { SYSTEM_PROMPT } from "./prompt";
 
 export interface AgentOptions {
@@ -15,6 +15,8 @@ export interface AgentOptions {
   /** Persistent memory text (data, not instructions). */
   memory?: string;
   screenshots?: boolean;
+  /** Files the user attached to this task (picked in the system picker). The model sees names and sizes only. */
+  files?: SelectedFile[];
   limits?: Partial<AgentLimits>;
 }
 
@@ -39,7 +41,7 @@ interface Turn {
 
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n)}…` : s);
 /** Stops data from closing its own delimiter block. */
-const fence = (tag: string, body: string) => `<${tag}>\n${body.replace(/<\/?(PAGE_DATA|RESULT_DATA|MEMORY|USER_TASK|USER_REPLY)>/gi, "")}\n</${tag}>`;
+const fence = (tag: string, body: string) => `<${tag}>\n${body.replace(/<\/?(PAGE_DATA|RESULT_DATA|MEMORY|USER_TASK|USER_REPLY|USER_FILES)>/gi, "")}\n</${tag}>`;
 
 /**
  * A normal question must never collect a secret: it goes to the AI and into history. The agent answers in the user's
@@ -57,7 +59,19 @@ const SECRET_TERMS = [
 const SECRET_ASK = new RegExp(`(?<![\\p{L}\\p{N}\\p{M}])(?:${SECRET_TERMS.join("|")})(?![\\p{L}\\p{N}\\p{M}])`, "iu");
 
 /** Model-written step label: single line, no control / bidi / zero-width characters (they can reorder or hide text). */
-const cleanLabel = (s: string) => s.replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu, " ").replace(/\s+/g, " ").trim();
+export const cleanLabel = (s: string) => s.replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu, " ").replace(/\s+/g, " ").trim();
+
+/**
+ * Attached files as the model sees them: a stable id (f1, f2...) is what it selects by, so a hostile or duplicate file name can
+ * neither collide nor change the selection. The display name is redacted and cannot contain angle brackets (no fence tags).
+ */
+function nameFiles(files: SelectedFile[] = []): { id: string; name: string; file: SelectedFile }[] {
+  return files.map((file, i) => ({
+    id: `f${i + 1}`,
+    name: clip(redactText(cleanLabel(file.name).replace(/[<>]/g, "")) || "file", 120),
+    file,
+  }));
+}
 
 const kindOfSecret = (k: SecretKind | undefined): "password" | "otp" | undefined =>
   k === "password" ? "password" : k === "otp" || k === "card" ? "otp" : undefined;
@@ -68,6 +82,8 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
   const signal = controller.signal;
   const history: Turn[] = [];
   const drafts: string[] = [];
+  const attached = nameFiles(opts.files);
+  const attachedList = attached.map((f) => `${f.id}: ${f.name} (${f.file.size} bytes)`).join("\n");
   let chipId = 0;
   let consecutiveErrors = 0;
   let stalls = 0;
@@ -132,15 +148,23 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
         drafts.push(a.text);
         return "pasted";
       case "upload_selected_file": {
-        const file = await raceStop(ui.pickFile(signal), signal);
-        if (!file) return "user did not select a file";
+        let chosen: ReturnType<typeof nameFiles>[number] | undefined;
+        if (attached.length) {
+          chosen = a.file ? attached.find((f) => f.id === a.file) : attached.length === 1 ? attached[0] : undefined;
+          if (!chosen) return `${a.file ? "no such attached file" : "several files are attached"}; call upload_selected_file again with "file" set to one id:\n${attachedList}`;
+        } else {
+          const picked = await raceStop(ui.pickFile(signal), signal);
+          if (!picked) return "user did not select a file";
+          chosen = nameFiles([picked])[0]!;
+        }
+        const { name, file } = chosen;
         const ok = await raceStop(
-          ui.confirm({ kind: "upload", title: `Upload to ${new URL(obs.url).hostname}?`, preview: `${file.name} (${file.size} bytes)` }, signal),
+          ui.confirm({ kind: "upload", title: `Upload to ${new URL(obs.url).hostname}?`, preview: `${name} (${file.size} bytes)` }, signal),
           signal,
         );
         if (!ok) return "user declined the upload";
         await withHighlight(a.elementId, () => driver.upload(a.elementId, file));
-        return `uploaded ${file.name}`;
+        return `uploaded ${name}`;
       }
       case "run_sandbox_task": {
         if (!deps.sandbox) return "sandbox unavailable";
@@ -201,6 +225,7 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
       const prompt = [
         fence("USER_TASK", redactText(opts.task)),
         opts.memory ? fence("MEMORY", opts.memory) : "",
+        attached.length ? fence("USER_FILES", attachedList) : "",
         userReply ? fence("USER_REPLY", userReply) : "",
         turns.length ? `Previous steps:\n${turns.join("\n")}` : "",
         fence("PAGE_DATA", text),

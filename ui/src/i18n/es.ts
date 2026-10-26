@@ -15,5 +15,5 @@ export const es: Partial<Dict> = {
   winSmall: "Pequeña", winMedium: "Mediana", winLarge: "Grande", expand: "Ampliar", collapse: "Reducir", minimize: "Minimizar", close: "Cerrar",
   resize: "Cambiar tamaño", snapshot: "Captura del navegador",
   panels: "Paneles", tasks: "Tareas programadas", history: "Historial", providers: "Proveedores", settings: "Ajustes", security: "Seguridad",
-  language: "Idioma", languageAuto: "Automático (idioma del dispositivo)", theme: "Tema", themeSystem: "Sistema (según el dispositivo)", themeLight: "Claro", themeDark: "Oscuro", autoOpenWindow: "Mostrar la tarjeta del navegador cuando el agente empiece a trabajar", starting: "Iniciando…",
+  language: "Idioma", languageAuto: "Automático (idioma del dispositivo)", theme: "Tema", themeSystem: "Sistema (según el dispositivo)", themeLight: "Claro", themeDark: "Oscuro", attachFile: "Adjuntar archivo (foto, vídeo, audio, zip, cualquiera)", attachments: "Archivos adjuntos", removeFile: "Quitar {name}", autoOpenWindow: "Mostrar la tarjeta del navegador cuando el agente empiece a trabajar", starting: "Iniciando…",
 };

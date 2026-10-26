@@ -1,5 +1,5 @@
 import {
-  AgentController, autoFetchOnce, DEFAULT_BRIEF, History, Memory, newId, Panels, ProviderRouter, Projects, refreshModels,
+  AgentController, autoFetchOnce, cleanLabel, DEFAULT_BRIEF, History, Memory, newId, Panels, ProviderRouter, Projects, refreshModels,
   runAgent, Scheduler, nextRun, nextBriefAt, briefCommand,
   type AgentEvent, type AgentUI, type BriefSettings, type ChipState, type ConfirmRequest, type PageDriver, type ProviderConfig,
   type SecureKind, type SelectedFile, type Sandbox, setLocalEngine, type ModelInfo,
@@ -9,6 +9,8 @@ import { Tier0Sandbox } from "../sandbox/tier0";
 import { createWebGpuEngine, webgpuAvailable } from "../local/webgpu";
 import type { LangPref } from "../i18n";
 import type { ThemePref } from "../theme";
+
+export const MAX_ATTACHMENTS = 10;
 
 export type WindowSize = "mini" | "medium" | "large" | "full";
 
@@ -34,7 +36,7 @@ export interface Settings {
 
 export const DEFAULT_SETTINGS: Settings = {
   language: "auto",
-  theme: "system",
+  theme: "light",
   liteMode: false,
   autoOpenWindow: true,
   screenshots: false,
@@ -58,6 +60,8 @@ export interface ChatItem {
   id: number;
   role: "user" | "agent";
   text?: string;
+  /** Files attached to a user message (name and size only). */
+  files?: { name: string; size: number }[];
   chip?: { label: string; state: ChipState };
 }
 
@@ -67,6 +71,8 @@ export interface State {
   settings: Settings;
   providers: ProviderConfig[];
   items: ChatItem[];
+  /** Files picked for the next message. They go to the agent with it; the model sees names and sizes only. */
+  attachments: SelectedFile[];
   prompts: Prompt[];
   running: boolean;
   paused: boolean;
@@ -100,7 +106,7 @@ const PROVIDERS_KEY = "providers";
 
 export class AppStore {
   state: State = {
-    ready: false, screen: "home", settings: DEFAULT_SETTINGS, providers: [], items: [], prompts: [],
+    ready: false, screen: "home", settings: DEFAULT_SETTINGS, providers: [], items: [], attachments: [], prompts: [],
     running: false, paused: false, windowOpen: false, windowMinimized: false,
     page: { url: "", title: "", loading: false }, status: "idle", snapshot: "", deviceLowRam: false, linuxAvailable: false,
     localModels: [], localStatus: "",
@@ -382,14 +388,17 @@ export class AppStore {
   }
 
   /** `command` must be text the user typed in this app (or their own saved task/panel). */
-  async send(command: string, opts: { startUrl?: string } = {}) {
+  async send(command: string, opts: { startUrl?: string; files?: SelectedFile[] } = {}) {
     if (this.state.running || !command.trim()) return;
     const runId = newId();
     const controller = (this.controller = new AgentController());
     this.chipItems.clear();
-    this.set({ running: true, paused: false, status: "running", screen: "chat" });
+    // Only the composer passes files; saved tasks, panels and the brief never pick up the composer's tray.
+    const files = opts.files ?? [];
+    if (opts.files) this.draftEpoch++;
+    this.set({ running: true, paused: false, status: "running", screen: "chat", ...(opts.files ? { attachments: [] } : {}) });
     if (this.state.settings.autoOpenWindow) this.openWindow();
-    this.push({ role: "user", text: command });
+    this.push({ role: "user", text: command, files: files.length ? files.map(({ name, size }) => ({ name, size })) : undefined });
     await this.history.log(runId, "run_start", command);
     try {
       if (opts.startUrl) await this.platform.browser.open(opts.startUrl);
@@ -397,7 +406,7 @@ export class AppStore {
       const project = (await this.projects.list()).find((p) => p.id === this.state.settings.activeProjectId);
       const task = project?.instructions ? `${command}\n\n(Project "${project.name}": ${project.instructions})` : command;
       await runAgent(
-        { task, memory, screenshots: this.state.settings.screenshots },
+        { task, memory, files, screenshots: this.state.settings.screenshots },
         { driver: this.driver(), router: this.router, ui: this.buildUI(runId), controller, sandbox: this.sandbox },
       );
     } finally {
@@ -419,10 +428,30 @@ export class AppStore {
     this.set({ paused: false, status: "running" });
   }
   clearChat = () => this.set({ items: [] });
+  /** Opens the system picker (any file type). Throws if the platform cannot read the file; the UI shows the message. */
+  async attach() {
+    if (this.picking || this.state.running || this.state.attachments.length >= MAX_ATTACHMENTS) return;
+    this.picking = true;
+    const epoch = this.draftEpoch;
+    try {
+      const f = await this.platform.files.pick();
+      // The draft may have been sent or cleared (New chat) while the picker was open.
+      if (!f || epoch !== this.draftEpoch) return;
+      this.set({ attachments: [...this.state.attachments, { ...f, name: cleanLabel(f.name) || "file" }] });
+    } finally {
+      this.picking = false;
+    }
+  }
+  private picking = false;
+  private draftEpoch = 0;
+  detach = (token: string) => this.set({ attachments: this.state.attachments.filter((f) => f.token !== token) });
+
   /** Starts an empty chat. Ignored while a run is active (STOP first). History keeps the old run. */
   newChat = () => {
     if (this.state.running) return;
     this.chipItems.clear();
+    this.draftEpoch++;
+    this.set({ attachments: [] });
     this.clearChat();
     this.go("chat");
   };

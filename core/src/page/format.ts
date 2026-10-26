@@ -15,6 +15,7 @@ export function formatObservation(obs: PageObservation, maxChars: number = DEFAU
     else if (raw.type === "password" || raw.autocomplete) parts.push("(secret field)");
     if (e.href) parts.push(`href=${clip(e.href, 120)}`);
     if (e.disabled) parts.push("disabled");
+    if (e.hidden) parts.push("hidden-input");
     return parts.join(" ");
   });
   return [

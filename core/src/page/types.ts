@@ -16,6 +16,8 @@ export interface PageElement {
   /** True when activating it submits a form (effective type, not just the attribute). */
   submits?: boolean;
   disabled?: boolean;
+  /** A file input the page hides behind a button or dropzone. It can still be given a file. */
+  hidden?: boolean;
 }
 
 export interface PageObservation {

@@ -137,3 +137,84 @@ describe("AppStore", () => {
     expect(JSON.parse((await platform.kv.get("settings"))!).language).toBe("hi");
   });
 });
+
+describe("attachments", () => {
+  const picked = [
+    { name: "clip.mp4", size: 5_000_000, token: "t1" },
+    { name: "a\u202Egnp.exe", size: 3, token: "t2" },
+  ];
+  function withPicker(script: object[]) {
+    const ctx = setup(script);
+    let n = 0;
+    ctx.platform.files.pick = async () => picked[n++];
+    return ctx;
+  }
+
+  it("attach adds a cleaned name, detach removes it, New chat clears them", async () => {
+    const { store } = withPicker([{ type: "done", summary: "ok" }]);
+    await store.init();
+    await store.attach();
+    await store.attach();
+    expect(store.getState().attachments.map((f) => f.name)).toEqual(["clip.mp4", "a gnp.exe"]);
+    store.detach("t1");
+    expect(store.getState().attachments.map((f) => f.token)).toEqual(["t2"]);
+    store.newChat();
+    expect(store.getState().attachments).toEqual([]);
+  });
+
+  it("cancelling the picker adds nothing; the limit is enforced", async () => {
+    const { store, platform } = setup([{ type: "done", summary: "ok" }]);
+    await store.init();
+    await store.attach();
+    expect(store.getState().attachments).toEqual([]);
+    let i = 0;
+    platform.files.pick = async () => ({ name: `f${i}`, size: i++, token: `k${i}` });
+    for (let k = 0; k < 15; k++) await store.attach();
+    expect(store.getState().attachments).toHaveLength(10);
+  });
+
+  it("send hands the files to the agent (names + sizes only in the prompt), shows them in the thread and clears the tray", async () => {
+    const { store, prompts, platform } = withPicker([{ type: "done", summary: "ok" }]);
+    await store.init();
+    await store.addProvider({ name: "P", kind: "openai-compat", baseUrl: "https://p.test/v1" }, "k");
+    await store.updateProvider({ ...store.getState().providers[0]!, defaultModel: "m1", allowSensitive: true });
+    await store.attach();
+    await store.send("post this video", { files: store.getState().attachments });
+    const user = store.getState().items.find((i) => i.role === "user")!;
+    expect(user.files).toEqual([{ name: "clip.mp4", size: 5_000_000 }]);
+    expect(store.getState().attachments).toEqual([]);
+    expect(prompts[0]).toContain("<USER_FILES>\nf1: clip.mp4 (5000000 bytes)\n</USER_FILES>");
+    expect(JSON.stringify(prompts)).not.toContain("t1");
+    void platform;
+  });
+
+  it("a picker result that arrives after New chat is dropped; two picks cannot run at once", async () => {
+    const { store, platform } = setup([{ type: "done", summary: "ok" }]);
+    await store.init();
+    let release!: (f: { name: string; size: number; token: string }) => void;
+    let calls = 0;
+    platform.files.pick = () => (calls++, new Promise((r) => (release = r)));
+    const first = store.attach();
+    void store.attach(); // ignored: a picker is already open
+    expect(calls).toBe(1);
+    store.newChat();
+    release({ name: "late.zip", size: 1, token: "x" });
+    await first;
+    expect(store.getState().attachments).toEqual([]);
+  });
+
+  it("only the composer passes attachments: a saved task or panel run neither sends nor clears them", async () => {
+    const { store, prompts } = withPicker([{ type: "done", summary: "ok" }]);
+    await store.init();
+    await store.addProvider({ name: "P", kind: "openai-compat", baseUrl: "https://p.test/v1" }, "k");
+    await store.updateProvider({ ...store.getState().providers[0]!, defaultModel: "m1", allowSensitive: true });
+    await store.attach();
+    await store.send("run saved task");
+    expect(prompts[0]).not.toContain("USER_FILES");
+    expect(store.getState().attachments.map((f) => f.name)).toEqual(["clip.mp4"]);
+  });
+
+  it("the default theme is light", () => {
+    expect(setup([]).store.getState().settings.theme).toBe("light");
+  });
+});

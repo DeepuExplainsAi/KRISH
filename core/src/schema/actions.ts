@@ -40,7 +40,7 @@ export const ActionSchema = z.discriminatedUnion("type", [
     thought,
   }),
   z.strictObject({ type: z.literal("paste"), elementId, text: z.string().max(50_000), thought }),
-  z.strictObject({ type: z.literal("upload_selected_file"), elementId, thought }),
+  z.strictObject({ type: z.literal("upload_selected_file"), elementId, file: z.string().regex(/^f\d{1,2}$/).optional(), thought }),
   z.strictObject({
     type: z.literal("run_sandbox_task"),
     tool: z.enum(["zip", "unzip", "text", "script", "shell"]),

@@ -45,6 +45,7 @@ Legend: **RUN** = executed in the build environment with the result observed. **
 12. Accessibility, RTL, small screens, landscape.
 13. New UI on a real phone: touch drag/resize of the browser card, native browser view lining up with the card's `.view` box, Hindi/Bengali glyphs, long labels.
 14. Dark theme on a real phone and in the Electron window: Settings -> Theme (System / Light / Dark). Checked only in headless Chrome with an emulated `prefers-color-scheme`. Not checked: the native browser view's own page colors (a web page stays light), Android status/navigation bar colors (`AppTheme` is still the light parent), Electron window background flash before the UI loads.
+15. File attach on a real phone and in Electron: paperclip -> pick a video, an image, a zip -> chip shows -> send -> agent asks upload on a site with a file input (also one whose input is hidden behind a button, e.g. a drag-and-drop area) -> confirm card shows the name -> the site really receives the file. Check Android: `PickedFiles.arm` + tap on the label of a hidden input; Electron: `DOM.setFileInputFiles`. Also try a large file (hundreds of MB) and picking several files.
 
 ## Review findings that are only partly addressed
 

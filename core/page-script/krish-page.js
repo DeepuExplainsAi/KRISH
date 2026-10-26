@@ -6,6 +6,7 @@
 (function () {
   var MAX_ELEMENTS = 200;
   var MAX_TEXT = 60000;
+  var MAX_HIDDEN_FILE_INPUTS = 5;
   // State survives re-injection so element ids stay valid between observe() and click().
   var state = window.__krishState || (window.__krishState = { els: [], overlay: null });
 
@@ -30,6 +31,16 @@
     return wrap ? clean(wrap.textContent) : undefined;
   }
 
+  function isFileInput(e) {
+    return e.tagName === "INPUT" && e.type === "file";
+  }
+
+  // Sites usually hide the real file input behind a button or dropzone; the agent still has to be able to target it.
+  function fileLabel(e) {
+    var near = e.parentElement ? clean(e.parentElement.innerText != null ? e.parentElement.innerText : e.parentElement.textContent) : "";
+    return near.slice(0, 120);
+  }
+
   function describe(e, id) {
     var tag = e.tagName.toLowerCase();
     var d = { id: id, tag: tag };
@@ -38,8 +49,9 @@
     var role = e.getAttribute("role");
     if (role) d.role = role;
     if (e.getAttribute("name")) d.name = e.getAttribute("name");
-    var label = labelFor(e);
+    var label = labelFor(e) || (isFileInput(e) ? fileLabel(e) : undefined);
     if (label) d.label = label.slice(0, 200);
+    if (isFileInput(e) && !visible(e)) d.hidden = true;
     var text = clean(e.innerText != null ? e.innerText : e.textContent);
     if (text && tag !== "input" && tag !== "textarea" && tag !== "select") d.text = text.slice(0, 200);
     if (e.getAttribute("placeholder")) d.placeholder = e.getAttribute("placeholder");
@@ -71,9 +83,14 @@
     var els = (state.els = []);
     var out = [];
     var nodes = document.querySelectorAll(SELECTOR);
+    var hiddenFiles = 0; // capped so a page cannot fill the element budget with them and push real fields out of view
     for (var i = 0; i < nodes.length && els.length < MAX_ELEMENTS; i++) {
       var e = nodes[i];
-      if (!visible(e) || (e.tagName === "INPUT" && e.type === "hidden")) continue;
+      if (e.tagName === "INPUT" && e.type === "hidden") continue;
+      if (!visible(e)) {
+        if (!isFileInput(e) || hiddenFiles >= MAX_HIDDEN_FILE_INPUTS) continue;
+        hiddenFiles++;
+      }
       out.push(describe(e, els.length));
       els.push(e);
     }
@@ -162,6 +179,11 @@
     // Center of the element in CSS px (for native trusted taps, e.g. file choosers that need a user gesture).
     rect: function (id, fp) {
       var e = get(id, fp);
+      if (isFileInput(e) && !visible(e)) {
+        // Only a real <label> for this input: clicking it activates exactly this input, never some other control.
+        e = (e.labels && e.labels[0]) || e.closest("label");
+        if (!e) throw new Error("hidden file input has no label to tap; ask the user to take over");
+      }
       if (e.scrollIntoView) e.scrollIntoView({ block: "center" });
       var r = e.getBoundingClientRect();
       return JSON.stringify({ x: r.left + r.width / 2, y: r.top + r.height / 2, innerWidth: window.innerWidth });
