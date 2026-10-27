@@ -10,8 +10,8 @@ android {
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         // CI passes the release tag (-PappVersion=0.1.5) and the run number, so every build is newer than the last one.
-        versionCode (project.findProperty("appVersionCode") ?: "1").toInteger()
-        versionName (project.findProperty("appVersion") ?: "0.1.0")
+        versionCode = Integer.parseInt((project.findProperty("appVersionCode") ?: "1").toString())
+        versionName = (project.findProperty("appVersion") ?: "0.1.0").toString()
         aaptOptions {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
