@@ -3,6 +3,7 @@ import { Chat } from "./screens/Chat";
 import { Home } from "./screens/Home";
 import { Menu, MENU_GROUPS } from "./screens/Menu";
 import { LiveWindow } from "./components/LiveWindow";
+import { Tour } from "./components/Tour";
 import { IconBack, IconPlus, IconStop } from "./components/icons";
 import { useT } from "./i18n/useT";
 import type { Key } from "./i18n";
@@ -49,7 +50,14 @@ export function App() {
     const apply = () => void (document.documentElement.dataset.theme = resolveTheme(themePref, mq.matches));
     apply();
     mq.addEventListener("change", apply);
-    return () => mq.removeEventListener("change", apply);
+    // Auto follows the clock: re-check every minute and when the app comes back to the front.
+    const tick = setInterval(apply, 60_000);
+    document.addEventListener("visibilitychange", apply);
+    return () => {
+      mq.removeEventListener("change", apply);
+      clearInterval(tick);
+      document.removeEventListener("visibilitychange", apply);
+    };
   }, [themePref]);
   if (!ready) return <div className="boot">Krish</div>;
   const Screen = SCREENS[screen];
@@ -70,6 +78,7 @@ export function App() {
           {running && <button className="stop" onClick={app.stop}><IconStop />{t("stop")}</button>}
         </div>
       )}
+      <Tour />
       {notice && <div className="notice glass" onClick={() => app.notify(undefined)}>{notice}</div>}
       <div className="body">
       <aside className="side" aria-label={t("menu")}>

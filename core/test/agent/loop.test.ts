@@ -84,7 +84,7 @@ describe("runAgent", () => {
     await runAgent({ task: "login karo" }, { driver, router, ui, controller: new AgentController() });
     const labels = events.filter((e) => e.type === "chip").map((e) => (e as { label: string }).label);
     expect(labels).toContain("Page padh raha hoon");
-    expect(labels).toContain("Action required");
+    expect(labels).toContain("Waiting for you");
     expect(labels).not.toContain("Safe hai, bas bhej do");
   });
 
@@ -441,6 +441,16 @@ describe("KrishVault autofill", () => {
     await v.put({ site, username: "deepu", password: "S3cret-pw" });
     return v;
   };
+
+  it("fills the saved login without asking when askBeforeFill is off", async () => {
+    const vault = await unlockedVault();
+    const { router } = await harness([A({ type: "done", summary: "logged in" })]);
+    const { driver, secrets } = fakeDriver(form, login);
+    const { ui, confirms } = fakeUI();
+    await runAgent({ task: "log me in", askBeforeFill: false }, { driver, router, ui, controller: new AgentController(), vault });
+    expect(confirms.filter((c) => c.kind === "vault")).toHaveLength(0);
+    expect(secrets.map((x) => x.value)).toContain("S3cret-pw");
+  });
 
   it("fills the saved login after the user confirms; the password never reaches the model, events or history text", async () => {
     const vault = await unlockedVault();

@@ -37,6 +37,10 @@ const norm = (s: string | undefined) => (s ?? "").replace(/\s+/g, " ").trim();
 /** Every visible-meaning label of a control. Pages control these, so a risky word in ANY of them counts. */
 const labelsOf = (e: PageElement) => [e.label, e.text, e.title].map(norm).filter(Boolean);
 
+/** A search field only looks things up: pressing Enter in it sends nothing anywhere, so it needs no approval. */
+const SEARCH = /\bsearch\b|\bfind\b|\bsuche\b|\bbuscar\b|खोज|सर्च/i;
+const isSearchBox = (e: PageElement) => e.tag === "input" && (e.type === "search" || SEARCH.test([e.label, e.placeholder, e.name, e.title, e.autocomplete].map(norm).join(" ")));
+
 /** Sandbox tasks write files if declared, if the tool always writes, or if a script touches `output`. Never trust the claim alone. */
 export const sandboxWrites = (a: Extract<Action, { type: "run_sandbox_task" }>) =>
   a.writesFiles || a.tool === "zip" || a.tool === "unzip" || a.tool === "shell" || /\boutput\b/.test(a.code);
@@ -81,7 +85,7 @@ export function gate(action: Action, ctx: GateContext): Gate {
       if (action.text.includes("[REDACTED")) {
         return { verdict: "block", reason: "text contains a redaction placeholder; ask the user for the real value" };
       }
-      if (action.type === "type" && action.submit) {
+      if (action.type === "type" && action.submit && !(el && isSearchBox(el))) {
         return { verdict: "confirm", request: { kind: "send", title: `Send on ${host}?`, preview: action.text } };
       }
       return { verdict: "allow" };

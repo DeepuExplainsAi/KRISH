@@ -30,9 +30,13 @@ const fromB64 = (s: string) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
 
 interface Blob { v: 1; iter: number; salt: string; iv: string; ct: string }
 
-/** "instagram.com", "https://www.instagram.com/x" or "m.instagram.com" -> "instagram.com". */
+/** A login saved for this "site" is the default account: it is offered on every site that has no login of its own. */
+export const ALL_SITES = "*";
+
+/** "instagram.com", "https://www.instagram.com/x" or "m.instagram.com" -> "instagram.com". "*" stays "*" (every site). */
 export const normalizeSite = (input: string): string | undefined => {
   const t = input.trim();
+  if (t === ALL_SITES) return ALL_SITES;
   return siteOf(/^[a-z][a-z0-9+.-]*:\/\//i.test(t) ? t : `https://${t}`);
 };
 
@@ -200,12 +204,13 @@ export class Vault {
     await this.commit((cur) => cur.filter((e) => e.id !== id));
   }
 
-  /** Saved logins for the site of `url`. Unlocked only. */
+  /** Saved logins for the site of `url`, the site's own first, then the default account(s) for every site. Unlocked only. */
   logins(url: string): VaultEntry[] {
     const site = siteOf(url);
     const entries = this.open();
     this.touch();
-    return site ? entries.filter((e) => e.site === site) : [];
+    if (!site) return [];
+    return [...entries.filter((e) => e.site === site), ...entries.filter((e) => e.site === ALL_SITES)];
   }
 
   /** Forgot the passphrase: deletes everything. Runs after any save already under way, and no earlier work can bring the vault back. */

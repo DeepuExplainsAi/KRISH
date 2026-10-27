@@ -138,16 +138,40 @@ describe("ProviderRouter fallback", () => {
     await expect(none.router.run(msgs, parseAction)).rejects.toBeInstanceOf(AllProvidersFailedError);
   });
 
-  it("the error names each provider and why it was skipped", async () => {
+  it("when nothing could even be tried the error says so, without provider names", async () => {
     const { router } = await setup({}, [provider("a", { name: "Gemini", enabled: false }), provider("b", { name: "Groq", defaultModel: undefined })]);
-    await expect(router.run(msgs, parseAction)).rejects.toThrow(/Gemini: disabled · Groq: no model selected/);
+    const msg = String(await router.run(msgs, parseAction).catch((e: Error) => e.message));
+    expect(msg).toBe("No AI provider could answer. Nothing is set up to answer yet.");
   });
 
-  it("the error is one short line per provider; the raw provider body never reaches the message", async () => {
+  it("the error lists each distinct reason once, never provider or model names or the raw body", async () => {
     const big = JSON.stringify({ error: { message: "x".repeat(300) } });
     const { router } = await setup({ "a.test": () => json(big, 429), "b.test": () => json({}, 402) }, [provider("a", { name: "Gemini" }), provider("b", { name: "Zen" })]);
     const msg = String(await router.run(msgs, parseAction).catch((e: Error) => e.message));
-    expect(msg).toBe("No AI provider could answer. Gemini: free limit used up, try again later · Zen: needs paid credit");
+    expect(msg).toBe("No AI provider could answer. free limit used up, try again later · needs paid credit");
+    expect(msg).not.toMatch(/Gemini|Zen|xxxx/);
+  });
+
+  it("a keyless provider is used without any stored key and does not send a key header", async () => {
+    const seen: string[] = [];
+    const { fn } = mockFetch({ "free.test": (_u, init) => (seen.push(String((init?.headers as Record<string, string>).authorization)), openaiReply(DONE)) });
+    const ps = [provider("free", { baseUrl: "https://free.test/v1", keyless: true })];
+    const s = await stores([]);
+    const router = new ProviderRouter({ ...s, fetch: fn, providers: () => ps });
+    expect((await router.run(msgs, parseAction)).providerId).toBe("free");
+    expect(seen).toHaveLength(1);
+  });
+
+  it("when the chosen models fail it tries the next best listed models of the same provider", async () => {
+    const tried: string[] = [];
+    const items = ["m1", "m2", "m3", "m4"].map((id) => ({ id, free: true }));
+    const { fn } = mockFetch({ "a.test": (_u, init) => { const m = JSON.parse(String(init?.body)).model as string; tried.push(m); return m === "m3" ? openaiReply(DONE) : json({}, 429); } });
+    const ps = [provider("a", { defaultModel: "m1", fallbackModel: "m2", models: { fetchedAt: 1, items } })];
+    const s = await stores(["a"]);
+    const router = new ProviderRouter({ ...s, fetch: fn, providers: () => ps });
+    const r = await router.run(msgs, parseAction);
+    expect(r.model).toBe("m3");
+    expect(tried.slice(0, 2)).toEqual(["m1", "m2"]);
   });
 
   it("reports every real result to onResult", async () => {

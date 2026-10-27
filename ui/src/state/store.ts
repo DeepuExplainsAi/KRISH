@@ -3,6 +3,7 @@ import {
   runAgent, Scheduler, nextRun, nextBriefAt, briefCommand, Vault,
   type AgentEvent, type AgentUI, type BriefSettings, type ChipState, type ConfirmRequest, type PageDriver, type ProviderConfig,
   type MemoryPort, type SecureKind, type SelectedFile, type Sandbox, setLocalEngine, type ModelInfo,
+  BUILTIN_PROVIDER,
 } from "@krish/core";
 import type { Platform } from "../platform";
 import { Tier0Sandbox } from "../sandbox/tier0";
@@ -13,13 +14,13 @@ import type { ThemePref } from "../theme";
 export const MAX_ATTACHMENTS = 10;
 
 /** Bump when a default changes and old saved values must be migrated (see `migrateSettings`). */
-export const SETTINGS_VERSION = 2;
+export const SETTINGS_VERSION = 3;
 
 export interface Settings {
   version: number;
   /** UI language. "auto" follows the device. The agent answers in the language the user writes, independent of this. */
   language: LangPref;
-  /** "system" follows the device light/dark setting. */
+  /** "auto" follows the local time of day, "system" the device light/dark setting. */
   theme: ThemePref;
   liteMode: boolean;
   /** Open the browser card when the agent loads a site (plain answers never open it). Off: open it by tapping a step. */
@@ -29,6 +30,14 @@ export interface Settings {
   brief: BriefSettings;
   linuxSandbox: boolean;
   localModel: boolean;
+  /** When your own providers all fail (or none is added), use the built-in free service as the last resort. */
+  freeFallback: boolean;
+  /** The AI may read the text of sign-in and payment pages (passwords, codes and card numbers are always hidden from it). */
+  aiSeesLogin: boolean;
+  /** Ask before a saved login is filled into a page. */
+  confirmFill: boolean;
+  /** The first-run tour was shown (or skipped). */
+  tourDone: boolean;
   /** Set after the user accepted the download notice. */
   localModelConsent: boolean;
   localModelId?: string;
@@ -38,24 +47,30 @@ export interface Settings {
 export const DEFAULT_SETTINGS: Settings = {
   version: SETTINGS_VERSION,
   language: "auto",
-  theme: "system",
+  theme: "auto",
   liteMode: false,
   autoOpenWindow: true,
   screenshots: false,
   desktopLayout: false,
   brief: DEFAULT_BRIEF,
   linuxSandbox: false,
+  freeFallback: true,
+  aiSeesLogin: true,
+  confirmFill: false,
+  tourDone: false,
   localModel: false,
   localModelConsent: false,
 };
 
 /**
- * Settings saved by an older build. v1 saved the then-default theme "light" for everybody, so it cannot be told apart from a
- * real choice: it moves to Auto once. Anything saved later is a real choice and is kept.
+ * Settings saved by an older build. v1 saved the then-default theme "light" and v2 the then-default "system" for everybody, so
+ * neither can be told apart from a real choice: they move to Auto once. Anything saved later is a real choice and is kept.
  */
 export function migrateSettings(saved: Partial<Settings>): Partial<Settings> {
-  if ((saved.version ?? 1) >= SETTINGS_VERSION) return saved;
-  return { ...saved, version: SETTINGS_VERSION, theme: saved.theme === undefined || saved.theme === "light" ? "system" : saved.theme };
+  const v = saved.version ?? 1;
+  if (v >= SETTINGS_VERSION) return saved;
+  const old = v === 1 ? saved.theme === undefined || saved.theme === "light" : saved.theme === undefined || saved.theme === "system";
+  return { ...saved, version: SETTINGS_VERSION, theme: old ? "auto" : saved.theme };
 }
 
 export type Screen = "home" | "chat" | "menu" | "vault" | "panels" | "projects" | "tasks" | "history" | "providers" | "settings" | "security";
@@ -76,7 +91,6 @@ export interface ChatItem {
   /** The run ended in an error: shown as an error note, not as an answer. */
   failed?: boolean;
   /** Which provider and model produced this answer (shown small under it). */
-  via?: string;
 }
 
 export interface State {
@@ -170,14 +184,18 @@ export class AppStore {
     });
   }
 
-  /** The on-device model, when enabled and usable, goes first; API providers follow as the automatic fallback. */
+  /** The on-device model, when enabled and usable, goes first; the user's API providers follow, and the built-in free service is the last resort. */
   private routerProviders(): ProviderConfig[] {
     const { localModel, localModelConsent, localModelId } = this.state.settings;
-    if (!localModel || !localModelConsent || !localModelId || !webgpuAvailable()) return this.state.providers;
+    // One switch for all of the user's own providers; the per-provider flag can still allow it on its own. Passwords and codes are redacted either way.
+    const seeLogin = this.state.settings.aiSeesLogin;
+    const mine = seeLogin ? this.state.providers.map((p) => (p.allowSensitive ? p : { ...p, allowSensitive: true })) : this.state.providers;
+    const all = [...mine, ...(this.state.settings.freeFallback ? [BUILTIN_PROVIDER] : [])];
+    if (!localModel || !localModelConsent || !localModelId || !webgpuAvailable()) return all;
     const local: ProviderConfig = {
       id: "local", name: "On-device", kind: "webgpu-local", baseUrl: "local:", enabled: true, allowSensitive: true, defaultModel: localModelId,
     };
-    return [local, ...this.state.providers];
+    return [local, ...all];
   }
 
   /** Called when the experimental flag changes. Registers or removes the engine; nothing loads until a task needs it. */
@@ -311,6 +329,14 @@ export class AppStore {
     await this.updateProvider(withAutoModels({ ...next, defaultModel: gone(next.defaultModel) ? undefined : next.defaultModel, fallbackModel: gone(next.fallbackModel) ? undefined : next.fallbackModel }));
   }
 
+  /** Back to automatic model choice: the hand-picked pair is dropped and the working models are found again. */
+  async autoModels(id: string) {
+    const p = this.state.providers.find((x) => x.id === id);
+    if (!p) return;
+    await this.updateProvider({ ...p, modelsChosen: false, defaultModel: undefined, fallbackModel: undefined });
+    await this.testProvider(id);
+  }
+
   async setProviderKey(id: string, key: string) {
     await this.platform.keys.set(id, key);
   }
@@ -340,14 +366,17 @@ export class AppStore {
   toggleWindowExpanded = () => this.set({ windowExpanded: !this.state.windowExpanded });
 
   // ---- prompts ----
-  private prompt<T extends Prompt["type"]>(build: (id: number) => Extract<Prompt, { type: T }>, status: State["status"] = "action_required") {
+  /** Only a step the user must do themselves (a login wall, a code, a CAPTCHA) is "action required". A question or an approval is part of the conversation. */
+  private prompt<T extends Prompt["type"]>(build: (id: number) => Extract<Prompt, { type: T }>) {
     const p = build(++this.seq);
-    this.set({ prompts: [...this.state.prompts, p], status });
+    const critical = p.type === "takeover" || p.type === "secure";
+    this.set({ prompts: [...this.state.prompts, p], ...(critical ? { status: "action_required" as const } : {}) });
     return p.id;
   }
   private settle(id: number) {
     const prompts = this.state.prompts.filter((p) => p.id !== id);
-    this.set({ prompts, status: this.state.running ? (this.state.paused ? "paused" : "running") : "idle" });
+    const critical = prompts.some((p) => p.type === "takeover" || p.type === "secure");
+    this.set({ prompts, status: critical ? "action_required" : this.state.running ? (this.state.paused ? "paused" : "running") : "idle" });
   }
   answer(id: number, value: unknown) {
     const p = this.state.prompts.find((x) => x.id === id);
@@ -379,7 +408,6 @@ export class AppStore {
     };
   }
 
-  private via?: string;
   private chipItems = new Map<number, number>();
   private onAgentEvent(runId: string, e: AgentEvent) {
     if (e.type === "chip") {
@@ -392,9 +420,6 @@ export class AppStore {
         this.set({ items: [...this.state.items, { id, role: "agent", chip: { label: e.label, state: e.state } }] });
       }
       void this.history.log(runId, "chip", e.label, undefined, e.state);
-    } else if (e.type === "provider") {
-      const name = this.routerProviders().find((p) => p.id === e.providerId)?.name ?? "";
-      this.via = name ? `${name} · ${e.model}` : e.model;
     } else if (e.type === "browser") {
       // The card opens when the agent really uses the browser, never for a plain chat or an old tab.
       if (this.state.settings.autoOpenWindow) this.openWindow();
@@ -405,8 +430,7 @@ export class AppStore {
       // Steps still open when the run ends (stopped, failed) must not stay "running" or "action required" in the thread.
       const closed = bad || e.status === "stopped" ? "error" : "done";
       this.set({ items: this.state.items.map((i) => (i.chip && (i.chip.state === "running" || i.chip.state === "action_required") ? { ...i, chip: { ...i.chip, state: closed } } : i)) });
-      this.push({ role: "agent", text: e.summary, ...(bad ? { failed: true } : this.via ? { via: this.via } : {}) });
-      this.via = undefined;
+      this.push({ role: "agent", text: e.summary, ...(bad ? { failed: true } : {}) });
       void this.history.log(runId, "run_end", e.status, e.summary);
     }
   }
@@ -490,7 +514,7 @@ export class AppStore {
       const { url, title } = this.state.page;
       const openTab = url && url !== "about:blank" ? `${title ? `${title} — ` : ""}${url}` : undefined;
       await runAgent(
-        { task, files, screenshots: this.state.settings.screenshots, startOnPage: Boolean(opts.startUrl), openTab },
+        { task, files, screenshots: this.state.settings.screenshots, startOnPage: Boolean(opts.startUrl), openTab, askBeforeFill: this.state.settings.confirmFill },
         { driver: this.driver(), router: this.router, ui: this.buildUI(runId), controller, sandbox: this.sandbox, memory: this.memoryPort(), vault: this.vault },
       );
     } finally {

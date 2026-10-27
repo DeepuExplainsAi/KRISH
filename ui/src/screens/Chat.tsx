@@ -12,14 +12,15 @@ const fmtSize = (n: number) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` 
 
 const SUGGESTIONS = ["suggest1", "suggest2", "suggest3"] as const;
 
-/** "No AI provider could answer. A: reason · B: reason" as a title and one line per provider. */
+/** One calm line. The reasons from the providers stay out of the chat: they name services and models the user never chose to see. */
 function ProviderFailure({ text }: { text: string }) {
   const { t } = useT();
-  const lines = text.slice(NO_PROVIDER_PREFIX.length).trim().split(" · ").filter(Boolean);
+  const reasons = text.slice(NO_PROVIDER_PREFIX.length).trim().split(" · ").filter(Boolean);
   return (
     <span className="why">
       <strong>{t("noAnswerTitle")}</strong>
-      {lines.map((l) => <span key={l}>{l}</span>)}
+      <span>{t("noAnswerHint")}</span>
+      {reasons.length > 0 && <small className="muted">{reasons.join(" · ")}</small>}
     </span>
   );
 }
@@ -77,7 +78,6 @@ export function Chat() {
           ) : (
             <div key={i.id} className={`msg ${i.role}${i.failed ? " failed" : ""}`}>
               {i.failed && i.text?.startsWith(NO_PROVIDER_PREFIX) ? <ProviderFailure text={i.text} /> : i.text}
-              {i.via && <small className="via">{i.via}</small>}
               {i.failed && (
                 <span className="row">
                   {i.text?.startsWith(NO_PROVIDER_PREFIX) && <button type="button" className="primary" onClick={() => app.go("providers")}>{t("openApiKeys")}</button>}

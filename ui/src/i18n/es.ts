@@ -14,6 +14,7 @@ export const es: Partial<Dict> = {
   winTitle: "Navegador", openApiKeys: "Abrir claves API", opening: "Abriendo {site}", loading: "Cargando…", noPage: "Aún no hay página. Pide al agente que abra un sitio.",
   expand: "Ampliar", collapse: "Reducir", close: "Cerrar",
   panels: "Paneles", tasks: "Tareas programadas", history: "Historial", providers: "Proveedores", settings: "Ajustes", security: "Seguridad",
+  themeAuto: "Automático (día y noche)",
   language: "Idioma", languageAuto: "Automático (idioma del dispositivo)", theme: "Tema", themeSystem: "Sistema (según el dispositivo)", themeLight: "Claro", themeDark: "Oscuro", attachFile: "Adjuntar archivo (foto, vídeo, audio, zip, cualquiera)", attachments: "Archivos adjuntos", removeFile: "Quitar {name}", autoOpenWindow: "Abrir la tarjeta del navegador cuando el agente abra un sitio", 
   roleMain: "Principal", roleBackup: "Respaldo {n}",
   dismiss: "Descartar", connected: "Conectado", checking: "Comprobando…", testConnection: "Probar", notWorking: "No funciona: {why}",

@@ -1,4 +1,4 @@
-import { MIN_PASSPHRASE, type VaultEntry } from "@krish/core";
+import { ALL_SITES, MIN_PASSPHRASE, type VaultEntry } from "@krish/core";
 import { useState } from "react";
 import { IconLock } from "../components/icons";
 import { useT } from "../i18n/useT";
@@ -17,7 +17,7 @@ function Entry({ e }: { e: VaultEntry }) {
         <strong>{e.label}</strong>
         <button onClick={() => void app.vault.remove(e.id)}>{t("delete")}</button>
       </div>
-      <p className="muted">{e.site} · {e.username || "-"}</p>
+      <p className="muted">{e.site === ALL_SITES ? t("vaultAllSites") : e.site} · {e.username || "-"}</p>
       <div className="row">
         <input readOnly type={show ? "text" : "password"} value={e.password} aria-label={t("vaultPassword")} autoComplete="off" />
         <button onClick={() => setShow(!show)}>{show ? t("hide") : t("vaultShow")}</button>
@@ -44,7 +44,9 @@ function Unlocked() {
       <div className="grid">{list.map((e) => <Entry key={e.id} e={e} />)}</div>
       <form className="card" onSubmit={(e) => { e.preventDefault(); void run(v.put(f).then(() => setF(EMPTY))); }}>
         <h4>{t("vaultAdd")}</h4>
-        <input placeholder={t("vaultSite")} value={f.site} inputMode="url" autoCapitalize="off" onChange={(e) => setF({ ...f, site: e.target.value })} />
+        <label><input type="checkbox" checked={f.site === ALL_SITES} onChange={(e) => setF({ ...f, site: e.target.checked ? ALL_SITES : "" })} /> {t("vaultAllSites")}</label>
+        {f.site !== ALL_SITES && <input placeholder={t("vaultSite")} value={f.site} inputMode="url" autoCapitalize="off" onChange={(e) => setF({ ...f, site: e.target.value })} />}
+        <p className="muted">{t("vaultSiteHint")}</p>
         <input placeholder={t("vaultLabel")} value={f.label} onChange={(e) => setF({ ...f, label: e.target.value })} />
         <input placeholder={t("vaultUsername")} value={f.username} autoCapitalize="off" autoComplete="off" onChange={(e) => setF({ ...f, username: e.target.value })} />
         <input type="password" placeholder={t("vaultPassword")} value={f.password} autoComplete="new-password" onChange={(e) => setF({ ...f, password: e.target.value })} />

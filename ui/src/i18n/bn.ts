@@ -14,6 +14,7 @@ export const bn: Partial<Dict> = {
   winTitle: "ব্রাউজার", openApiKeys: "API কী খুলুন", opening: "{site} খুলছে", loading: "লোড হচ্ছে…", noPage: "এখনও কোনো পেজ নেই। এজেন্টকে একটি সাইট খুলতে বলুন।",
   expand: "বড় করুন", collapse: "ছোট করুন", close: "বন্ধ করুন",
   panels: "প্যানেল", tasks: "নির্ধারিত কাজ", history: "ইতিহাস", providers: "প্রোভাইডার", settings: "সেটিংস", security: "নিরাপত্তা",
+  themeAuto: "অটো (দিন ও রাত)",
   language: "ভাষা", languageAuto: "অটো (ডিভাইসের ভাষা)", theme: "থিম", themeSystem: "সিস্টেম (ডিভাইস অনুযায়ী)", themeLight: "লাইট", themeDark: "ডার্ক", attachFile: "ফাইল যোগ করুন (ছবি, ভিডিও, অডিও, জিপ, যেকোনো)", attachments: "সংযুক্ত ফাইল", removeFile: "{name} সরান", autoOpenWindow: "এজেন্ট কোনো সাইট খুললে ব্রাউজার কার্ড খুলুন", 
   roleMain: "প্রধান", roleBackup: "ব্যাকআপ {n}",
   dismiss: "সরান", connected: "সংযুক্ত", checking: "পরীক্ষা চলছে…", testConnection: "টেস্ট", notWorking: "কাজ করছে না: {why}",

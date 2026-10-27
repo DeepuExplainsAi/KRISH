@@ -23,6 +23,8 @@ export interface ProviderConfig {
   /** Optional override for the model-list endpoint (when it differs from {baseUrl}/models). */
   modelsUrl?: string;
   enabled: boolean;
+  /** Needs no API key (the built-in free service). Always tried last. */
+  keyless?: boolean;
   /** Per-provider privacy flag. Default false. */
   allowSensitive: boolean;
   defaultModel?: string;

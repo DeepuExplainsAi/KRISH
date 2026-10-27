@@ -9,7 +9,7 @@ export function Settings() {
   const s = useAppState();
   const st = s.settings;
   const { t } = useT();
-  const toggle = (k: "liteMode" | "autoOpenWindow" | "screenshots" | "desktopLayout" | "linuxSandbox" | "localModel") => (e: React.ChangeEvent<HTMLInputElement>) =>
+  const toggle = (k: "liteMode" | "autoOpenWindow" | "screenshots" | "desktopLayout" | "aiSeesLogin" | "freeFallback" | "confirmFill" | "linuxSandbox" | "localModel") => (e: React.ChangeEvent<HTMLInputElement>) =>
     void app.saveSettings({ [k]: e.target.checked });
   return (
     <section>
@@ -22,6 +22,7 @@ export function Settings() {
       </label>
       <label>{t("theme")}
         <select value={st.theme} onChange={(e) => void app.saveSettings({ theme: e.target.value as ThemePref })}>
+          <option value="auto">{t("themeAuto")}</option>
           <option value="system">{t("themeSystem")}</option>
           <option value="light">{t("themeLight")}</option>
           <option value="dark">{t("themeDark")}</option>
@@ -30,6 +31,10 @@ export function Settings() {
       <label><input type="checkbox" checked={st.liteMode} onChange={toggle("liteMode")} /> {t("liteMode")}</label>
       <label><input type="checkbox" checked={st.autoOpenWindow} onChange={toggle("autoOpenWindow")} /> {t("autoOpenWindow")}</label>
       <label><input type="checkbox" checked={st.screenshots} onChange={toggle("screenshots")} /> {t("screenshots")}</label>
+      <label><input type="checkbox" checked={st.aiSeesLogin} onChange={toggle("aiSeesLogin")} /> {t("aiSeesLogin")}</label>
+      <label><input type="checkbox" checked={st.freeFallback} onChange={toggle("freeFallback")} /> {t("freeFallback")}</label>
+      <label><input type="checkbox" checked={st.confirmFill} onChange={toggle("confirmFill")} /> {t("confirmFill")}</label>
+      <button onClick={() => void app.saveSettings({ tourDone: false })}>{t("tourAgain")}</button>
       <label><input type="checkbox" checked={st.desktopLayout} onChange={toggle("desktopLayout")} /> {t("desktopLayout")}</label>
       <h3>{t("sandbox")}</h3>
       <p className="muted">{t("sandboxTier0")}</p>

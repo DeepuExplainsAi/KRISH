@@ -2,7 +2,7 @@ import { request } from "./http";
 import { ProviderError, type Adapter, type AdapterCall, type CompletionRequest, type ModelInfo } from "./types";
 
 const base = (call: AdapterCall) => call.config.baseUrl.replace(/\/+$/, "");
-const headers = (key: string) => ({ authorization: `Bearer ${key}` });
+const headers = (key: string): Record<string, string> => (key ? { authorization: `Bearer ${key}` } : {});
 
 function toBody(model: string, req: CompletionRequest, jsonMode: boolean) {
   return {

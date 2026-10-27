@@ -1,6 +1,6 @@
 import { DEFAULTS, type RouterConfig } from "../config/defaults";
 import type { KeyStore, KVStore } from "../storage";
-import { adapters, withAutoModels } from "./models";
+import { adapters, rankModels, withAutoModels } from "./models";
 import {
   AbortedError,
   ProviderError,
@@ -35,14 +35,14 @@ export interface Attempt {
 }
 
 /** Start of the error shown when no provider could answer; the UI offers a shortcut to API Keys for it. */
+const MAX_MODELS_PER_PROVIDER = 4;
 export const NO_PROVIDER_PREFIX = "No AI provider could answer.";
 
-/** One short line per provider (its last attempt): "Gemini: free limit used up · Groq: key rejected". */
+/** The distinct reasons, without provider or model names: "free limit used up, try again later · no connection". */
 function summarize(attempts: Attempt[]): string {
-  const last = new Map<string, Attempt>();
-  for (const a of attempts) last.set(a.providerId, a);
-  const lines = [...last.values()].map((a) => `${a.providerName}: ${a.reason ?? a.detail ?? a.outcome}`);
-  return lines.length ? lines.join(" · ") : "No provider added yet.";
+  const reasons = new Set<string>();
+  for (const a of attempts) if (a.outcome !== "skipped" && a.reason) reasons.add(a.reason);
+  return reasons.size ? [...reasons].join(" · ") : "Nothing is set up to answer yet.";
 }
 
 export class AllProvidersFailedError extends Error {
@@ -144,14 +144,15 @@ export class ProviderRouter {
     for (const configured of this.deps.providers()) {
       const p = withAutoModels(configured);
       if (opts.signal?.aborted) throw new AbortedError();
-      const needsKey = p.kind !== "webgpu-local";
+      const needsKey = p.kind !== "webgpu-local" && !p.keyless;
       const apiKey = needsKey ? await this.deps.keys.get(p.id) : "";
       const blocked = await this.blockedReason(p, opts, !needsKey || Boolean(apiKey));
       if (blocked || (needsKey && !apiKey)) {
         attempts.push({ providerId: p.id, providerName: p.name, outcome: "skipped", detail: blocked });
         continue;
       }
-      const models = [p.defaultModel!, ...(p.fallbackModel && p.fallbackModel !== p.defaultModel ? [p.fallbackModel] : [])];
+      // The chosen pair first, then the next best models the provider lists: one model being rate-limited or retired never ends the step.
+      const models = [...new Set([p.defaultModel!, p.fallbackModel, ...rankModels(p.models?.items ?? []).slice(0, 4).map((m) => m.id)])].filter((m): m is string => Boolean(m)).slice(0, MAX_MODELS_PER_PROVIDER);
       let lastError: ProviderError | undefined;
       for (const model of models) {
         await this.bump(p.id);
@@ -177,7 +178,7 @@ export class ProviderRouter {
           const reason = friendlyReason(lastError.kind, lastError.status);
           attempts.push({ providerId: p.id, providerName: p.name, model, outcome: lastError.kind, detail: lastError.message, reason });
           this.deps.onResult?.(p.id, false, reason);
-          if (lastError.kind === "auth") break; // same key: fallback model will not help
+          if (lastError.kind === "auth" || lastError.kind === "payment") break; // same key or account: another model will not help
         }
       }
       if (lastError) this.onFailure(p.id, lastError);

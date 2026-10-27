@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { findLoginFields, normalizeSite, Vault, VaultError } from "../../src/vault/vault";
+import { ALL_SITES, findLoginFields, normalizeSite, Vault, VaultError } from "../../src/vault/vault";
 import { MemoryKeyStore } from "../../src/storage";
 
 const fast = { iterations: 1000 };
@@ -49,6 +49,17 @@ describe("Vault", () => {
     await v.put(entry);
     const b = JSON.parse((await store.get("krishVault"))!).iv;
     expect(a).not.toBe(b);
+  });
+
+  it("a login for every site is a default; a login for the site itself comes first and wins", async () => {
+    const v = new Vault(new MemoryKeyStore(), fast);
+    await v.create("master-pass");
+    await v.put({ site: ALL_SITES, username: "main", password: "main-pw-1" });
+    expect(normalizeSite("*")).toBe(ALL_SITES);
+    expect(v.logins("https://shop.test/login").map((e) => e.username)).toEqual(["main"]);
+    await v.put({ site: "shop.test", username: "work", password: "work-pw-1" });
+    expect(v.logins("https://www.shop.test/login").map((e) => e.username)).toEqual(["work", "main"]);
+    expect(v.logins("not a url")).toHaveLength(0);
   });
 
   it("matches logins by registrable site only (a look-alike host gets nothing)", async () => {

@@ -94,7 +94,6 @@ h2 { font-size: 1.35rem; }
 .msg { padding: .7rem 1rem; border-radius: 22px; max-width: 88%; white-space: pre-wrap; word-break: break-word; line-height: 1.4; }
 .msg.user { align-self: flex-end; background: var(--user-bubble); border: 1px solid var(--glass-line); }
 .msg.agent, .empty { align-self: flex-start; background: var(--surface); }
-.msg .via { display: block; margin-top: .35rem; font-size: .72rem; color: var(--mute); }
 .msg.failed { color: var(--err); display: flex; flex-direction: column; align-items: flex-start; gap: .5rem; max-width: 92%; overflow-wrap: anywhere; font-size: .92rem; }
 .empty { padding: .7rem 1rem; border-radius: 22px; max-width: 88%; margin: 0; }
 .welcome { margin: auto 0; padding: 0 .35rem 1rem; display: grid; gap: .35rem; }
@@ -196,7 +195,7 @@ button.plain { background: none; border: 0; width: 100%; text-align: left; paddi
 .letter { display: inline-grid; place-items: center; width: 36px; height: 36px; border-radius: 12px; background: var(--strong); color: var(--on-strong); font-weight: 700; flex: none; }
 .badge { font-size: .72rem; padding: .15rem .5rem; border-radius: 999px; background: var(--field); border: 1px solid var(--glass-line); }
 .providers { padding-bottom: 5rem; }
-.pills { position: sticky; bottom: .5rem; display: flex; gap: .25rem; width: fit-content; margin: 1rem auto 0; padding: .3rem; border-radius: 999px; background: var(--glass-solid); border: 1px solid var(--glass-line); }
+.pills-unused { position: sticky; bottom: .5rem; display: flex; gap: .25rem; width: fit-content; margin: 1rem auto 0; padding: .3rem; border-radius: 999px; background: var(--glass-solid); border: 1px solid var(--glass-line); }
 .pills button { border: 0; background: none; border-radius: 999px; padding: .5rem 1rem; min-height: 40px; }
 .pills button.on { background: var(--strong); color: var(--on-strong); }
 @media (min-width: 900px) { .grid.wide { grid-template-columns: repeat(2, 1fr); } }
@@ -209,3 +208,39 @@ button.plain { background: none; border: 0; width: 100%; text-align: left; paddi
 .app.lite .round.dark, .app.lite .chip.action_required, .app.lite .chip.running.latest { background: var(--strong); }
 .app.lite .round.stop, .app.lite button.stop { background: var(--glass-solid); }
 @media (prefers-reduced-motion: reduce) { .dots i, .shimmer, .view-empty .mark, .thread > *, .live, .notice { animation: none; } button { transition: none; } }
+
+/* API keys: order of use, health dots, switches */
+.pcard .stack, .card .stack { display: flex; flex-direction: column; gap: .1rem; min-width: 0; }
+.pcard .rank { display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: var(--strong); color: var(--on-strong); font-weight: 700; font-size: .85rem; flex: none; }
+.pcard .grow { flex: 1; }
+.pcard button.on { background: var(--strong); color: var(--on-strong); }
+.health { display: inline-flex; align-items: center; gap: .4rem; font-size: .82rem; color: var(--mute); }
+.health i { width: 8px; height: 8px; border-radius: 50%; background: var(--mute); flex: none; }
+.health.ok { color: var(--ok); } .health.ok i { background: var(--ok); }
+.health.bad { color: var(--err); } .health.bad i { background: var(--err); }
+.health.wait i { background: var(--amber); animation: pulse 1s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: .3; } }
+.switch { position: relative; display: inline-block; width: 46px; height: 28px; flex: none; }
+.switch input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; margin: 0; cursor: pointer; z-index: 1; }
+.switch i { position: absolute; inset: 0; border-radius: 99px; background: var(--field); border: 1px solid var(--line); transition: background .18s; }
+.switch i::after { content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: var(--strong); transition: transform .18s; }
+.switch input:checked + i { background: var(--ok); border-color: var(--ok); }
+.switch input:checked + i::after { transform: translateX(18px); background: #fff; }
+.switch input:focus-visible + i { outline: 2px solid var(--acc); outline-offset: 2px; }
+.summary p { margin: .25rem 0 0; }
+.steps { display: flex; flex-direction: column; gap: .5rem; margin-top: .7rem; }
+.steps p { margin: .2rem 0 0; }
+.steps b { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: var(--strong); color: var(--on-strong); font-size: .75rem; margin-right: .3rem; }
+button.danger { color: var(--err); }
+.builtin { border-style: dashed; }
+.providers h3 { margin: 1.2rem 0 .3rem; }
+
+/* First-run tour */
+.tour { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; padding: 1rem; background: rgba(0,0,0,.45); }
+.tour-card { width: min(420px, 100%); padding: 1.3rem; margin: 0; background: var(--glass-solid); }
+.tour-card h3 { margin: .6rem 0 .3rem; font-size: 1.2rem; }
+.tour-card p { margin: 0 0 1rem; line-height: 1.45; }
+.tour-icon { display: inline-grid; place-items: center; width: 44px; height: 44px; border-radius: 14px; background: var(--strong); color: var(--on-strong); }
+.dots-nav { display: flex; gap: .35rem; justify-content: center; margin-bottom: 1rem; }
+.dots-nav i { width: 7px; height: 7px; border-radius: 50%; background: var(--line); }
+.dots-nav i.on { width: 20px; border-radius: 99px; background: var(--strong); }

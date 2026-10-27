@@ -160,4 +160,44 @@ describe("page script", () => {
     const docs = o.elements.find((e) => e.text === "Docs")!;
     expect(k().click(docs.id as number, docs.fp as string)).toBe("ok");
   });
+  it("types into a contenteditable box and keeps its fingerprint after the text changes", () => {
+    document.body.innerHTML = '<div id="ed" contenteditable="true" role="textbox" aria-label="Message"></div>';
+    const ed = obs().elements.find((e) => e.label === "Message")!;
+    expect(ed).toBeTruthy();
+    expect(k().type(ed.id as number, "hello", false, ed.fp as string)).toBe("ok");
+    expect(document.getElementById("ed")!.textContent).toBe("hello");
+    // typing changed the text, but the same element must still pass the identity check
+    expect(k().type(ed.id as number, "hello again", false, ed.fp as string)).toBe("ok");
+    expect(document.getElementById("ed")!.textContent).toBe("hello again");
+  });
+
+  it("a plain input keeps passing the identity check after it was typed into", () => {
+    const q = obs().elements.find((e) => e.name === "q")!;
+    k().type(q.id as number, "one", false, q.fp as string);
+    expect(() => k().type(q.id as number, "two", false, q.fp as string)).not.toThrow();
+  });
+
+  it("click sends the press and release events before the click", () => {
+    const seen: string[] = [];
+    const b = document.getElementById("f")!.querySelector("button")!;
+    for (const t of ["mousedown", "mouseup", "click"]) b.addEventListener(t, (e) => { seen.push(e.type); e.preventDefault(); });
+    const go = obs().elements.find((e) => e.text === "Go")!;
+    k().click(go.id as number, go.fp as string);
+    expect(seen.slice(-3)).toEqual(["mousedown", "mouseup", "click"]);
+  });
+
+  it("lists elements that are on screen before the rest, and keeps ids matching the list", () => {
+    const rects = new Map<Element, { top: number }>();
+    document.body.innerHTML = '<button id="far">Far</button><button id="near">Near</button>';
+    const far = document.getElementById("far")!;
+    const near = document.getElementById("near")!;
+    rects.set(far, { top: 5000 });
+    rects.set(near, { top: 100 });
+    for (const el of [far, near]) {
+      el.getBoundingClientRect = () => ({ top: rects.get(el)!.top, bottom: rects.get(el)!.top + 40, left: 0, right: 100, width: 100, height: 40, x: 0, y: rects.get(el)!.top, toJSON: () => ({}) });
+    }
+    const o = obs();
+    expect(o.elements.map((e) => e.text)).toEqual(["Near", "Far"]);
+    expect(k().read(o.elements[0]!.id as number)).toBe("Near");
+  });
 });

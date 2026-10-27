@@ -3,6 +3,42 @@
 Project: KRISH, source-only personal agent (Android + desktop). Spec: `docs/SPEC.md`.
 Rule: update this file at the end of every work session (status table + "Next").
 
+## ROUND 3 (2026-10-27): owner's phone test said "nothing works, Action required everywhere" — read this first
+
+Owner's screenshots showed: every provider failing with raw error bodies and model names in chat; "Action required" on every login page and
+every Send; typing/clicking on Arena and Instagram not working. What changed (all in code, tests green, **not yet tried on a phone**):
+
+- **Never stuck on one AI.** `core/src/providers/builtin.ts` is a keyless built-in provider (text.pollinations.ai, OpenAI-compatible, model
+  `openai-fast`), always tried last; with no key added the app still answers. Switch: Settings → "Use the built-in free AI" (`freeFallback`).
+  `router.run` now also tries the next 4 best listed models of the same provider before moving on. Payment/auth errors skip the provider.
+- **No model or provider names in chat.** The `via` line is gone. `AllProvidersFailedError` lists distinct reasons only; Chat shows one calm
+  line ("I could not answer just now") + the reasons.
+- **"Action required" only when critical.** Only secure input (password/code/CAPTCHA) and take-over cards set it; questions and approvals do not.
+  Secure chip label is now "Waiting for you". Search boxes submit without a "Send?" confirmation (`policy.isSearchBox`).
+- **Sign-in pages no longer stop the run.** `aiSeesLogin` (default on) lets the user's providers see login pages (passwords/codes are always
+  redacted anyway). That was the Instagram "no provider allowed, act yourself" wall.
+- **Click/type fixes in `core/page-script/krish-page.js`:** contenteditable and role=textbox/searchbox/combobox targets, typing via
+  `execCommand("insertText")` for rich editors, full pointer/mouse event sequence before `click()`, Enter keydown/keypress/keyup,
+  on-screen elements listed first (a heavy page used up the 200-element budget before the message box), fingerprint of editable elements
+  ignores their text (typing changed the fingerprint, so the second type into the same box was refused as "changed since observed").
+- **Theme:** default is now **Auto = by local time** (dark 19:00–06:59, rechecked every minute); "Same as device" kept. `SETTINGS_VERSION` 3.
+- **API Keys screen rebuilt** (`Providers.tsx`): summary, numbered order of use, health dot + reason, "N models found", automatic vs chosen
+  models ("choose automatically again"), enable switch, free-AI card last, 2-step add flow per catalog entry, custom provider folded away.
+- **Logins:** vault entries can be "every site" (`ALL_SITES = "*"`, default account); a site's own login wins. `confirmFill` (default off):
+  saved logins are filled without asking. Settings has both switches.
+- **Tour:** `components/Tour.tsx`, 4 cards, once; "Show the tour again" in Settings.
+- Tests added: page script (contenteditable, fingerprint, on-screen order, click events), router (keyless, next-model fallback, no names),
+  vault (default account), loop (askBeforeFill), store (no key → free AI answers, no names, prompts vs status, defaults), theme (clock).
+
+### NOT verified in this round
+- Nothing was run on a real phone or against Arena/Instagram. The page-script fixes are proven in jsdom only. `AgentWebView.kt` still clicks
+  through JS (`K.click`); if a site ignores that, the next step is a real tap: `K.rect(id)` then `tapCss(...)` (already used for uploads).
+- Kotlin not compiled (no JDK in the sandbox). No Kotlin was changed.
+- The free service (pollinations) is a third party: it can be slow (~5 s), rate-limited or change. Its answers go to that host: it never gets
+  sign-in/payment pages (`allowSensitive: false`). Mention it in the privacy text if you keep it.
+- Only English and Hindi have the new strings; other languages fall back to English (`themeAuto` exists in all).
+- Reference screenshots/video were only a layout idea. The word of the other product appears only here, never in app code or UI.
+
 ## PHONE-TEST ROUND 2 (v0.1.3, 2026-10-24) — read this first
 Owner's findings from v0.1.2 and what was done (core 195, ui 36, desktop 8 pass; lint and typecheck clean). An independent code review found 8 issues; fixed: navigation now waits for the page to load before it counts as the page (`store.openAndWait`), a failed navigation never exposes the old tab, a plan made while the user took over is dropped, sensitive-page asks are capped per run, a rejected or tab-less first `read` does nothing, history-write failure cannot lock the chat, hand-picked models survive automatic tests (`ProviderConfig.modelsChosen`), braces in a prose answer no longer break parsing. Known, not fixed: no timeout around native browser calls (STOP cannot cancel a hung native call).. **Nothing here ran on a real phone yet.**
 | # | Finding | Fix | State |

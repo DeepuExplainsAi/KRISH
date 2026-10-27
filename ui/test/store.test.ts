@@ -94,7 +94,7 @@ describe("AppStore", () => {
     await store.send("hi");
     expect(store.getState().providers[0]!.health).toMatchObject({ ok: false, note: "free limit used up, try again later" });
     const failed = store.getState().items.find((i) => i.failed)!;
-    expect(failed.text).toBe("No AI provider could answer. P: free limit used up, try again later");
+    expect(failed.text).toBe("No AI provider could answer. free limit used up, try again later");
     store.dismissItem(failed.id);
     expect(store.getState().items.some((i) => i.failed)).toBe(false);
   });
@@ -121,7 +121,7 @@ describe("AppStore", () => {
     expect(filled).toEqual([[0, "TopSecret#1"]]);
     expect(prompts.join("\n")).not.toContain("TopSecret#1");
     expect(JSON.stringify(await store.history.list())).not.toContain("TopSecret#1");
-    expect(store.getState().items.some((i) => i.chip?.label === "Action required")).toBe(true);
+    expect(store.getState().items.some((i) => i.chip?.label === "Waiting for you")).toBe(true);
     expect(store.getState().status).toBe("idle");
   });
 
@@ -284,12 +284,52 @@ describe("attachments", () => {
     expect(store.getState().attachments.map((f) => f.name)).toEqual(["clip.mp4"]);
   });
 
-  it("the default theme is Auto (follows the device)", () => {
-    expect(setup([]).store.getState().settings.theme).toBe("system");
+  it("with no key added, the built-in free AI answers; model and provider names never reach the chat", async () => {
+    const { store, hooks } = setup([{ type: "done", summary: "Hello" }]);
+    const hosts: string[] = [];
+    hooks.fetch = (url) => (hosts.push(new URL(url).host), undefined);
+    await store.init();
+    await store.send("hi");
+    expect(hosts).toContain("text.pollinations.ai");
+    const texts = store.getState().items.map((i) => i.text ?? "").join("\n");
+    expect(texts).toContain("Hello");
+    expect(texts).not.toMatch(/pollinations|openai-fast|Free AI/i);
+    expect(store.getState().providers).toEqual([]); // the built-in service is never listed as the user's own key
   });
 
-  it("an old saved 'light' (the previous default) moves to Auto once; a later choice is kept", () => {
-    expect(migrateSettings({ theme: "light" })).toMatchObject({ theme: "system", version: SETTINGS_VERSION });
+  it("with the free fallback switched off and no key, the run fails with one calm message", async () => {
+    const { store } = setup([{ type: "done", summary: "Hello" }]);
+    await store.init();
+    await store.saveSettings({ freeFallback: false });
+    await store.send("hi");
+    expect(store.getState().items.find((i) => i.failed)?.text).toMatch(/^No AI provider could answer\. Nothing is set up/);
+  });
+
+  it("a question or an approval is not 'action required'; a password prompt is", async () => {
+    const { store } = setup([{ type: "navigate", url: "https://site.test/x" }, { type: "ask_user", question: "Which one?" }, { type: "done", summary: "ok" }]);
+    await store.init();
+    await store.addProvider({ name: "P", kind: "openai-compat", baseUrl: "https://p.test/v1" }, "k");
+    await store.updateProvider({ ...store.getState().providers[0]!, defaultModel: "m1" });
+    const run = store.send("do it");
+    await tick(); await tick();
+    expect(store.getState().prompts[0]?.type).toBe("ask");
+    expect(store.getState().status).toBe("running");
+    store.answer(store.getState().prompts[0]!.id, "the first");
+    await run;
+  });
+
+  it("defaults: a saved login is filled without asking, the AI may read sign-in pages, the free AI is the last resort", () => {
+    expect(setup([]).store.getState().settings).toMatchObject({ confirmFill: false, aiSeesLogin: true, freeFallback: true, tourDone: false });
+  });
+
+  it("the default theme is Auto (day and night)", () => {
+    expect(setup([]).store.getState().settings.theme).toBe("auto");
+  });
+
+  it("an old saved default ('light' from v1, 'system' from v2) moves to Auto once; a later choice is kept", () => {
+    expect(migrateSettings({ theme: "light" })).toMatchObject({ theme: "auto", version: SETTINGS_VERSION });
+    expect(migrateSettings({ version: 2, theme: "system" })).toMatchObject({ theme: "auto", version: SETTINGS_VERSION });
+    expect(migrateSettings({ version: 2, theme: "light" })).toMatchObject({ theme: "light", version: SETTINGS_VERSION });
     expect(migrateSettings({ theme: "dark" })).toMatchObject({ theme: "dark", version: SETTINGS_VERSION });
     expect(migrateSettings({ version: SETTINGS_VERSION, theme: "light" })).toEqual({ version: SETTINGS_VERSION, theme: "light" });
   });
@@ -323,6 +363,7 @@ describe("attachments", () => {
     await store.updateProvider({ ...store.getState().providers[0]!, defaultModel: "m1", allowSensitive: true });
     await store.vault.create("master-pass");
     await store.vault.put({ site: "site.test", username: "me", password: "Sup3r-Secret" });
+    await store.saveSettings({ confirmFill: true });
     const run = store.send("log me in to site.test");
     await tick(); await tick();
     const card = store.getState().prompts[0]!;

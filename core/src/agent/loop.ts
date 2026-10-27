@@ -22,6 +22,8 @@ export interface AgentOptions {
   startOnPage?: boolean;
   /** One line about a tab the user left open ("site: title"). The model sees only this line until it chooses to read the tab. */
   openTab?: string;
+  /** Ask before a saved login is filled in. On by default; the app turns it off once the user trusts the vault. */
+  askBeforeFill?: boolean;
   limits?: Partial<AgentLimits>;
 }
 
@@ -153,7 +155,7 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
       case "memory_add": return "Saving to memory";
       case "memory_remove": return "Removing from memory";
       case "wait": return "Waiting";
-      case "ask_user": return a.secure ? "Action required" : "Asking you";
+      case "ask_user": return a.secure ? "Waiting for you" : "Asking you";
       case "done": return "Finished";
     }
   };
@@ -298,7 +300,7 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
     const chosen = logins[0];
     if (!chosen) return false;
     const who = logins.length > 1 ? `${chosen.label} (${chosen.username}); ${logins.length - 1} more saved` : `${chosen.label} (${chosen.username})`;
-    const ok = await raceStop(ui.confirm({ kind: "vault", title: `Fill your saved login on ${host}?`, preview: who }, signal), signal);
+    const ok = opts.askBeforeFill === false || (await raceStop(ui.confirm({ kind: "vault", title: `Fill your saved login on ${host}?`, preview: who }, signal), signal));
     if (!ok) {
       history.push({ action: "KrishVault autofill", result: "user declined the saved login" });
       return false;
@@ -404,7 +406,7 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
       const verdict = gate(action, { obs, homeUrl, drafts });
       // Display-only (the policy gate never reads it). The model's own status line follows the user's language, but only
       // for steps that need no approval: a step that asks, confirms or is blocked keeps the app's fixed wording, and
-      // secure-input steps always say "Action required", so model text can never dress up a trusted prompt.
+      // secure-input steps always use the fixed "Waiting for you", so model text can never dress up a trusted prompt.
       const thought = verdict.verdict === "allow" && !(action.type === "ask_user" && action.secure) ? cleanLabel(action.thought ?? "") : "";
       const label = thought ? clip(redactText(thought), 80) : describe(action, obs);
       // A plain answer (done as the very first step) is just chat text: no step pill for it.
