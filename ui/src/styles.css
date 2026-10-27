@@ -1,7 +1,7 @@
 /* Look: soft sky gradient, frosted glass, black pills. Lite mode swaps blur for solid fills. */
 :root {
   /* Light: blue-to-grey sky, white answer bubbles, near-black pills (values sampled from the reference screens). */
-  --sky: linear-gradient(180deg, #597aa7 0%, #6585ae 21%, #7a98be 32%, #92a9c8 43%, #a6bbd6 54%, #adbfd5 64%, #b3bdc6 75%, #b6b7b9 86%, #bdbdbd 100%);
+  --sky: linear-gradient(180deg, #cfe0f5 0%, #d9e7f8 25%, #e4edf9 50%, #eef2f8 75%, #f4f5f8 100%); --head: #1d1d1f;
   --ink: #1d1d1f; --mute: #4a5367; --strong: #1d1d1f; --on-strong: #f5f5f7; --white: #fff;
   --glass: rgba(255,255,255,.55); --glass-line: rgba(255,255,255,.7); --glass-solid: rgba(240,243,248,.96); --panel: rgba(255,255,255,.7);
   --surface: #fefefe; --field: rgba(255,255,255,.72); --field-pre: rgba(255,255,255,.7); --user-bubble: rgba(255,255,255,.34);
@@ -17,12 +17,12 @@
   --glass: rgba(29,29,31,.55); --glass-line: rgba(245,245,247,.14); --glass-solid: rgba(38,43,70,.97); --panel: rgba(29,29,31,.62);
   --surface: rgba(29,29,31,.72); --field: rgba(245,245,247,.08); --field-pre: rgba(0,0,0,.25); --user-bubble: rgba(29,29,31,.34);
   --live-bg: #0d0d0d; --pill-dark: #1d1d1f; --on-pill-dark: #f5f5f7;
-  --line: rgba(245,245,247,.14); --ok: #96f0b0; --err: #ff7a7a; color-scheme: dark;
+  --head: #fff; --line: rgba(245,245,247,.14); --ok: #96f0b0; --err: #ff7a7a; color-scheme: dark;
 }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { height: 100%; }
 body { margin: 0; background: var(--sky); color: var(--ink); }
-.boot { min-height: 100dvh; display: grid; place-items: center; color: var(--white); font-size: 1.6rem; font-weight: 650; letter-spacing: -.01em; }
+.boot { min-height: 100dvh; display: grid; place-items: center; color: var(--head); font-size: 1.6rem; font-weight: 650; letter-spacing: -.01em; }
 .app { display: flex; flex-direction: column; height: 100dvh; padding: var(--safe-area-inset-top, env(safe-area-inset-top, 0px)) var(--safe-area-inset-right, env(safe-area-inset-right, 0px)) var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)) var(--safe-area-inset-left, env(safe-area-inset-left, 0px)); }
 
 /* top bar: new chat, tabs, menu */
@@ -82,7 +82,7 @@ h2 { font-size: 1.35rem; }
 .notice { margin: 0 .75rem .5rem; padding: .6rem .9rem; border-radius: 18px; }
 
 /* menu */
-.menu .brand { font-size: 2.4rem; margin: .4rem .25rem .8rem; color: var(--white); }
+.menu .brand { font-size: 2.4rem; margin: .4rem .25rem .8rem; color: var(--head); }
 .menu .group { padding: .25rem .9rem; margin-bottom: .8rem; }
 .row-item { display: flex; align-items: center; gap: .75rem; width: 100%; background: none; border: 0; border-radius: 0; padding: .85rem 0; min-height: 52px; text-align: left; }
 .row-item + .row-item { border-top: 1px solid var(--line); }
@@ -97,7 +97,7 @@ h2 { font-size: 1.35rem; }
 .msg.failed { color: var(--err); display: flex; flex-direction: column; align-items: flex-start; gap: .5rem; max-width: 92%; overflow-wrap: anywhere; font-size: .92rem; }
 .empty { padding: .7rem 1rem; border-radius: 22px; max-width: 88%; margin: 0; }
 .welcome { margin: auto 0; padding: 0 .35rem 1rem; display: grid; gap: .35rem; }
-.welcome h2 { margin: 0; font-size: 1.7rem; font-weight: 650; letter-spacing: -.01em; color: var(--white); }
+.welcome h2 { margin: 0; font-size: 1.7rem; font-weight: 650; letter-spacing: -.01em; color: var(--head); }
 .welcome p { margin: 0 0 .6rem; color: var(--mute); line-height: 1.45; max-width: 30rem; }
 .suggest { display: grid; gap: .45rem; justify-items: start; }
 .suggest button { text-align: left; background: var(--glass); border: 1px solid var(--glass-line); padding: .6rem 1rem; min-height: 44px; font-size: .95rem; }

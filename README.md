@@ -4,15 +4,15 @@
 
 ## Download
 
-**[Latest builds: github.com/DeepuExplainsAi/KRISH/releases](https://github.com/DeepuExplainsAi/KRISH/releases)** (v0.1.3 is a pre-release: unsigned debug builds, not yet tested on real devices; details in the release notes)
+**[Latest builds: github.com/DeepuExplainsAi/KRISH/releases](https://github.com/DeepuExplainsAi/KRISH/releases)** (always the newest version; unsigned debug builds, not yet tested on every device. Each release page lists the version, the three download links and what changed)
 
 | Platform | File | Install |
 |---|---|---|
-| Android 8.0+ | [`krish-android.apk`](https://github.com/DeepuExplainsAi/KRISH/releases/download/v0.1.3/krish-android.apk) | Open the APK and allow "install unknown apps" when asked. One file for every phone. |
-| Windows 10/11 x64 | [`krish-windows-x64.zip`](https://github.com/DeepuExplainsAi/KRISH/releases/download/v0.1.3/krish-windows-x64.zip) | Unzip, run `Krish.exe`. SmartScreen: "More info" then "Run anyway" (the app is unsigned). |
-| Linux x64 | [`krish-linux-x64.tar.gz`](https://github.com/DeepuExplainsAi/KRISH/releases/download/v0.1.3/krish-linux-x64.tar.gz) | `tar xzf krish-linux-x64.tar.gz && ./Krish-linux-x64/Krish`. KrishVault needs a keyring such as GNOME Keyring. |
+| Android 8.0+ | [`krish-android.apk`](https://github.com/DeepuExplainsAi/KRISH/releases/latest/download/krish-android.apk) | Open the APK and allow "install unknown apps" when asked. One file for every phone. |
+| Windows 10/11 x64 | [`krish-windows-x64.zip`](https://github.com/DeepuExplainsAi/KRISH/releases/latest/download/krish-windows-x64.zip) | Unzip, run `Krish.exe`. SmartScreen: "More info" then "Run anyway" (the app is unsigned). |
+| Linux x64 | [`krish-linux-x64.tar.gz`](https://github.com/DeepuExplainsAi/KRISH/releases/latest/download/krish-linux-x64.tar.gz) | `tar xzf krish-linux-x64.tar.gz && ./Krish-linux-x64/Krish`. KrishVault needs a keyring such as GNOME Keyring. |
 
-Check a download against `SHA256SUMS.txt` from the same release. First run: Menu, then Providers, add a free API key (each provider has a "Get key" button), then type a task in Chat.
+Check a download against `SHA256SUMS.txt` from the same release. First run: just type a task in Chat (a built-in free AI answers without any key). For faster, steadier answers add free keys under Menu, then API Keys.
 
 **Prefer to build it yourself?** Source and steps: [BUILD.md](BUILD.md).
 **Current status and what is unverified:** [CHECKLIST.md](CHECKLIST.md). Working on it? Read [HANDOFF.md](HANDOFF.md) first.

@@ -219,6 +219,7 @@ export const en = {
   tourSkip: "Skip",
   tourTryIt: "Open it",
   tourDone: "Start",
+  appVersion: "Krish version {version}",
   noAnswerTitle: "I could not answer just now",
   noAnswerHint: "Every connection I have is busy or offline. Try again in a moment, or add your own key for steady answers.",
 };

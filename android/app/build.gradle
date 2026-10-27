@@ -9,8 +9,9 @@ android {
         applicationId "app.krish.agent"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "0.1.0"
+        // CI passes the release tag (-PappVersion=0.1.5) and the run number, so every build is newer than the last one.
+        versionCode (project.findProperty("appVersionCode") ?: "1").toInteger()
+        versionName (project.findProperty("appVersion") ?: "0.1.0")
         aaptOptions {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
@@ -44,6 +45,21 @@ android {
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_21
         targetCompatibility JavaVersion.VERSION_21
+    }
+
+    // One fixed signing key for every CI build (from repository secrets), so a new APK installs over the old one.
+    // Without the variables (local builds) Gradle keeps its own debug key.
+    signingConfigs {
+        debug {
+            def ks = System.getenv("KRISH_KEYSTORE")
+            if (ks) {
+                storeFile file(ks)
+                storeType "pkcs12"
+                storePassword System.getenv("KRISH_KEYSTORE_PASS")
+                keyAlias "krish"
+                keyPassword System.getenv("KRISH_KEYSTORE_PASS")
+            }
+        }
     }
 
     buildTypes {

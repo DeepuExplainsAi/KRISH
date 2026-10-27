@@ -180,5 +180,6 @@ export const hi: Partial<Dict> = {
   tourSkip: "छोड़ें",
   tourTryIt: "खोलें",
   tourDone: "शुरू करें",
+  appVersion: "Krish संस्करण {version}",
   noAnswerTitle: "अभी जवाब नहीं दे पाया",
 };

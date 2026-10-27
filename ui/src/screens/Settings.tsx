@@ -4,6 +4,8 @@ import type { ThemePref } from "../theme";
 import { localModelCompiledIn, webgpuAvailable } from "../local/webgpu";
 import { useApp, useAppState } from "../state/useStore";
 
+declare const __KRISH_VERSION__: string;
+
 export function Settings() {
   const app = useApp();
   const s = useAppState();
@@ -64,6 +66,7 @@ export function Settings() {
         </select>
       )}
       {s.localStatus && <p className="muted">{s.localStatus}</p>}
+      <p className="muted">{t("appVersion", { version: typeof __KRISH_VERSION__ === "string" ? __KRISH_VERSION__ : "dev" })}</p>
       <h3>{t("data")}</h3>
       <button onClick={() => void app.clearAllSiteData()}>{t("clearSiteData")}</button>
       <button onClick={() => void app.memory.clear()}>{t("clearMemory")}</button>

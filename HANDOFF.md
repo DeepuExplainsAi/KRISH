@@ -3,6 +3,19 @@
 Project: KRISH, source-only personal agent (Android + desktop). Spec: `docs/SPEC.md`.
 Rule: update this file at the end of every work session (status table + "Next").
 
+## ROUND 3b (2026-10-27, later): why the owner still saw the old app
+
+Owner's phone screenshot (12:32) still showed "Google Gemini · gemma-4…" under the answer. v0.1.4 had removed that line. Cause: **every CI build
+was signed with a new random debug key**, so Android refused to install v0.1.4 over v0.1.3 (signature mismatch) and the old app kept running.
+Fixed: a fixed key is stored in repo secrets `KRISH_KEYSTORE_B64` / `KRISH_KEYSTORE_PASS` (PKCS12, alias `krish`) and used by `release.yml`;
+`versionName`/`versionCode` come from the tag/run number. **The first install of v0.1.5 needs the old app uninstalled once** (different key;
+this clears saved keys and vault). After that, updates install over it. Do not delete the secrets: a new key means another uninstall.
+- Day sky is now light (was mid blue, read as "dark"); headings use `--head`. Settings shows the app version.
+- Release page: `release.yml` now writes notes = version + the three download links (tag-pinned) + commits since the previous tag, and
+  publishes as the latest release. README links use `releases/latest/download/`.
+- Reference video watched (frames): the other app's login card says "Secured by <brand>", a floating live card, and "Action Required" on a
+  login wall. We copy none of that; only the idea that a login/CAPTCHA wall is the one allowed stop.
+
 ## ROUND 3 (2026-10-27): owner's phone test said "nothing works, Action required everywhere" — read this first
 
 Owner's screenshots showed: every provider failing with raw error bodies and model names in chat; "Action required" on every login page and
