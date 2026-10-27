@@ -132,8 +132,10 @@ h2 { font-size: 1.35rem; }
 .composer .send { background: var(--strong); color: var(--on-strong); border-color: var(--strong); }
 
 /* motion (reference timings: .24s with cubic-bezier(.24,.42,.42,.92), .12s ease-out press) */
+@keyframes fade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes rise { from { opacity: 0; transform: translateY(8px) scale(.96); } to { opacity: 1; transform: none; } }
-.thread > :nth-last-child(-n+3), .live, .notice { animation: rise .24s var(--ease) both; }
+.thread > :nth-last-child(-n+3), .notice { animation: rise .24s var(--ease) both; }
+.live { animation: fade .2s ease both; } /* opacity only: a moving card would hand the native view a wrong box */
 button { transition: background-color .12s ease-out, scale .12s ease-out; }
 button:active:not(:disabled) { scale: .96; }
 
@@ -147,7 +149,7 @@ button:active:not(:disabled) { scale: .96; }
 .file-chip.static { display: flex; width: fit-content; margin-top: .4rem; padding: .2rem .7rem; background: var(--field); }
 
 /* browser card: black rounded card in the layout (above the composer in Chat, at the bottom elsewhere); same on phone, desktop and Linux */
-.live { flex: none; display: flex; flex-direction: column; margin: 0 0 .5rem; height: clamp(190px, 42dvh, 440px); background: var(--live-bg); color: var(--on-pill-dark); border-radius: 28px; overflow: hidden; }
+.live { flex: none; display: flex; flex-direction: column; margin: 0 0 .5rem; height: clamp(240px, 50dvh, 520px); background: var(--live-bg); color: var(--on-pill-dark); border-radius: 28px; overflow: hidden; }
 .live.folded { height: auto; }
 .app > .live { margin: 0 .75rem .75rem; }
 .app > .live.full, .live.full { position: fixed; inset: 0; z-index: 50; height: auto; margin: 0; border-radius: 0; padding-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px)); }
@@ -244,3 +246,14 @@ button.danger { color: var(--err); }
 .dots-nav { display: flex; gap: .35rem; justify-content: center; margin-bottom: 1rem; }
 .dots-nav i { width: 7px; height: 7px; border-radius: 50%; background: var(--line); }
 .dots-nav i.on { width: 20px; border-radius: 99px; background: var(--strong); }
+
+/* sign-in card in the chat */
+.card.login { display: grid; gap: .55rem; }
+.card.login input[type="text"], .card.login input[type="password"] { width: 100%; box-sizing: border-box; margin: 0; }
+.card.login .pw { position: relative; }
+.card.login .pw input { padding-right: 3rem; }
+.card.login .pw .round { position: absolute; right: .3rem; top: 50%; transform: translateY(-50%); }
+.card.login .google { display: flex; align-items: center; justify-content: center; gap: .6rem; min-height: 46px; border-radius: 99px; font-weight: 600; background: #fff; color: #1f1f1f; border: 1px solid var(--glass-line); }
+.card.login .google span { font-weight: 800; color: #4285f4; }
+.card.login .or { text-align: center; color: var(--mute); font-size: .85rem; margin: 0; }
+.card.login .save { display: flex; gap: .5rem; align-items: center; font-size: .9rem; }

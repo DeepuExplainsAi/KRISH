@@ -290,6 +290,16 @@ Checked and fine: no secrets/eval/telemetry/addJavascriptInterface in the repo; 
 - `agent-browser` eval: pass the script with `"$(cat file.js)"`; very long output is truncated, so write results to `document.title` or a file and read that.
 - Electron under Xvfb needs `--no-sandbox --disable-gpu --disable-dev-shm-usage`.
 
+## ROUND 4 (v0.1.6)
+User screenshots 13:29-13:34 (all read): Gemini "model not usable (HTTP 400)", built-in AI "too slow", the browser card floating over API Keys, no sign-in form in chat.
+1. **More keyless fallbacks.** `core/src/providers/builtin.ts` now has `BUILTIN_PROVIDERS`: Pollinations (`openai-fast`), then LLM7 (`api.llm7.io/v1`, models `default`, `gpt-oss:20b`, `nemotron-3-nano:30b`, `mistral-Nemo-Instruct-2407`). Both anonymous, last in the order, never see sign-in pages. Checked live 2026-10-26: Pollinations 200 in ~3 s; LLM7 200 but its anonymous daily quota is small and ran out from the sandbox IP. Checked and NOT used: OpenCode Zen free models (429 "Free usage limit reached" without a key), api.airforce (needs a key / 1 req limit), OpenRouter (needs a key, 401).
+2. **Gemini 400.** `gemini.ts`: on 400 retries with the rules inline, then without JSON mode (Gemma and previews reject both). `rankModels`: `openrouter/free` first, Gemma `-60` so it never beats a Gemini model.
+3. **Order of use / default.** `DEFAULTS.presets` is now OpenRouter, OpenCode Zen, Gemini, then the rest; `insertByPreset` (store.ts) puts a new key by that order. NOTE: "OpenRouter as default" means the first slot in the order; a key is still required for it.
+4. **Sign-in card in chat.** `AgentUI.askLogin` -> `Prompt` type `login` -> `LoginCard` (Prompts.tsx): Google button (clicks the page's Google button), email, password, "save to KrishVault" (creates the vault with a passphrase if none). Shown by `autofillLogin` when no saved login matches. Values are filled natively and put in `typed` (scrubbed from model text). Closing the card = take over. A code field uses the existing secure `otp` card.
+5. **Saved login by name.** `pickLogin(logins, task)`: "log in with my work account" / part of the email picks that vault entry.
+6. **Layout.** The native view is now synced every animation frame (before: once per layout change, so it stranded over other screens). `.live` animates opacity only. On non-chat screens the window is a status strip (`LiveWindow compact`), Expand = full screen. `desktopLayout` defaults to true (PC-size pages on the phone); `SETTINGS_VERSION` 4 turns it on once for existing installs. Card height `clamp(240px, 50dvh, 520px)`.
+**NOT verified on a device:** the per-frame sync cost on Android, the real Google button click, OTP on a real site, the LLM7 quota for real users.
+
 ## Restart here
 ```sh
 npm ci && npm run typecheck && npm run lint && npm test      # ~1 min

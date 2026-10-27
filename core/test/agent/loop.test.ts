@@ -31,6 +31,7 @@ function fakeUI(over: Partial<AgentUI> = {}) {
     confirm: async (r) => (confirms.push(r), true),
     ask: async () => "reply",
     askSecure: async () => "123456",
+    askLogin: async () => undefined,
     takeOver: async () => {},
     pickFile: async () => ({ name: "a.zip", size: 10, token: "t" }),
     emit: (e) => events.push(e),
@@ -441,6 +442,47 @@ describe("KrishVault autofill", () => {
     await v.put({ site, username: "deepu", password: "S3cret-pw" });
     return v;
   };
+
+  it("picks the saved login the task names (partial email or label)", async () => {
+    const vault = await unlockedVault();
+    await vault.put({ site: "site.test", username: "work@corp.com", password: "Work-pw-1", label: "Work" });
+    const { router } = await harness([A({ type: "done", summary: "ok" })]);
+    const { driver, secrets } = fakeDriver(form, login);
+    await runAgent({ task: "log in with my work account", askBeforeFill: false }, { driver, router, ui: fakeUI().ui, controller: new AgentController(), vault });
+    expect(secrets.map((x) => x.value)).toEqual(["work@corp.com", "Work-pw-1"]);
+  });
+
+  it("with nothing saved, shows the sign-in card; its values go into the page, are saved on request, and never reach the model", async () => {
+    const vault = new Vault(new MemoryKeyStore(), { iterations: 1000 });
+    const { router, prompts } = await harness([A({ type: "done", summary: "ok" })]);
+    const { driver, secrets } = fakeDriver(form, login);
+    const asked: unknown[] = [];
+    const { ui } = fakeUI({ askLogin: async (r) => (asked.push(r), { username: "me@x.com", password: "Card-pw-9", save: true, passphrase: "master-pass" }) });
+    await runAgent({ task: "log me in" }, { driver, router, ui, controller: new AgentController(), vault });
+    expect(asked).toEqual([{ site: "site.test", google: false, save: "new" }]);
+    expect(secrets.map((x) => x.value)).toEqual(["me@x.com", "Card-pw-9"]);
+    expect(prompts.join("\n")).not.toContain("Card-pw-9");
+    expect(vault.logins("https://site.test")[0]).toMatchObject({ username: "me@x.com", password: "Card-pw-9" });
+  });
+
+  it("the sign-in card can choose Google: the page's Google button is clicked", async () => {
+    const pages = { [login]: { elements: [...form[login].elements, { id: 3, tag: "button", text: "Continue with Google" }] } };
+    const { router } = await harness([A({ type: "done", summary: "ok" })]);
+    const { driver, secrets, log } = fakeDriver(pages, login);
+    const { ui } = fakeUI({ askLogin: async () => ({ google: true }) });
+    await runAgent({ task: "log me in" }, { driver, router, ui, controller: new AgentController() });
+    expect(log).toContain("click 3");
+    expect(secrets).toEqual([]);
+  });
+
+  it("closing the sign-in card hands the page to the user", async () => {
+    const { router } = await harness([A({ type: "done", summary: "ok" })]);
+    const { driver } = fakeDriver(form, login);
+    let turns = 0;
+    const { ui } = fakeUI({ askLogin: async () => undefined, takeOver: async () => void turns++ });
+    await runAgent({ task: "log me in" }, { driver, router, ui, controller: new AgentController() });
+    expect(turns).toBe(1);
+  });
 
   it("fills the saved login without asking when askBeforeFill is off", async () => {
     const vault = await unlockedVault();

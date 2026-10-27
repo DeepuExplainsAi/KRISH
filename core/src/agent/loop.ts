@@ -80,6 +80,18 @@ const SECRET_ASK = new RegExp(`(?<![\\p{L}\\p{N}\\p{M}])(?:${SECRET_TERMS.join("
 /** The user's task is about logging in. Without this (or a page the agent itself navigated to) a login form that merely happens to be open is left alone. */
 const LOGIN_INTENT = /log[\s-]*(me\s+|us\s+)?(in|on)|sign[\s-]*(me\s+|us\s+)?in|logg?in|vault|लॉग\s?इन|लॉगिन|साइन\s?इन/iu;
 
+/** Words in the task that name a saved login ("log in with this gmail", "use deepu's account"): the best match among the site's logins goes first. */
+export function pickLogin<T extends { label: string; username: string }>(logins: T[], task: string): T | undefined {
+  const text = task.toLowerCase();
+  const words = text.split(/[^\p{L}\p{N}]+/u).filter((w) => w.length >= 3);
+  const score = (e: T) => {
+    const user = e.username.toLowerCase();
+    const hay = `${e.label} ${user}`.toLowerCase();
+    return (user && text.includes(user) ? 100 : 0) + words.filter((w) => hay.includes(w)).length;
+  };
+  return logins.reduce<T | undefined>((best, e) => (best === undefined || score(e) > score(best) ? e : best), undefined);
+}
+
 /** Model-written step label: single line, no control / bidi / zero-width characters (they can reorder or hide text). */
 export const cleanLabel = (s: string) => s.replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu, " ").replace(/\s+/g, " ").trim();
 
@@ -278,27 +290,76 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
   };
 
   /**
+   * No saved login for this page: the user gets a sign-in card in the chat (email, password, or Google). The app types the values
+   * into the page; the model only learns that it happened. A login can be saved to KrishVault for next time.
+   */
+  async function askLoginCard(obs: PageObservation, host: string): Promise<boolean> {
+    const form = findLoginFields(obs.elements);
+    if (!form) return false;
+    const googleButton = obs.elements.find((e) => !e.disabled && (e.tag === "button" || e.tag === "a" || e.role === "button") && /google/i.test([e.text, e.label, e.title, e.name].filter(Boolean).join(" ")));
+    const vault = deps.vault;
+    const save = vault?.unlocked ? "open" : vault && !vault.exists ? "new" : undefined;
+    const answer = await raceStop(ui.askLogin({ site: host, google: Boolean(googleButton), save }, signal), signal);
+    const id = chip("Signing in", "running");
+    if (!answer) {
+      chip("Your turn", "action_required", id);
+      await raceStop(ui.takeOver("Sign in yourself in the browser. Krish does not see what you type. Tap Resume when you are done.", signal), signal);
+      chip("Your turn", "done", id);
+      history.push({ action: "sign-in card", result: "the user signed in themselves" });
+      return true;
+    }
+    try {
+      if ("google" in answer) {
+        if (!googleButton) throw new Error("no Google button");
+        await driver.click(googleButton.id);
+        chip("Signing in", "done", id);
+        history.push({ action: "sign-in card", result: "the user chose Google; its button was clicked. Continue on the Google page." });
+        return true;
+      }
+      for (const v of [answer.username, answer.password]) if (v.length >= 3) typed.add(v);
+      if (form.username) await driver.fillSecret(form.username.id, answer.username);
+      await driver.fillSecret(form.password.id, answer.password);
+    } catch {
+      chip("Signing in", "error", id);
+      history.push({ action: "sign-in card", result: "could not fill the form; the page may have changed" });
+      return true;
+    }
+    chip("Signing in", "done", id);
+    history.push({ action: "sign-in card", result: "the user's email and password were filled into the login form (not visible to you). Submit the form next." });
+    if (answer.save && vault) {
+      try {
+        if (!vault.exists) await vault.create(answer.passphrase ?? "");
+        await vault.put({ site: host, username: answer.username, password: answer.password, label: host });
+        chip("Login saved to KrishVault", "done");
+      } catch {
+        chip("Could not save the login", "error");
+      }
+    }
+    return true;
+  }
+
+  /**
    * Fills a saved login into the login form, with the user's OK. The app does it natively: the model sees only that it happened.
    * Returns true when something was done (re-observe). Before filling, the page is looked at again: the unlock and confirm cards can
    * take a long time and the page may have moved on, so the fields and the site are re-checked against the page that is live now.
    */
   async function autofillLogin(obs: PageObservation): Promise<boolean> {
     const vault = deps.vault;
-    const form = vault?.exists ? findLoginFields(obs.elements) : undefined;
-    if (!vault || !form || !sameSite(obs.url, homeUrl) || vaultTried.has(pageKey(obs.url)) || vaultTried.size >= 3) return false;
+    const form = findLoginFields(obs.elements);
+    if (!form || !sameSite(obs.url, homeUrl) || vaultTried.has(pageKey(obs.url)) || vaultTried.size >= 3) return false;
     if (!loginAsked && obs.url === startUrl) return false; // an unrelated task (e.g. "remember this") never triggers a login
     vaultTried.add(pageKey(obs.url));
     const host = new URL(obs.url).hostname;
-    if (!vault.unlocked) {
+    if (vault?.exists && !vault.unlocked) {
       const pass = await raceStop(ui.askSecure({ kind: "password", title: "Unlock KrishVault to use your saved login", site: "KrishVault", field: "Master passphrase" }, signal), signal);
       if (pass === undefined || !(await vault.unlock(pass))) {
         history.push({ action: "KrishVault autofill", result: "KrishVault stayed locked; no saved login was used" });
         return false;
       }
     }
-    const logins = vault.logins(obs.url);
-    const chosen = logins[0];
-    if (!chosen) return false;
+    const logins = vault?.unlocked ? vault.logins(obs.url) : [];
+    const chosen = pickLogin(logins, opts.task);
+    if (!vault || !chosen) return askLoginCard(obs, host);
     const who = logins.length > 1 ? `${chosen.label} (${chosen.username}); ${logins.length - 1} more saved` : `${chosen.label} (${chosen.username})`;
     const ok = opts.askBeforeFill === false || (await raceStop(ui.confirm({ kind: "vault", title: `Fill your saved login on ${host}?`, preview: who }, signal), signal));
     if (!ok) {

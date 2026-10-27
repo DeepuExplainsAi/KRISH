@@ -1,7 +1,7 @@
-import { MemoryKeyStore, MemoryKV, type PageObservation } from "@krish/core";
+import { MemoryKeyStore, MemoryKV, type PageObservation, type ProviderConfig } from "@krish/core";
 import { describe, expect, it } from "vitest";
 import type { Platform } from "../src/platform/types";
-import { AppStore, migrateSettings, SETTINGS_VERSION } from "../src/state/store";
+import { AppStore, insertByPreset, migrateSettings, SETTINGS_VERSION } from "../src/state/store";
 
 const reply = (o: object) => new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(o) } }] }), { status: 200 });
 
@@ -13,7 +13,7 @@ function setup(script: object[]) {
   const pageListeners = new Set<(p: { url: string; title: string; loading: boolean }) => void>();
   const page: PageObservation = {
     url: "https://site.test/login", title: "Login", text: "Sign in",
-    elements: [{ id: 0, tag: "input", type: "password", label: "Password" }],
+    elements: [{ id: 0, tag: "input", label: "Verification code", autocomplete: "one-time-code" }], // a code field, not a login form: the sign-in card stays out of these tests
   };
   const platform: Platform = {
     kind: "web",
@@ -318,8 +318,45 @@ describe("attachments", () => {
     await run;
   });
 
+  it("a login page with no saved login opens the sign-in card in the chat; its values go to the page, not the AI", async () => {
+    const { store, filled, prompts, platform } = setup([{ type: "navigate", url: "https://site.test/login" }, { type: "done", summary: "in" }]);
+    platform.browser.observe = async () => ({
+      url: "https://site.test/login", title: "Login", text: "Sign in",
+      elements: [{ id: 0, tag: "input", type: "text", label: "Email" }, { id: 1, tag: "input", type: "password", label: "Password" }],
+    });
+    await store.init();
+    await store.addProvider({ name: "P", kind: "openai-compat", baseUrl: "https://p.test/v1" }, "k");
+    await store.updateProvider({ ...store.getState().providers[0]!, defaultModel: "m1", allowSensitive: true });
+    const run = store.send("log me in to site.test");
+    await tick(); await tick();
+    const card = store.getState().prompts[0]!;
+    expect(card.type).toBe("login");
+    expect(store.getState().status).toBe("action_required");
+    store.answer(card.id, { username: "me@x.com", password: "Card-pw-9" });
+    await run;
+    expect(filled).toEqual([[0, "me@x.com"], [1, "Card-pw-9"]]);
+    expect(prompts.join("\n")).not.toContain("Card-pw-9");
+  });
+
   it("defaults: a saved login is filled without asking, the AI may read sign-in pages, the free AI is the last resort", () => {
     expect(setup([]).store.getState().settings).toMatchObject({ confirmFill: false, aiSeesLogin: true, freeFallback: true, tourDone: false });
+  });
+
+  it("a new key is placed by the preset order: OpenRouter, OpenCode Zen, Gemini, then the others, custom last", () => {
+    const p = (name: string) => ({ id: name, name, kind: "openai-compat" as const, baseUrl: "https://x.test", enabled: true, allowSensitive: false });
+    let list: ProviderConfig[] = [p("Groq"), p("My own")];
+    for (const n of ["Google Gemini", "OpenRouter", "OpenCode Zen"]) list = insertByPreset(list, p(n));
+    expect(list.map((x) => x.name)).toEqual(["OpenRouter", "OpenCode Zen", "Google Gemini", "Groq", "My own"]);
+  });
+
+  it("the free fallback is more than one service, tried after the user's own keys", async () => {
+    const { store, hooks } = setup([{ type: "done", summary: "Hello" }]);
+    const hosts: string[] = [];
+    hooks.fetch = (url) => (hosts.push(new URL(url).host), url.includes("pollinations") ? new Response("{}", { status: 429 }) : undefined);
+    await store.init();
+    await store.send("hi");
+    expect(hosts.filter((h) => h === "text.pollinations.ai" || h === "api.llm7.io")).toEqual(expect.arrayContaining(["text.pollinations.ai", "api.llm7.io"]));
+    expect(store.getState().items.map((i) => i.text ?? "").join(" ")).toContain("Hello");
   });
 
   it("the default theme is Auto (day and night)", () => {
@@ -357,7 +394,11 @@ describe("attachments", () => {
   });
 
   it("a chat run fills the saved login into the page natively after the user confirms (value never in the prompt)", async () => {
-    const { store, filled, prompts } = setup([{ type: "navigate", url: "https://site.test/login" }, { type: "done", summary: "ok" }]);
+    const { store, filled, prompts, platform } = setup([{ type: "navigate", url: "https://site.test/login" }, { type: "done", summary: "ok" }]);
+    platform.browser.observe = async () => ({
+      url: "https://site.test/login", title: "Login", text: "Sign in",
+      elements: [{ id: 0, tag: "input", type: "text", label: "Email" }, { id: 1, tag: "input", type: "password", label: "Password" }],
+    });
     await store.init();
     await store.addProvider({ name: "P", kind: "openai-compat", baseUrl: "https://p.test/v1" }, "k");
     await store.updateProvider({ ...store.getState().providers[0]!, defaultModel: "m1", allowSensitive: true });

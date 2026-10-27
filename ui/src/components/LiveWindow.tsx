@@ -18,7 +18,7 @@ const hostOf = (url: string) => {
  * same on phone, desktop window and Linux. The real browser view is a native view placed exactly over `.view`; the
  * status pill and buttons sit in the strip below it, because native pixels always cover app UI.
  */
-export function LiveWindow() {
+export function LiveWindow({ compact = false }: { compact?: boolean }) {
   const app = useApp();
   const s = useAppState();
   const { t } = useT();
@@ -30,7 +30,10 @@ export function LiveWindow() {
   const blocking = s.prompts.some((p) => p.type !== "takeover");
   const open = s.windowOpen;
   const expanded = s.windowExpanded;
-  const show = open && !blocking;
+  // On other screens (API Keys, Settings...) the window is only a status strip, so it never covers what the user came to see; Expand opens it full screen.
+  const strip = compact && !expanded;
+  const folded = blocking || strip;
+  const show = open && !folded;
 
   // Sends the exact `.view` box to the native view, only when it changed. Runs after every render (the card moves when the
   // tray or keyboard changes the layout) and on resize.
@@ -41,31 +44,26 @@ export function LiveWindow() {
       sent.current = "hidden";
       return;
     }
+    // The native view is a separate layer, so it must follow the card at every frame: the thread grows, the keyboard moves
+    // things, the card animates in. Measuring once left it stranded in the wrong place and size, over other screens.
     let frame = 0;
     const sync = () => {
-      cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => {
-        const r = viewBox.current?.getBoundingClientRect();
-        if (!r || r.width < MIN_VIEW || r.height < MIN_VIEW) {
-          if (sent.current !== "hidden") void app.platform.browser.setMode("hidden");
-          sent.current = "hidden";
-          return;
-        }
+      const r = viewBox.current?.getBoundingClientRect();
+      if (!r || r.width < MIN_VIEW || r.height < MIN_VIEW) {
+        if (sent.current !== "hidden") void app.platform.browser.setMode("hidden");
+        sent.current = "hidden";
+      } else {
         const key = [r.left, r.top, r.width, r.height, expanded ? 1 : 0].map(Math.round).join(",");
-        if (key === sent.current) return;
-        sent.current = key;
-        void app.platform.browser.setBounds({ x: r.left, y: r.top, width: r.width, height: r.height, radius: expanded ? 0 : VIEW_RADIUS });
-        void app.platform.browser.setMode("live");
-      });
+        if (key !== sent.current) {
+          sent.current = key;
+          void app.platform.browser.setBounds({ x: r.left, y: r.top, width: r.width, height: r.height, radius: expanded ? 0 : VIEW_RADIUS });
+          void app.platform.browser.setMode("live");
+        }
+      }
+      frame = requestAnimationFrame(sync);
     };
     sync();
-    window.addEventListener("resize", sync);
-    window.visualViewport?.addEventListener("resize", sync);
-    return () => {
-      cancelAnimationFrame(frame);
-      window.removeEventListener("resize", sync);
-      window.visualViewport?.removeEventListener("resize", sync);
-    };
+    return () => cancelAnimationFrame(frame);
   });
 
   if (!open) return null;
@@ -76,8 +74,8 @@ export function LiveWindow() {
   const host = hostOf(s.page.url);
   const statusText = s.page.loading ? t("opening", { site: host || "…" }) : s.running && step ? step.label : s.page.title || host || t("winTitle");
   return (
-    <div className={`live${expanded ? " full" : ""}${blocking ? " folded" : ""}`} role="region" aria-label={t("winTitle")}>
-      {!blocking && (
+    <div className={`live${expanded ? " full" : ""}${folded ? " folded" : ""}`} role="region" aria-label={t("winTitle")}>
+      {!folded && (
         <div className="view" ref={viewBox}>
           {!hasPage && (
             <div className="view-empty">

@@ -40,6 +40,8 @@ export interface VaultPort {
   readonly exists: boolean;
   readonly unlocked: boolean;
   unlock(passphrase: string): Promise<boolean>;
+  create(passphrase: string): Promise<void>;
+  put(input: { site: string; username: string; password: string; label?: string }): Promise<unknown>;
   logins(url: string): { id: string; label: string; username: string; password: string }[];
 }
 
@@ -71,12 +73,25 @@ export type AgentStatus = "done" | "stopped" | "failed" | "max_steps";
 
 export type SecureKind = "password" | "otp" | "captcha" | "2fa";
 
+/** The in-chat sign-in card. `save` is offered when the vault is open ("open") or can be created with a passphrase ("new"). */
+export interface LoginRequest {
+  site: string;
+  /** The page has a "Continue with Google" button. */
+  google: boolean;
+  save?: "open" | "new";
+}
+
+/** What the user did on the card: typed a login, chose Google, or nothing (undefined = "I'll do it myself"). */
+export type LoginAnswer = { google: true } | { username: string; password: string; save?: boolean; passphrase?: string };
+
 export interface AgentUI {
   confirm(req: ConfirmRequest, signal: AbortSignal): Promise<boolean>;
   /** Plain question to the user. undefined = cancelled. */
   ask(question: string, signal: AbortSignal): Promise<string | undefined>;
   /** Native masked input card. The APP (never the model) puts the value into the page. */
   askSecure(req: { kind: SecureKind; title: string; site: string; field: string }, signal: AbortSignal): Promise<string | undefined>;
+  /** Native sign-in card. The APP puts the values into the page; they never reach a model. */
+  askLogin(req: LoginRequest, signal: AbortSignal): Promise<LoginAnswer | undefined>;
   /** CAPTCHA / sensitive page: user acts in the live view. Resolves when the user taps Resume. */
   takeOver(reason: string, signal: AbortSignal): Promise<void>;
   pickFile(signal: AbortSignal): Promise<SelectedFile | undefined>;

@@ -91,7 +91,7 @@ export function App() {
         <Suspense fallback={null}><Screen key={screen === "chat" ? `chat${chatKey}` : screen} /></Suspense>
       </main>
       </div>
-      {screen !== "chat" && <LiveWindow />}
+      {screen !== "chat" && <LiveWindow compact />}
     </div>
   );
 }

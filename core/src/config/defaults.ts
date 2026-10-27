@@ -23,11 +23,12 @@ export const DEFAULTS = {
    * `keyUrl` = the provider's own page where the user creates a key. `free` = what is free (limits change: check the page).
    * Links and limits last checked 2026-10-26 (see HANDOFF).
    */
+  /** In order of use: OpenRouter, OpenCode Zen and Gemini come first; a new key is placed by this order. */
   presets: [
-    { name: "Google Gemini", kind: "gemini", baseUrl: "https://generativelanguage.googleapis.com", keyUrl: "https://aistudio.google.com/apikey", free: "Free tier (not in EU/UK/CH)" },
-    { name: "Groq", kind: "openai-compat", baseUrl: "https://api.groq.com/openai/v1", keyUrl: "https://console.groq.com/keys", free: "Free: about 30 req/min" },
     { name: "OpenRouter", kind: "openai-compat", baseUrl: "https://openrouter.ai/api/v1", keyUrl: "https://openrouter.ai/keys", free: "Free models (:free): about 20/min, 200/day" },
     { name: "OpenCode Zen", kind: "openai-compat", baseUrl: "https://opencode.ai/zen/v1", keyUrl: "https://opencode.ai/auth", free: "Some models free for a limited time (they may log prompts)" },
+    { name: "Google Gemini", kind: "gemini", baseUrl: "https://generativelanguage.googleapis.com", keyUrl: "https://aistudio.google.com/apikey", free: "Free tier (not in EU/UK/CH)" },
+    { name: "Groq", kind: "openai-compat", baseUrl: "https://api.groq.com/openai/v1", keyUrl: "https://console.groq.com/keys", free: "Free: about 30 req/min" },
     { name: "Cerebras", kind: "openai-compat", baseUrl: "https://api.cerebras.ai/v1", keyUrl: "https://cloud.cerebras.ai/", free: "Free: about 30 req/min" },
     { name: "Mistral", kind: "openai-compat", baseUrl: "https://api.mistral.ai/v1", keyUrl: "https://console.mistral.ai/api-keys", free: "Free tier: about 1 req/s" },
     {

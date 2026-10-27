@@ -51,7 +51,9 @@ function score(m: ModelInfo): number {
   const version = Number(/\d+(?:\.\d+)?/.exec(m.id.replace(PARAMS, ""))?.[0] ?? 0);
   const tier = TOP.test(text) ? 5 : MID.test(text) ? 3 : 0;
   const small = SMALL.test(text) || (params > 0 && params <= 14);
-  return version * 10 + tier - (small ? 12 : 0) - (UNSTABLE.test(text) ? 8 : 0) + Math.min(params / 100, 4) + Math.min((m.contextWindow ?? 0) / 1e6, 2);
+  // OpenRouter's own free router picks whichever free model is up; Gemma (Google's open model) often rejects JSON mode, so Gemini goes first.
+  const bias = /^openrouter\/free$/.test(m.id) ? 100 : /(^|\/)gemma/i.test(m.id) ? -60 : 0;
+  return bias + version * 10 + tier - (small ? 12 : 0) - (UNSTABLE.test(text) ? 8 : 0) + Math.min(params / 100, 4) + Math.min((m.contextWindow ?? 0) / 1e6, 2);
 }
 
 /** Every model for a picker: free ones first, then the rest, each group best first; non-chat models (embeddings, audio, image) last. */

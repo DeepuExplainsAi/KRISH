@@ -1,9 +1,9 @@
 import {
-  AgentController, autoFetchOnce, cleanLabel, friendlyReason, DEFAULT_BRIEF, History, Memory, newId, Panels, ProviderRouter, Projects, refreshModels, probeModels, withAutoModels,
+  AgentController, DEFAULTS, autoFetchOnce, cleanLabel, friendlyReason, DEFAULT_BRIEF, History, Memory, newId, Panels, ProviderRouter, Projects, refreshModels, probeModels, withAutoModels,
   runAgent, Scheduler, nextRun, nextBriefAt, briefCommand, Vault,
   type AgentEvent, type AgentUI, type BriefSettings, type ChipState, type ConfirmRequest, type PageDriver, type ProviderConfig,
-  type MemoryPort, type SecureKind, type SelectedFile, type Sandbox, setLocalEngine, type ModelInfo,
-  BUILTIN_PROVIDER,
+  type LoginAnswer, type LoginRequest, type MemoryPort, type SecureKind, type SelectedFile, type Sandbox, setLocalEngine, type ModelInfo,
+  BUILTIN_PROVIDERS,
 } from "@krish/core";
 import type { Platform } from "../platform";
 import { Tier0Sandbox } from "../sandbox/tier0";
@@ -14,7 +14,7 @@ import type { ThemePref } from "../theme";
 export const MAX_ATTACHMENTS = 10;
 
 /** Bump when a default changes and old saved values must be migrated (see `migrateSettings`). */
-export const SETTINGS_VERSION = 3;
+export const SETTINGS_VERSION = 4;
 
 export interface Settings {
   version: number;
@@ -51,7 +51,7 @@ export const DEFAULT_SETTINGS: Settings = {
   liteMode: false,
   autoOpenWindow: true,
   screenshots: false,
-  desktopLayout: false,
+  desktopLayout: true, // sites open as on a PC: a big, readable window on the phone
   brief: DEFAULT_BRIEF,
   linuxSandbox: false,
   freeFallback: true,
@@ -66,11 +66,22 @@ export const DEFAULT_SETTINGS: Settings = {
  * Settings saved by an older build. v1 saved the then-default theme "light" and v2 the then-default "system" for everybody, so
  * neither can be told apart from a real choice: they move to Auto once. Anything saved later is a real choice and is kept.
  */
+/** A new key goes where the preset list puts it (OpenRouter, OpenCode Zen, Gemini first); custom providers stay behind the known ones. */
+export function insertByPreset(list: ProviderConfig[], added: ProviderConfig): ProviderConfig[] {
+  const rank = (p: ProviderConfig) => {
+    const i = DEFAULTS.presets.findIndex((x) => x.name === p.name);
+    return i < 0 ? DEFAULTS.presets.length : i;
+  };
+  const at = list.findIndex((p) => rank(p) > rank(added));
+  return at < 0 ? [...list, added] : [...list.slice(0, at), added, ...list.slice(at)];
+}
+
 export function migrateSettings(saved: Partial<Settings>): Partial<Settings> {
   const v = saved.version ?? 1;
   if (v >= SETTINGS_VERSION) return saved;
   const old = v === 1 ? saved.theme === undefined || saved.theme === "light" : saved.theme === undefined || saved.theme === "system";
-  return { ...saved, version: SETTINGS_VERSION, theme: old ? "auto" : saved.theme };
+  const theme = v < 3 ? (old ? "auto" : saved.theme) : saved.theme;
+  return { ...saved, version: SETTINGS_VERSION, theme, ...(v < 4 && { desktopLayout: true }) };
 }
 
 export type Screen = "home" | "chat" | "menu" | "vault" | "panels" | "projects" | "tasks" | "history" | "providers" | "settings" | "security";
@@ -79,6 +90,7 @@ export type Prompt =
   | { id: number; type: "confirm"; req: ConfirmRequest; resolve: (ok: boolean) => void }
   | { id: number; type: "ask"; question: string; resolve: (v: string | undefined) => void }
   | { id: number; type: "secure"; kind: SecureKind; title: string; site: string; field: string; resolve: (v: string | undefined) => void }
+  | { id: number; type: "login"; req: LoginRequest; resolve: (v: LoginAnswer | undefined) => void }
   | { id: number; type: "takeover"; reason: string; resolve: () => void };
 
 export interface ChatItem {
@@ -190,7 +202,7 @@ export class AppStore {
     // One switch for all of the user's own providers; the per-provider flag can still allow it on its own. Passwords and codes are redacted either way.
     const seeLogin = this.state.settings.aiSeesLogin;
     const mine = seeLogin ? this.state.providers.map((p) => (p.allowSensitive ? p : { ...p, allowSensitive: true })) : this.state.providers;
-    const all = [...mine, ...(this.state.settings.freeFallback ? [BUILTIN_PROVIDER] : [])];
+    const all = [...mine, ...(this.state.settings.freeFallback ? BUILTIN_PROVIDERS : [])];
     if (!localModel || !localModelConsent || !localModelId || !webgpuAvailable()) return all;
     const local: ProviderConfig = {
       id: "local", name: "On-device", kind: "webgpu-local", baseUrl: "local:", enabled: true, allowSensitive: true, defaultModel: localModelId,
@@ -273,7 +285,7 @@ export class AppStore {
     const id = newId();
     await this.platform.keys.set(id, apiKey);
     const base: ProviderConfig = { ...cfg, id, enabled: true, allowSensitive: false };
-    await this.saveProviders([...this.state.providers, base]);
+    await this.saveProviders(insertByPreset(this.state.providers, base));
     // One automatic model fetch, only when the key is first added, then a real test of the best models.
     await this.check(id, async (p) => autoFetchOnce(p, apiKey, { fetch: this.platform.fetch }));
   }
@@ -369,13 +381,13 @@ export class AppStore {
   /** Only a step the user must do themselves (a login wall, a code, a CAPTCHA) is "action required". A question or an approval is part of the conversation. */
   private prompt<T extends Prompt["type"]>(build: (id: number) => Extract<Prompt, { type: T }>) {
     const p = build(++this.seq);
-    const critical = p.type === "takeover" || p.type === "secure";
+    const critical = p.type === "takeover" || p.type === "secure" || p.type === "login";
     this.set({ prompts: [...this.state.prompts, p], ...(critical ? { status: "action_required" as const } : {}) });
     return p.id;
   }
   private settle(id: number) {
     const prompts = this.state.prompts.filter((p) => p.id !== id);
-    const critical = prompts.some((p) => p.type === "takeover" || p.type === "secure");
+    const critical = prompts.some((p) => p.type === "takeover" || p.type === "secure" || p.type === "login");
     this.set({ prompts, status: critical ? "action_required" : this.state.running ? (this.state.paused ? "paused" : "running") : "idle" });
   }
   answer(id: number, value: unknown) {
@@ -385,7 +397,7 @@ export class AppStore {
     (p.resolve as (v: unknown) => void)(value);
   }
 
-  private buildUI(runId: string): AgentUI {
+  buildUI(runId: string): AgentUI {
     const wait = <V>(add: (resolve: (v: V) => void, signal: AbortSignal) => number, signal: AbortSignal, fallback: V) =>
       new Promise<V>((resolve) => {
         const id = add(resolve, signal);
@@ -398,6 +410,8 @@ export class AppStore {
         wait<string | undefined>((resolve) => this.prompt((id) => ({ id, type: "ask", question, resolve })), signal, undefined),
       askSecure: ({ kind, title, site, field }, signal) =>
         wait<string | undefined>((resolve) => this.prompt((id) => ({ id, type: "secure", kind, title, site, field, resolve })), signal, undefined),
+      askLogin: (req, signal) =>
+        wait<LoginAnswer | undefined>((resolve) => this.prompt((id) => ({ id, type: "login", req, resolve })), signal, undefined),
       takeOver: (reason, signal) => {
         this.openWindow();
         void this.platform.browser.setMode("live");

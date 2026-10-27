@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { adapters, autoFetchOnce, pickModels, probeModels, refreshModels, searchModels, sortModels, withAutoModels } from "../../src/providers/models";
+import { adapters, autoFetchOnce, pickModels, rankModels, probeModels, refreshModels, searchModels, sortModels, withAutoModels } from "../../src/providers/models";
 import { json, mockFetch, provider } from "../helpers";
 
 const deps = (handlers: Parameters<typeof mockFetch>[0]) => {
@@ -183,5 +183,30 @@ describe("Gemini system instruction", () => {
     expect(bodies).toHaveLength(2);
     expect(JSON.stringify(bodies[1])).toContain("RULES\\n\\nhi");
     expect(bodies[1]!.systemInstruction).toBeUndefined();
+  });
+});
+
+describe("Gemini 400 and ranking", () => {
+  const ids = (...x: string[]) => x.map((id) => ({ id }));
+  it("a model that rejects systemInstruction and JSON mode still answers (rules inline, then plain)", async () => {
+    const bodies: Record<string, unknown>[] = [];
+    const { deps: d } = deps({
+      "g.test": (_url, init) => {
+        const b = JSON.parse(String(init?.body));
+        bodies.push(b);
+        if (b.systemInstruction || b.generationConfig.responseMimeType) return json({ error: { message: "Developer instruction is not enabled for this model" } }, 400);
+        return json({ candidates: [{ content: { parts: [{ text: "{\"ok\":true}" }] } }] });
+      },
+    });
+    const cfg = provider("g", { kind: "gemini", baseUrl: "https://g.test" });
+    const text = await adapters.gemini.complete({ config: cfg, apiKey: "k", fetch: d.fetch, timeoutMs: 1000 }, "gemma-x", { messages: [{ role: "system", content: "rules" }, { role: "user", content: "hi" }] });
+    expect(text).toBe('{"ok":true}');
+    expect(bodies).toHaveLength(3);
+    expect(JSON.stringify(bodies[2])).toContain("rules");
+  });
+
+  it("openrouter/free ranks first; Gemma ranks below Gemini", () => {
+    expect(rankModels(ids("openai/gpt-5:free", "openrouter/free", "meta/llama-3-70b:free").map((m) => ({ ...m, free: true })))[0]!.id).toBe("openrouter/free");
+    expect(rankModels(ids("gemma-4-26b-a4b-it", "gemini-2.5-flash"))[0]!.id).toBe("gemini-2.5-flash");
   });
 });
