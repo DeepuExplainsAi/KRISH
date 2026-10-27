@@ -8,7 +8,7 @@ import {
 import type { Platform } from "../platform";
 import { Tier0Sandbox } from "../sandbox/tier0";
 import { createWebGpuEngine, webgpuAvailable } from "../local/webgpu";
-import type { LangPref } from "../i18n";
+import { resolveLang, translator, type LangPref } from "../i18n";
 import type { ThemePref } from "../theme";
 
 export const MAX_ATTACHMENTS = 10;
@@ -27,6 +27,8 @@ export interface Settings {
   autoOpenWindow: boolean;
   screenshots: boolean;
   desktopLayout: boolean;
+  /** Android: work in the user's own browser app (their logins are already there) instead of the Krish window. */
+  myBrowser: boolean;
   brief: BriefSettings;
   linuxSandbox: boolean;
   localModel: boolean;
@@ -51,6 +53,7 @@ export const DEFAULT_SETTINGS: Settings = {
   liteMode: false,
   autoOpenWindow: true,
   screenshots: false,
+  myBrowser: true, // Android: ignored elsewhere
   desktopLayout: true, // sites open as on a PC: a big, readable window on the phone
   brief: DEFAULT_BRIEF,
   linuxSandbox: false,
@@ -246,6 +249,14 @@ export class AppStore {
       ready: true, settings, providers: p ? JSON.parse(p) : [], deviceLowRam: info.lowRam,
       linuxAvailable: info.linuxSandbox && !info.lowRam,
     });
+    this.platform.browser.use?.(settings.myBrowser ? "mine" : "app");
+    this.unMine = this.platform.myBrowser?.onAction((a) => {
+      if (a === "stop") return this.stop();
+      const waiting = this.state.prompts.find((p) => p.type === "takeover");
+      if (waiting) this.answer(waiting.id, undefined); // "Resume" on the pill ends the take-over card
+      else this.resume();
+    });
+    void this.platform.browser.setDesktopLayout(settings.desktopLayout).catch(() => undefined); // the saved choice reaches the native view at start, not only when changed
     await this.vault.load();
     void this.checkUntested();
     await this.applyLocalModel();
@@ -255,6 +266,7 @@ export class AppStore {
   dispose() {
     this.vault.lock();
     this.unPage?.();
+    this.unMine?.();
   }
 
   go = (screen: Screen) => this.set({ screen });
@@ -267,10 +279,16 @@ export class AppStore {
   };
 
   // ---- settings / providers ----
+  private unMine?: () => void;
+
   async saveSettings(patch: Partial<Settings>) {
     const settings = { ...this.state.settings, ...patch };
     this.set({ settings });
     await this.platform.kv.set(SETTINGS_KEY, JSON.stringify(settings));
+    if (patch.myBrowser !== undefined) {
+      this.platform.browser.use?.(patch.myBrowser ? "mine" : "app");
+      if (patch.myBrowser) this.closeWindow();
+    }
     if (patch.desktopLayout !== undefined) await this.platform.browser.setDesktopLayout(patch.desktopLayout);
     if (patch.brief) await this.rearmSchedules();
     if (patch.localModel !== undefined || patch.localModelConsent !== undefined) await this.applyLocalModel();
@@ -373,7 +391,9 @@ export class AppStore {
   }
 
   // ---- live window ----
-  openWindow = () => this.set({ windowOpen: true });
+  /** True when the agent works in the user's own browser app. */
+  private mine = () => this.state.settings.myBrowser && this.platform.myBrowser !== undefined;
+  openWindow = () => { if (!this.mine()) this.set({ windowOpen: true }); };
   closeWindow = () => this.set({ windowOpen: false, windowExpanded: false });
   toggleWindowExpanded = () => this.set({ windowExpanded: !this.state.windowExpanded });
 
@@ -383,7 +403,18 @@ export class AppStore {
     const p = build(++this.seq);
     const critical = p.type === "takeover" || p.type === "secure" || p.type === "login";
     this.set({ prompts: [...this.state.prompts, p], ...(critical ? { status: "action_required" as const } : {}) });
+    // In the user's own browser the card lives here: bring Krish forward (a take-over stays in the browser, with Resume on the pill).
+    if (this.mine() && this.state.running) {
+      const q: Prompt = p;
+      if (q.type === "takeover") void this.platform.myBrowser?.say(q.reason, "resume");
+      else this.callBack("Krish needs you");
+    }
     return p.id;
+  }
+  /** Brings Krish forward from the user's browser. If Android refuses, the pill's "Open Krish" button does the same. */
+  private callBack(text: string) {
+    void this.platform.myBrowser?.say(text, "open");
+    void this.platform.myBrowser?.focusApp();
   }
   private settle(id: number) {
     const prompts = this.state.prompts.filter((p) => p.id !== id);
@@ -394,6 +425,7 @@ export class AppStore {
     const p = this.state.prompts.find((x) => x.id === id);
     if (!p) return;
     this.settle(id);
+    if (this.mine() && this.state.running && p.type !== "takeover") void this.platform.myBrowser?.say("Working…");
     (p.resolve as (v: unknown) => void)(value);
   }
 
@@ -434,12 +466,14 @@ export class AppStore {
         this.set({ items: [...this.state.items, { id, role: "agent", chip: { label: e.label, state: e.state } }] });
       }
       void this.history.log(runId, "chip", e.label, undefined, e.state);
+      if (this.mine() && e.state === "running") void this.platform.myBrowser?.say(e.label);
     } else if (e.type === "browser") {
       // The card opens when the agent really uses the browser, never for a plain chat or an old tab.
       if (this.state.settings.autoOpenWindow) this.openWindow();
     } else if (e.type === "action") {
       void this.history.log(runId, "action", e.action.type, e.result);
     } else if (e.type === "end") {
+      if (this.mine()) this.callBack("Done. Tap to see the answer");
       const bad = e.status === "failed" || e.status === "max_steps";
       // Steps still open when the run ends (stopped, failed) must not stay "running" or "action required" in the thread.
       const closed = bad || e.status === "stopped" ? "error" : "done";
@@ -493,6 +527,7 @@ export class AppStore {
       paste: (id, text) => b.fill(id, text, fps.get(id)),
       upload: (id, f: SelectedFile) => b.upload(id, f.token, fps.get(id)),
       fillSecret: (id, value) => b.fill(id, value, fps.get(id)),
+      scroll: (d) => b.scroll(d),
       highlight: (id) => b.highlight(id),
     };
   }
@@ -510,6 +545,13 @@ export class AppStore {
   /** `command` must be text the user typed in this app (or their own saved task/panel). */
   async send(command: string, opts: { startUrl?: string; files?: SelectedFile[] } = {}) {
     if (this.state.running || !command.trim()) return;
+    // Your own browser needs the Accessibility switch: say so (and open the settings) instead of silently using another window.
+    if (this.mine() && !(await this.platform.myBrowser!.status()).enabled) {
+      this.push({ role: "user", text: command });
+      this.push({ role: "agent", text: translator(resolveLang(this.state.settings.language))("myBrowserNeeds"), failed: true });
+      void this.platform.myBrowser!.openSettings();
+      return;
+    }
     const runId = newId();
     const controller = (this.controller = new AgentController());
     this.chipItems.clear();
@@ -544,8 +586,10 @@ export class AppStore {
     this.set({ paused: true, status: "paused" });
     this.openWindow();
     void this.platform.browser.setMode("live");
+    if (this.mine()) void this.platform.myBrowser?.say("Your turn in the browser", "resume");
   }
   resume() {
+    if (this.mine()) void this.platform.myBrowser?.say("Working…");
     this.controller?.resume();
     this.set({ paused: false, status: "running" });
   }

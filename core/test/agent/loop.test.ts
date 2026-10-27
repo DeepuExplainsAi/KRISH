@@ -19,6 +19,7 @@ function fakeDriver(pages: Record<string, Partial<PageObservation>>, start: stri
     paste: async (id, t) => void log.push(`paste ${id} ${t}`),
     upload: async (id, f) => void log.push(`upload ${id} ${f.name}`),
     fillSecret: async (id, value) => void secrets.push({ id, value }),
+    scroll: async (d) => void log.push(`scroll ${d}`),
     highlight: async () => {},
   };
   return { driver, log, secrets };
@@ -459,7 +460,7 @@ describe("KrishVault autofill", () => {
     const asked: unknown[] = [];
     const { ui } = fakeUI({ askLogin: async (r) => (asked.push(r), { username: "me@x.com", password: "Card-pw-9", save: true, passphrase: "master-pass" }) });
     await runAgent({ task: "log me in" }, { driver, router, ui, controller: new AgentController(), vault });
-    expect(asked).toEqual([{ site: "site.test", google: false, save: "new" }]);
+    expect(asked).toEqual([{ site: "site.test", google: false, save: "new", wall: false }]);
     expect(secrets.map((x) => x.value)).toEqual(["me@x.com", "Card-pw-9"]);
     expect(prompts.join("\n")).not.toContain("Card-pw-9");
     expect(vault.logins("https://site.test")[0]).toMatchObject({ username: "me@x.com", password: "Card-pw-9" });
@@ -473,6 +474,25 @@ describe("KrishVault autofill", () => {
     await runAgent({ task: "log me in" }, { driver, router, ui, controller: new AgentController() });
     expect(log).toContain("click 3");
     expect(secrets).toEqual([]);
+  });
+
+  it("an email-first page gets the card in email mode: only the email is filled, no password", async () => {
+    const wall = { [login]: { text: "Log In or Create Account", elements: [{ id: 0, tag: "input", type: "email", label: "Your email" }, { id: 1, tag: "button", text: "Continue with email" }] } };
+    const { router, prompts } = await harness([A({ type: "click", elementId: 1, thought: "go" }), A({ type: "done", summary: "ok" })]);
+    const { driver, secrets } = fakeDriver(wall, login);
+    const asked: unknown[] = [];
+    const { ui } = fakeUI({ askLogin: async (r) => (asked.push(r), { username: "me@x.com", password: "" }) });
+    await runAgent({ task: "log me in" }, { driver, router, ui, controller: new AgentController() });
+    expect(asked).toEqual([{ site: "site.test", google: false, save: undefined, wall: true }]);
+    expect(secrets.map((x) => x.value)).toEqual(["me@x.com"]);
+    expect(prompts.join("\n")).not.toContain("me@x.com");
+  });
+
+  it("scroll is a passive action and reaches the driver", async () => {
+    const { router } = await harness([A({ type: "scroll", direction: "down", thought: "more" }), A({ type: "done", summary: "ok" })]);
+    const { driver, log } = fakeDriver(form, login);
+    await runAgent({ task: "look further down" }, { driver, router, ui: fakeUI().ui, controller: new AgentController() });
+    expect(log).toContain("scroll down");
   });
 
   it("closing the sign-in card hands the page to the user", async () => {

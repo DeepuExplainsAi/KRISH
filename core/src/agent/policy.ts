@@ -66,7 +66,7 @@ export function gate(action: Action, ctx: GateContext): Gate {
   const host = pageless ? "" : new URL(ctx.obs.url).hostname;
 
   // The page may have moved to another site by redirect or script, not by an action we approved.
-  const passive = action.type === "read" || action.type === "wait" || action.type === "ask_user" || action.type === "done" || action.type === "navigate";
+  const passive = action.type === "read" || action.type === "wait" || action.type === "scroll" || action.type === "ask_user" || action.type === "done" || action.type === "navigate";
   if (!passive && !pageless && !sameSite(ctx.obs.url, ctx.homeUrl)) {
     return { verdict: "confirm", request: { kind: "navigate", title: "The page moved to another site. Continue here?", preview: ctx.obs.url } };
   }
@@ -123,6 +123,7 @@ export function gate(action: Action, ctx: GateContext): Gate {
     case "memory_remove":
     case "read":
     case "wait":
+    case "scroll":
     case "ask_user":
     case "done":
       return { verdict: "allow" };

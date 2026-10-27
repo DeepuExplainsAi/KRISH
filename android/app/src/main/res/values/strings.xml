@@ -4,4 +4,5 @@
     <string name="title_activity_main">Krish</string>
     <string name="package_name">app.krish.agent</string>
     <string name="custom_url_scheme">app.krish.agent</string>
+    <string name="accessibility_description">Lets Krish work in your own browser app, where you are already logged in: it reads the page and taps or types for you only while you have given it a task. It can see browsers only, and nothing is sent to any Krish server.</string>
 </resources>

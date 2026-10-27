@@ -5,7 +5,7 @@ const { contextBridge, ipcRenderer } = require("electron");
 const CHANNELS = new Set([
   "fetch", "key:get", "key:set", "key:delete",
   "browser:open", "browser:observe", "browser:read", "browser:click", "browser:type", "browser:fill", "browser:upload",
-  "browser:highlight", "browser:setBounds", "browser:setMode", "browser:setDesktopLayout", "browser:snapshot",
+  "browser:highlight", "browser:scroll", "browser:setBounds", "browser:setMode", "browser:setDesktopLayout", "browser:snapshot",
   "browser:stopLoading", "browser:clearSiteData",
   "files:pick", "files:read", "files:save",
   "system:deviceInfo", "system:scheduleDue", "system:cancelDue", "system:openExternal",

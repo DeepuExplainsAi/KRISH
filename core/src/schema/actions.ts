@@ -11,6 +11,7 @@ export const ACTION_TYPES = [
   "memory_add",
   "memory_remove",
   "wait",
+  "scroll",
   "ask_user",
   "done",
 ] as const;
@@ -52,6 +53,7 @@ export const ActionSchema = z.discriminatedUnion("type", [
   }),
   z.strictObject({ type: z.literal("memory_add"), text: z.string().min(1).max(500), thought }),
   z.strictObject({ type: z.literal("memory_remove"), ids: z.array(z.string().regex(/^m\d{1,3}$/)).min(1).max(20), thought }),
+  z.strictObject({ type: z.literal("scroll"), direction: z.enum(["down", "up"]), thought }),
   z.strictObject({ type: z.literal("wait"), ms: z.number().int().min(0).max(10_000), thought }),
   z.strictObject({
     type: z.literal("ask_user"),

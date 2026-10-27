@@ -35,6 +35,7 @@ const expr = {
   click: (id, fp) => `K.click(${int(id)},${fpArg(fp)})`,
   type: (id, text, submit, fp) => `K.type(${int(id)},${quote(text)},${Boolean(submit)},${fpArg(fp)})`,
   fill: (id, value, fp) => `K.fill(${int(id)},${quote(value)},${fpArg(fp)})`,
+  scroll: (dir) => `K.scroll(${quote(dir === "up" ? "up" : "down")})`,
   highlight: (id) => `K.highlight(${id == null ? "null" : int(id)})`,
 };
 

@@ -1,6 +1,6 @@
 import { siteOf } from "../agent/policy";
 import { secretKind } from "../privacy/redact";
-import type { PageElement } from "../page/types";
+import type { PageElement, PageObservation } from "../page/types";
 import type { KeyStore } from "../storage";
 import { newId } from "../memory/stores";
 
@@ -226,6 +226,20 @@ export class Vault {
 }
 
 /** The login form of a page: the password field and the plain text field right before it. */
+const LOGIN_WALL_TEXT = /(log[\s-]?in|sign[\s-]?in|sign[\s-]?up)\b[^.]{0,40}\b(to continue|or create)|continue with email|create account/i;
+const FEDERATED = /\b(google|apple|facebook|microsoft)\b/i;
+
+/**
+ * A sign-in wall without a password field yet: an email box next to "Continue with Google", or a page that says
+ * "log in or create account" (email-first sites). A newsletter box or a "Sign in" link in a header does not match.
+ */
+export function findLoginWall(obs: Pick<PageObservation, "text" | "elements">): { username: PageElement; google?: PageElement } | undefined {
+  const field = obs.elements.find((e) => !e.disabled && e.tag === "input" && secretKind(e) === undefined && [undefined, "", "text", "email", "tel"].includes(e.type) && /mail|user|phone|login/i.test([e.label, e.name, e.placeholder, e.autocomplete].filter(Boolean).join(" ")));
+  if (!field) return undefined;
+  const google = obs.elements.find((e) => !e.disabled && (e.tag === "button" || e.tag === "a" || e.role === "button") && FEDERATED.test([e.text, e.label, e.title].filter(Boolean).join(" ")));
+  return google || LOGIN_WALL_TEXT.test(obs.text) ? { username: field, google } : undefined;
+}
+
 export function findLoginFields(elements: PageElement[]): { password: PageElement; username?: PageElement } | undefined {
   const at = elements.findIndex((e) => !e.disabled && secretKind(e) === "password");
   if (at < 0) return undefined;

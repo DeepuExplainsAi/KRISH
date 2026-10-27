@@ -29,6 +29,7 @@ export function createDesktopPlatform(bridge: Bridge): Platform {
     setMode: (mode) => inv("browser:setMode", { mode }),
     setDesktopLayout: (enabled) => inv("browser:setDesktopLayout", { enabled }),
     snapshot: (maxWidth, quality) => inv<string>("browser:snapshot", { maxWidth, quality }),
+    scroll: (direction) => inv("browser:scroll", { direction }),
     stopLoading: () => inv("browser:stopLoading"),
     clearSiteData: () => inv("browser:clearSiteData"),
     onPage: (cb) => bridge.onPage(cb),

@@ -26,6 +26,7 @@ export interface BrowserHost {
   /** Fills a field natively. Used for paste and secure input; nothing is returned. */
   fill(elementId: number, value: string, fp?: string): Promise<void>;
   upload(elementId: number, fileToken: string, fp?: string): Promise<void>;
+  scroll(direction: "down" | "up"): Promise<void>;
   highlight(elementId?: number): Promise<void>;
   setBounds(b: Bounds): Promise<void>;
   setMode(mode: "live" | "hidden"): Promise<void>;
@@ -34,6 +35,22 @@ export interface BrowserHost {
   stopLoading(): Promise<void>;
   clearSiteData(): Promise<void>;
   onPage(cb: (e: PageEvent) => void): () => void;
+  /** Android: "app" = the agent's own window, "mine" = the user's own browser app, driven through Accessibility. */
+  use?(mode: "app" | "mine"): void;
+}
+
+/** The user's own browser app (Android Accessibility). Everything stays on the phone. */
+export interface MyBrowser {
+  status(): Promise<{ enabled: boolean }>;
+  /** Opens the system Accessibility settings, where the user turns Krish on. */
+  openSettings(): Promise<void>;
+  /** Small status pill over the browser: what the agent is doing and a Stop button; plus "Resume" (the user's turn in the browser) or "Open Krish" (a card is waiting in the app). */
+  say(text: string, action?: "resume" | "open"): Promise<void>;
+  hide(): Promise<void>;
+  /** Brings the Krish app to the front (for a question, a login card or a code). */
+  focusApp(): Promise<void>;
+  /** The user tapped Stop or Resume on the pill. */
+  onAction(cb: (a: "stop" | "resume") => void): () => void;
 }
 
 export interface DeviceInfo {
@@ -52,6 +69,7 @@ export interface Platform {
   keys: KeyStore;
   fetch: FetchLike;
   browser: BrowserHost;
+  myBrowser?: MyBrowser;
   files: {
     pick(): Promise<SelectedFile | undefined>;
     read(token: string, maxBytes?: number): Promise<Uint8Array>;

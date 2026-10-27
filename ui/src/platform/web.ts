@@ -23,6 +23,7 @@ export function createWebPlatform(): Platform {
     type: async () => {},
     fill: async () => {},
     upload: async () => {},
+    scroll: async () => {},
     highlight: async () => {},
     setBounds: async () => {},
     setMode: async () => {},

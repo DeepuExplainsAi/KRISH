@@ -190,6 +190,7 @@ function registerIpc() {
   handle("browser:fill", ({ elementId, value, fp }) =>
     // Page-originated error text is never returned from a fill: it could echo the value.
     call(lib.expr.fill(elementId, value, fp)).then(() => undefined, () => { throw new Error("could not fill the field"); }));
+  handle("browser:scroll", ({ direction }) => call(lib.expr.scroll(direction)).then(() => undefined));
   handle("browser:highlight", ({ elementId }) => call(lib.expr.highlight(elementId)).then(() => undefined));
   handle("browser:upload", ({ elementId, fp, token }) => uploadFile(elementId, fp, tokens.get(token)));
   handle("browser:setBounds", (b) => { bounds = { x: Math.round(b.x), y: Math.round(b.y), width: Math.max(1, Math.round(b.width)), height: Math.max(1, Math.round(b.height)) }; applyBounds(); view.setBorderRadius?.(Math.round(b.radius ?? 0)); });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ALL_SITES, findLoginFields, normalizeSite, Vault, VaultError } from "../../src/vault/vault";
+import { ALL_SITES, findLoginFields, findLoginWall, normalizeSite, Vault, VaultError } from "../../src/vault/vault";
 import { MemoryKeyStore } from "../../src/storage";
 
 const fast = { iterations: 1000 };
@@ -194,5 +194,20 @@ describe("findLoginFields", () => {
   it("is undefined without a password field and works without a username field", () => {
     expect(findLoginFields([{ id: 1, tag: "input", type: "text" }])).toBeUndefined();
     expect(findLoginFields([{ id: 5, tag: "input", type: "password" }])).toEqual({ password: { id: 5, tag: "input", type: "password" }, username: undefined });
+  });
+});
+
+describe("findLoginWall", () => {
+  const email = { id: 0, tag: "input", type: "email", label: "Your email" };
+  it("matches an email box on a 'log in or create account' page", () => {
+    expect(findLoginWall({ text: "Log In or Create Account", elements: [email] })?.username.id).toBe(0);
+  });
+  it("matches an email box beside Continue with Google, and reports the button", () => {
+    const w = findLoginWall({ text: "Welcome", elements: [email, { id: 1, tag: "button", text: "Continue with Google" }] });
+    expect(w?.google?.id).toBe(1);
+  });
+  it("ignores a newsletter box and a page without an email box", () => {
+    expect(findLoginWall({ text: "Get our newsletter. Sign in to your account", elements: [email] })).toBeUndefined();
+    expect(findLoginWall({ text: "Log in or create account", elements: [{ id: 1, tag: "button", text: "Go" }] })).toBeUndefined();
   });
 });

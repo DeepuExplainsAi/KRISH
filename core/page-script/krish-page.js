@@ -243,6 +243,11 @@
       setValue(e, value);
       return "ok";
     },
+    scroll: function (dir) {
+      var step = Math.round(window.innerHeight * 0.8) * (dir === "up" ? -1 : 1);
+      window.scrollBy({ top: step, left: 0, behavior: "instant" });
+      return "ok";
+    },
     highlight: highlight,
     // Center of the element in CSS px (for native trusted taps, e.g. file choosers that need a user gesture).
     rect: function (id, fp) {

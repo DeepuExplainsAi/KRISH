@@ -25,9 +25,9 @@ function LoginCard({ p, done }: { p: LoginPrompt; done: (v: unknown) => void }) 
   const [save, setSave] = useState(true);
   const [master, setMaster] = useState("");
   const [show, setShow] = useState(false);
-  const { site, google, save: canSave } = p.req;
+  const { site, google, save: canSave, wall } = p.req;
   const needMaster = Boolean(canSave === "new" && save);
-  const ready = user.trim() !== "" && pass !== "" && (!needMaster || master.length >= MIN_PASSPHRASE);
+  const ready = user.trim() !== "" && (wall || pass !== "") && (!needMaster || master.length >= MIN_PASSPHRASE);
   const field = { autoCapitalize: "off", autoCorrect: "off", spellCheck: false } as const;
   return (
     <form className="glass card login" onSubmit={(e) => { e.preventDefault(); if (ready) done({ username: user.trim(), password: pass, save: Boolean(canSave) && save, passphrase: needMaster ? master : undefined }); }}>
@@ -35,10 +35,10 @@ function LoginCard({ p, done }: { p: LoginPrompt; done: (v: unknown) => void }) 
       {google && <button type="button" className="google" onClick={() => done({ google: true })}><span aria-hidden="true">G</span>{t("continueGoogle")}</button>}
       {google && <p className="or">{t("orWithEmail")}</p>}
       <input {...field} autoFocus={!google} type="text" inputMode="email" autoComplete="username" value={user} onChange={(e) => setUser(e.target.value)} placeholder={t("emailOrUser")} aria-label={t("emailOrUser")} />
-      <div className="pw">
+      {!wall && <div className="pw">
         <input {...field} type={show ? "text" : "password"} autoComplete="current-password" value={pass} onChange={(e) => setPass(e.target.value)} placeholder={t("password")} aria-label={t("password")} />
         <button type="button" className="round small" onClick={() => setShow(!show)} aria-label={show ? t("hide") : t("show")}>{show ? "◌" : "●"}</button>
-      </div>
+      </div>}
       {canSave && <label className="save"><input type="checkbox" checked={save} onChange={(e) => setSave(e.target.checked)} /> {t("saveLogin")}</label>}
       {needMaster && <input {...field} type="password" autoComplete="new-password" value={master} onChange={(e) => setMaster(e.target.value)} placeholder={t("newPassphrase", { n: String(MIN_PASSPHRASE) })} aria-label={t("newPassphrase", { n: String(MIN_PASSPHRASE) })} />}
       <div className="row end"><button className="dark" type="submit" disabled={!ready}>{t("signIn")}</button></div>

@@ -28,7 +28,29 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Works in the user's own browser (their logins are already there). Limited to browsers by krish_accessibility.xml. -->
+        <service
+            android:name=".KrishAccessibilityService"
+            android:exported="false"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/krish_accessibility" />
+        </service>
     </application>
+
+    <!-- Lets the app see which browser opens https links (to open pages in the user's default browser). -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" />
+        </intent>
+    </queries>
 
     <!-- v1 permissions: INTERNET, plus POST_NOTIFICATIONS requested only when the user opts in to the morning brief. -->
     <uses-permission android:name="android.permission.INTERNET" />

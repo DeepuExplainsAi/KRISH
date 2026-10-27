@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Only browsers, and only to read the page and tap or type when the user has given Krish a task. No other app is visible to it. -->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagReportViewIds|flagIncludeNotImportantViews"
+    android:canPerformGestures="true"
+    android:canRetrieveWindowContent="true"
+    android:description="@string/accessibility_description"
+    android:notificationTimeout="150"
+    android:packageNames="com.android.chrome,com.chrome.beta,com.chrome.dev,com.chrome.canary,org.mozilla.firefox,org.mozilla.firefox_beta,org.mozilla.fenix,com.brave.browser,com.microsoft.emmx,com.sec.android.app.sbrowser,com.opera.browser,com.opera.mini.native,com.vivaldi.browser,com.kiwibrowser.browser,com.duckduckgo.mobile.android" />

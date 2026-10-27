@@ -6,7 +6,7 @@ import { AbortedError } from "../providers/types";
 import { AllProvidersFailedError, type ProviderRouter } from "../providers/router";
 import { parseReply, type Action } from "../schema/actions";
 import { AgentController, raceStop, StoppedError } from "./controller";
-import { findLoginFields } from "../vault/vault";
+import { findLoginFields, findLoginWall } from "../vault/vault";
 import { gate, sameSite, sandboxWrites, siteOf } from "./policy";
 import type { AgentStatus, AgentUI, ChipState, MemoryPort, PageDriver, Sandbox, SelectedFile, VaultPort } from "./ports";
 import { SYSTEM_PROMPT } from "./prompt";
@@ -56,7 +56,7 @@ const MAX_SENSITIVE_STOPS = 6;
 const NO_PAGE: PageObservation = { url: "", title: "", text: "", elements: [] };
 const noPageText = (openTab?: string) =>
   `No page is open for this task. Answer directly if you can. If the task needs a website, navigate to it.${openTab ? ` The user has this tab open (not read yet): ${openTab}. Use read only if the task is about that tab.` : ""}`;
-const BROWSER_ACTIONS = new Set<Action["type"]>(["navigate", "read", "click", "type", "paste", "upload_selected_file"]);
+const BROWSER_ACTIONS = new Set<Action["type"]>(["navigate", "read", "click", "type", "paste", "scroll", "upload_selected_file"]);
 
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n)}…` : s);
 /** Stops data from closing its own delimiter block. */
@@ -167,6 +167,7 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
       case "memory_add": return "Saving to memory";
       case "memory_remove": return "Removing from memory";
       case "wait": return "Waiting";
+      case "scroll": return a.direction === "down" ? "Scrolling down" : "Scrolling up";
       case "ask_user": return a.secure ? "Waiting for you" : "Asking you";
       case "done": return "Finished";
     }
@@ -242,6 +243,9 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
         for (const m of chosen) await deps.memory.remove(m.id);
         return `removed from memory:\n${preview}`;
       }
+      case "scroll":
+        await driver.scroll(a.direction);
+        return `scrolled ${a.direction}`;
       case "wait":
         await new Promise((r) => setTimeout(r, a.ms));
         return `waited ${a.ms} ms`;
@@ -295,11 +299,13 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
    */
   async function askLoginCard(obs: PageObservation, host: string): Promise<boolean> {
     const form = findLoginFields(obs.elements);
-    if (!form) return false;
-    const googleButton = obs.elements.find((e) => !e.disabled && (e.tag === "button" || e.tag === "a" || e.role === "button") && /google/i.test([e.text, e.label, e.title, e.name].filter(Boolean).join(" ")));
+    const wall = form ? undefined : findLoginWall(obs);
+    const userField = form?.username ?? wall?.username;
+    if (!form && !wall) return false;
+    const googleButton = wall?.google ?? obs.elements.find((e) => !e.disabled && (e.tag === "button" || e.tag === "a" || e.role === "button") && /google/i.test([e.text, e.label, e.title, e.name].filter(Boolean).join(" ")));
     const vault = deps.vault;
-    const save = vault?.unlocked ? "open" : vault && !vault.exists ? "new" : undefined;
-    const answer = await raceStop(ui.askLogin({ site: host, google: Boolean(googleButton), save }, signal), signal);
+    const save = form ? (vault?.unlocked ? "open" : vault && !vault.exists ? "new" : undefined) : undefined;
+    const answer = await raceStop(ui.askLogin({ site: host, google: Boolean(googleButton), save, wall: !form }, signal), signal);
     const id = chip("Signing in", "running");
     if (!answer) {
       chip("Your turn", "action_required", id);
@@ -316,17 +322,25 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
         history.push({ action: "sign-in card", result: "the user chose Google; its button was clicked. Continue on the Google page." });
         return true;
       }
-      for (const v of [answer.username, answer.password]) if (v.length >= 3) typed.add(v);
-      if (form.username) await driver.fillSecret(form.username.id, answer.username);
-      await driver.fillSecret(form.password.id, answer.password);
+      if (answer.username.length >= 3) typed.add(answer.username);
+      if (userField) await driver.fillSecret(userField.id, answer.username);
+      if (form) {
+        if (answer.password.length >= 3) typed.add(answer.password);
+        await driver.fillSecret(form.password.id, answer.password);
+      }
     } catch {
       chip("Signing in", "error", id);
       history.push({ action: "sign-in card", result: "could not fill the form; the page may have changed" });
       return true;
     }
     chip("Signing in", "done", id);
-    history.push({ action: "sign-in card", result: "the user's email and password were filled into the login form (not visible to you). Submit the form next." });
-    if (answer.save && vault) {
+    history.push({
+      action: "sign-in card",
+      result: form
+        ? "the user's email and password were filled into the login form (not visible to you). Submit the form next."
+        : "the user's email was filled. Click the page's continue button; the next page asks for the password and the app handles it.",
+    });
+    if (form && answer.save && vault) {
       try {
         if (!vault.exists) await vault.create(answer.passphrase ?? "");
         await vault.put({ site: host, username: answer.username, password: answer.password, label: host });
@@ -346,10 +360,12 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
   async function autofillLogin(obs: PageObservation): Promise<boolean> {
     const vault = deps.vault;
     const form = findLoginFields(obs.elements);
-    if (!form || !sameSite(obs.url, homeUrl) || vaultTried.has(pageKey(obs.url)) || vaultTried.size >= 3) return false;
+    const wall = form ? undefined : findLoginWall(obs); // email-first page: no password field yet
+    if ((!form && !wall) || !sameSite(obs.url, homeUrl) || vaultTried.has(pageKey(obs.url)) || vaultTried.size >= 3) return false;
     if (!loginAsked && obs.url === startUrl) return false; // an unrelated task (e.g. "remember this") never triggers a login
     vaultTried.add(pageKey(obs.url));
     const host = new URL(obs.url).hostname;
+    if (!form) return askLoginCard(obs, host);
     if (vault?.exists && !vault.unlocked) {
       const pass = await raceStop(ui.askSecure({ kind: "password", title: "Unlock KrishVault to use your saved login", site: "KrishVault", field: "Master passphrase" }, signal), signal);
       if (pass === undefined || !(await vault.unlock(pass))) {

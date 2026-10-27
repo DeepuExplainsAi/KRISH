@@ -19,6 +19,8 @@ export interface PageDriver {
   upload(elementId: number, file: SelectedFile): Promise<void>;
   /** Native fill. The value goes straight into the page and is never returned or retained. */
   fillSecret(elementId: number, value: string): Promise<void>;
+  /** Scrolls the page by about one screen. */
+  scroll(direction: "down" | "up"): Promise<void>;
   highlight(elementId: number | undefined): Promise<void>;
 }
 
@@ -79,6 +81,8 @@ export interface LoginRequest {
   /** The page has a "Continue with Google" button. */
   google: boolean;
   save?: "open" | "new";
+  /** An email-first page: there is no password field yet, so the card asks for the email only (or Google). */
+  wall?: boolean;
 }
 
 /** What the user did on the card: typed a login, chose Google, or nothing (undefined = "I'll do it myself"). */

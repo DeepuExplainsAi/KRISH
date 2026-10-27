@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { useT } from "../i18n/useT";
 import { lastChip } from "../state/store";
 import { useApp, useAppState } from "../state/useStore";
-import { IconClose, IconExpand, IconShrink, IconWarn } from "./icons";
+import { IconClose, IconExpand, IconStop, IconShrink, IconWarn } from "./icons";
 
 /** Smaller than this the page is not usable: the native view is hidden instead of squeezed. */
 const MIN_VIEW = 40;
@@ -92,7 +92,7 @@ export function LiveWindow({ compact = false }: { compact?: boolean }) {
         </span>
         {s.running && !s.paused && <button className="round wide takeover" onClick={() => app.takeOver()}>{t("takeOver")}</button>}
         {s.paused && <button className="round wide" onClick={() => app.resume()}>{t("resume")}</button>}
-        {s.running && <button className="round" onClick={app.stop} aria-label={t("stop")} title={t("stop")}><IconClose size={18} /></button>}
+        {s.running && <button className="round" onClick={app.stop} aria-label={t("stop")} title={t("stop")}><IconStop /></button>}
         <button className="round" onClick={app.toggleWindowExpanded} aria-label={expanded ? t("collapse") : t("expand")} title={expanded ? t("collapse") : t("expand")}>
           {expanded ? <IconShrink /> : <IconExpand />}
         </button>
