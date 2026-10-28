@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { MyBrowserSetting } from "../components/MyBrowserSetting";
 import { useT } from "../i18n/useT";
 import { useApp, useAppState } from "../state/useStore";
 
@@ -21,7 +20,6 @@ export function Home() {
   return (
     <section>
       <h2>{t("home")}</h2>
-      {app.platform.myBrowser && <MyBrowserSetting />}
       {noProvider && (
         <div className="card">
           <p>{t("homeNeedProvider")}</p>
@@ -32,7 +30,7 @@ export function Home() {
         <input value={url} onChange={(e) => setUrl(e.target.value)} inputMode="url" aria-label={t("siteAddress")} />
         <button className="primary" type="submit">{t("open")}</button>
       </form>
-      <p className="muted">{t(app.platform.myBrowser && s.settings.myBrowser ? "myBrowserLocal" : "homeLoginNote")}</p>
+      <p className="muted">{t("homeLoginNote")}</p>
       <h3>{t("memory")}</h3>
       <form className="row" onSubmit={(e) => { e.preventDefault(); void app.memory.add(fact).then(() => app.memory.list().then(setFacts)); setFact(""); }}>
         <input value={fact} onChange={(e) => setFact(e.target.value)} placeholder={t("memoryPlaceholder")} />

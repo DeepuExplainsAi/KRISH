@@ -3,6 +3,19 @@
 Project: KRISH, source-only personal agent (Android + desktop). Spec: `docs/SPEC.md`.
 Rule: update this file at the end of every work session (status table + "Next").
 
+## ROUND 5 (2026-10-28): no Accessibility; the PC layout lives inside Krish's own window
+
+Owner: no Accessibility; the agent must work inside a window in the app, laid out like a PC, nothing cut off (like the reference video).
+- **Removed:** `KrishAccessibilityService`, `KrishDevicePlugin`, `krish_accessibility.xml`, the manifest service, "my browser" mode (`settings.myBrowser`,
+  `MyBrowserSetting`, `platform.myBrowser`, `browser.use`) and its strings. The app asks for INTERNET + POST_NOTIFICATIONS only again.
+- **PC layout (`AgentWebView.place`)**: the WebView is made 1280 CSS px wide (card height scaled the same) and scaled down from its top-left corner to
+  exactly fill the card (`scaleX/scaleY`, pivot 0,0). The page really lays out at a desktop width (no viewport meta trick), so nothing is cut off, and
+  the card can be resized/expanded. User agent = this phone's own Chrome UA rewritten to a Linux PC (`X11; Linux x86_64`, no "Mobile").
+  Below 1280 px card width the scale is < 1; the user can Expand the card for a bigger picture.
+- **Clicks are real taps now** (`KrishBrowserPlugin.click`: `K.rect` then `tapCss`, script click as fallback); `scroll` was missing in the plugin and is added.
+- **Verified:** typecheck, lint, tests (core 214, ui 47, desktop 8). **NOT verified:** Kotlin compile (CI `check`), anything on a phone. Whether
+  touches map correctly through the scaled view on real devices is the first thing to test; fallback is `K.click`.
+
 ## ROUND 4 (2026-10-28): OpenCode Zen first, live model lists, desktop fetch fix
 
 - **Order of use:** OpenCode Zen (free, public key, no account) is tried first (`BUILTIN_PROVIDERS[0]`, `DEFAULT_BUILTIN_ID`), then the user's own

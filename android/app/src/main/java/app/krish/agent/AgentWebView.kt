@@ -4,10 +4,15 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.Outline
 import android.net.Uri
 import android.net.http.SslError
 import android.util.Base64
+import android.view.Gravity
 import android.view.MotionEvent
+import android.view.View
+import android.view.ViewOutlineProvider
+import android.widget.FrameLayout
 import android.webkit.CookieManager
 import android.webkit.PermissionRequest
 import android.webkit.SslErrorHandler
@@ -37,8 +42,12 @@ class AgentWebView(context: Context, private val pageScript: String, private val
 
     /** When false, touches fall through to the app UI underneath (hidden / snapshot mode). */
     var interactive = true
-    private var desktopLayout = false
+    /** PC layout: the page is laid out 1280 CSS px wide (a real desktop width) and the view is scaled down to the card, so nothing is cut off. */
+    var desktopLayout = false
+        private set
     private val defaultUserAgent: String
+    /** The same Chrome as this phone's WebView, but as a Linux PC: the version stays current by itself. */
+    private val desktopUserAgent: String
 
     init {
         with(settings) {
@@ -58,6 +67,7 @@ class AgentWebView(context: Context, private val pageScript: String, private val
         }
         // A plain Chrome-for-Android identity: the "; wv" and "Version/x" marks of an embedded WebView make some sign-in pages (Instagram, others) refuse a correct password.
         defaultUserAgent = settings.userAgentString.replace("; wv", "").replace(Regex(" Version/[\\d.]+"), "")
+        desktopUserAgent = defaultUserAgent.replace(Regex("\\(Linux; Android[^)]*\\)"), "(X11; Linux x86_64)").replace(" Mobile", "")
         settings.userAgentString = defaultUserAgent
         CookieManager.getInstance().setAcceptThirdPartyCookies(this, false)
         webViewClient = Client()
@@ -81,7 +91,6 @@ class AgentWebView(context: Context, private val pageScript: String, private val
         }
 
         override fun onPageFinished(view: WebView, url: String) {
-            if (desktopLayout) view.evaluateJavascript(DESKTOP_VIEWPORT_JS, null)
             CookieManager.getInstance().flush() // write logins to disk now; otherwise they can be lost if the app is killed soon after
             listener.onPage(url, view.title.orEmpty(), false)
         }
@@ -110,11 +119,33 @@ class AgentWebView(context: Context, private val pageScript: String, private val
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean = interactive && super.dispatchTouchEvent(ev)
 
     fun setDesktopLayout(enabled: Boolean) {
+        if (desktopLayout == enabled) return
         desktopLayout = enabled
-        settings.userAgentString = if (enabled) DESKTOP_UA else defaultUserAgent
-        settings.useWideViewPort = enabled
-        settings.loadWithOverviewMode = enabled
+        settings.userAgentString = if (enabled) desktopUserAgent else defaultUserAgent
         if (url != null) reload()
+    }
+
+    /**
+     * Puts the view over the card: x/y/w/h are the card in CSS px of the app UI. In PC layout the view itself is 1280 CSS px wide
+     * and as tall as the card needs at that width, then scaled down from its top-left corner to exactly fill the card. The page
+     * lays out as on a PC (no viewport tricks, nothing cut off); touches are mapped back by Android.
+     */
+    fun place(x: Double, y: Double, w: Double, h: Double, radius: Double, left0: Int, top0: Int) {
+        val d = resources.displayMetrics.density
+        val scale = if (desktopLayout) minOf(1.0, w / DESKTOP_WIDTH) else 1.0
+        layoutParams = FrameLayout.LayoutParams((w / scale * d).toInt().coerceAtLeast(1), (h / scale * d).toInt().coerceAtLeast(1), Gravity.TOP or Gravity.START).apply {
+            leftMargin = left0 + (x * d).toInt()
+            topMargin = top0 + (y * d).toInt()
+        }
+        pivotX = 0f
+        pivotY = 0f
+        scaleX = scale.toFloat()
+        scaleY = scale.toFloat()
+        clipToOutline = radius > 0
+        outlineProvider = object : ViewOutlineProvider() {
+            override fun getOutline(view: View, outline: Outline) = outline.setRoundRect(0, 0, view.width, view.height, (radius * d / scale).toFloat())
+        }
+        invalidateOutline()
     }
 
     /**
@@ -171,9 +202,6 @@ class AgentWebView(context: Context, private val pageScript: String, private val
     }
 
     companion object {
-        const val DESKTOP_UA =
-            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
-        private const val DESKTOP_VIEWPORT_JS =
-            "(function(){var m=document.querySelector('meta[name=viewport]');if(!m){m=document.createElement('meta');m.name='viewport';document.head.appendChild(m);}m.content='width=1280';})()"
+        const val DESKTOP_WIDTH = 1280.0
     }
 }

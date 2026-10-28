@@ -8,7 +8,6 @@ import com.getcapacitor.BridgeActivity
 class MainActivity : BridgeActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         registerPlugin(KrishBrowserPlugin::class.java)
-        registerPlugin(KrishDevicePlugin::class.java)
         registerPlugin(KrishFilesPlugin::class.java)
         registerPlugin(KrishSecurePlugin::class.java)
         registerPlugin(KrishSystemPlugin::class.java)

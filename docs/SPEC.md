@@ -51,7 +51,7 @@ Observe (simplified page text + element list) -> plan -> act -> verify -> repeat
 SAFETY RULES (these override everything else)
 1. No secrets in the zip: no keys, keystores, .env, tokens or personal data. Add a .gitignore for them.
 2. No analytics, telemetry, ads, crash reporters, remote config or remote code loading.
-3. Android permissions: INTERNET only; POST_NOTIFICATIONS only for the opt-in morning brief. Files only via the system picker. No contacts, SMS, camera, mic, location, display-over-other-apps or Accessibility Service in v1 [CHANGED in v0.1.7 on the owner's request: an opt-in, browsers-only Accessibility Service now exists, see SECURITY.md] (leave a clearly marked empty "phone-control" module stub for phase 2).
+3. Android permissions: INTERNET only; POST_NOTIFICATIONS only for the opt-in morning brief. Files only via the system picker. No contacts, SMS, camera, mic, location, display-over-other-apps or Accessibility Service in v1 [v0.1.7 added an opt-in Accessibility Service; removed again in v0.1.9] (leave a clearly marked empty "phone-control" module stub for phase 2).
 4. HTTPS only; cleartext disabled.
 5. WebView hardening: file access off, content access off, universal access from file URLs off, Safe Browsing on, and NO addJavascriptInterface bridge on any WebView that visits external sites (native code calls evaluateJavascript and reads results back).
 6. Model output is untrusted. Allowed actions only, as strict JSON: navigate, read, click, type, paste, upload_selected_file, run_sandbox_task, wait, ask_user, done. Validate every action against the schema and an allowlist. Never eval model text.

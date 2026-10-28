@@ -381,32 +381,6 @@ describe("attachments", () => {
     expect(store.getState()).toMatchObject({ windowOpen: false, windowExpanded: false });
   });
 
-  it("in your own browser mode: no Krish window, the pill follows the steps, a missing Accessibility switch is explained", async () => {
-    const { store, platform } = setup([{ type: "navigate", url: "https://site.test/", thought: "open" }, { type: "done", summary: "ok" }]);
-    const said: string[] = [];
-    let enabled = false;
-    let settingsOpened = 0;
-    const modes: string[] = [];
-    platform.browser.use = (m) => void modes.push(m);
-    platform.myBrowser = {
-      status: async () => ({ enabled }), openSettings: async () => void settingsOpened++, say: async (t) => void said.push(t),
-      hide: async () => void said.push("hide"), focusApp: async () => void said.push("focus"), onAction: () => () => {},
-    };
-    await store.init();
-    await store.addProvider({ name: "P", kind: "openai-compat", baseUrl: "https://p.test/v1" }, "K");
-    expect(modes).toContain("mine"); // the default on Android
-    await store.send("open the site"); // switch is off
-    expect(settingsOpened).toBe(1);
-    expect(store.getState().items.at(-1)).toMatchObject({ failed: true });
-    expect(store.getState().running).toBe(false);
-    enabled = true;
-    await store.send("open the site");
-    await tick();
-    expect(store.getState().windowOpen).toBe(false); // nothing is laid over the chat
-    expect(said.at(-1)).toBe("focus"); // run ended: the chat is brought back (the pill offers "Open Krish" if Android refuses)
-    expect(said.some((t) => t.startsWith("Done"))).toBe(true);
-  });
-
   it("is created in the store and kept in the key store as ciphertext, never in kv", async () => {
     const { store, platform } = setup([]);
     await store.init();

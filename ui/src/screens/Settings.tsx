@@ -1,7 +1,6 @@
 import { LANG_NAMES, type Lang, type LangPref } from "../i18n";
 import { useT } from "../i18n/useT";
 import type { ThemePref } from "../theme";
-import { MyBrowserSetting } from "../components/MyBrowserSetting";
 import { localModelCompiledIn, webgpuAvailable } from "../local/webgpu";
 import { useApp, useAppState } from "../state/useStore";
 
@@ -31,7 +30,6 @@ export function Settings() {
           <option value="dark">{t("themeDark")}</option>
         </select>
       </label>
-      {app.platform.myBrowser && <MyBrowserSetting />}
       <label><input type="checkbox" checked={st.liteMode} onChange={toggle("liteMode")} /> {t("liteMode")}</label>
       <label><input type="checkbox" checked={st.autoOpenWindow} onChange={toggle("autoOpenWindow")} /> {t("autoOpenWindow")}</label>
       <label><input type="checkbox" checked={st.screenshots} onChange={toggle("screenshots")} /> {t("screenshots")}</label>

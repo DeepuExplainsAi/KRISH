@@ -1,10 +1,7 @@
 package app.krish.agent
 
 import android.net.Uri
-import android.view.Gravity
-import android.graphics.Outline
 import android.view.View
-import android.view.ViewOutlineProvider
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import com.getcapacitor.JSObject
@@ -75,7 +72,28 @@ class KrishBrowserPlugin : Plugin(), AgentWebView.Listener {
 
     @PluginMethod fun observe(call: PluginCall) = page(call) { "K.observe()" }
     @PluginMethod fun read(call: PluginCall) = page(call) { "K.read(${call.getInt("elementId") ?: "null"})" }
-    @PluginMethod fun click(call: PluginCall) = page(call) { "K.click(${num(call)},${fp(call)})" }
+    @PluginMethod fun scroll(call: PluginCall) = page(call) { "K.scroll(${JSONObject.quote(call.getString("direction") ?: "down")})" }
+
+    /**
+     * A real touch on the element (sites that ignore script clicks react to it). The page script checks the element and its
+     * fingerprint and scrolls it into view; if it cannot give a position, the script click is used instead.
+     */
+    @PluginMethod fun click(call: PluginCall) = ui(call) { v ->
+        val id = num(call)
+        v.call("K.rect($id,${fp(call)})") { r ->
+            r.onSuccess { json ->
+                val o = JSONObject(JSONTokener(json).nextValue().toString())
+                v.tapCss(o.getDouble("x"), o.getDouble("y"), o.getDouble("innerWidth"))
+                call.resolve()
+            }
+            r.onFailure {
+                v.call("K.click($id,${fp(call)})") { c ->
+                    c.onSuccess { call.resolve() }
+                    c.onFailure { e -> call.reject(e.message ?: "page error") }
+                }
+            }
+        }
+    }
     @PluginMethod fun highlight(call: PluginCall) = page(call) { "K.highlight(${call.getInt("elementId") ?: "null"})" }
 
     @PluginMethod fun type(call: PluginCall) =
@@ -108,30 +126,20 @@ class KrishBrowserPlugin : Plugin(), AgentWebView.Listener {
         }
     }
 
+    private var bounds = doubleArrayOf(0.0, 0.0, 1.0, 1.0, 0.0)
+
+    private fun place(v: AgentWebView) {
+        val host = bridge.webView
+        val content = activity.findViewById<View>(android.R.id.content)
+        val a = IntArray(2).also { host.getLocationOnScreen(it) }
+        val b = IntArray(2).also { content.getLocationOnScreen(it) }
+        v.place(bounds[0], bounds[1], bounds[2], bounds[3], bounds[4], a[0] - b[0], a[1] - b[1])
+    }
+
     /** Position the live window. x/y/w/h are CSS px relative to the app UI viewport. */
     @PluginMethod fun setBounds(call: PluginCall) {
-        val x = call.getDouble("x") ?: 0.0
-        val y = call.getDouble("y") ?: 0.0
-        val w = call.getDouble("width") ?: 1.0
-        val h = call.getDouble("height") ?: 1.0
-        val radius = call.getDouble("radius") ?: 0.0
-        ui(call) { v ->
-            val d = activity.resources.displayMetrics.density
-            // Rounded corners so the page matches the card around it.
-            v.clipToOutline = radius > 0
-            v.outlineProvider = object : ViewOutlineProvider() {
-                override fun getOutline(view: View, outline: Outline) = outline.setRoundRect(0, 0, view.width, view.height, (radius * d).toFloat())
-            }
-            val host = bridge.webView
-            val content = activity.findViewById<View>(android.R.id.content)
-            val a = IntArray(2).also { host.getLocationOnScreen(it) }
-            val b = IntArray(2).also { content.getLocationOnScreen(it) }
-            v.layoutParams = FrameLayout.LayoutParams((w * d).toInt().coerceAtLeast(1), (h * d).toInt().coerceAtLeast(1), Gravity.TOP or Gravity.START).apply {
-                leftMargin = a[0] - b[0] + (x * d).toInt()
-                topMargin = a[1] - b[1] + (y * d).toInt()
-            }
-            call.resolve()
-        }
+        bounds = doubleArrayOf(call.getDouble("x") ?: 0.0, call.getDouble("y") ?: 0.0, call.getDouble("width") ?: 1.0, call.getDouble("height") ?: 1.0, call.getDouble("radius") ?: 0.0)
+        ui(call) { v -> place(v); call.resolve() }
     }
 
     /** mode: "live" (visible, touchable) or "hidden" (full-size so layout stays valid, near-transparent, touches fall through). */
@@ -145,7 +153,7 @@ class KrishBrowserPlugin : Plugin(), AgentWebView.Listener {
     }
 
     @PluginMethod fun setDesktopLayout(call: PluginCall) =
-        ui(call) { it.setDesktopLayout(call.getBoolean("enabled") ?: false); call.resolve() }
+        ui(call) { it.setDesktopLayout(call.getBoolean("enabled") ?: false); place(it); call.resolve() }
 
     @PluginMethod fun snapshot(call: PluginCall) = ui(call) { v ->
         val img = v.snapshot(call.getInt("maxWidth") ?: 480, call.getInt("quality") ?: 55)
