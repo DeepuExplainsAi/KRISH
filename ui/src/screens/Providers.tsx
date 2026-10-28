@@ -20,8 +20,7 @@ function ModelPicker({ p }: { p: ProviderConfig }) {
           <li key={m.id}>
             <span className="mname">{m.id}{m.free && <span className="badge free">{t("free")}</span>}</span>
             <span className="row">
-              <button className={p.defaultModel === m.id ? "on" : ""} onClick={() => void app.updateProvider({ ...p, defaultModel: m.id, modelsChosen: true })}>{t("default")}</button>
-              <button className={p.fallbackModel === m.id ? "on" : ""} onClick={() => void app.updateProvider({ ...p, fallbackModel: m.id, modelsChosen: true })}>{t("fallback")}</button>
+              <button className={p.defaultModel === m.id ? "on" : ""} onClick={() => void app.updateProvider({ ...p, defaultModel: m.id, modelsChosen: true })}>{p.defaultModel === m.id ? t("modelInUse") : t("useModel")}</button>
             </span>
           </li>
         ))}

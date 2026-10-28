@@ -22,6 +22,8 @@ export interface AgentOptions {
   startOnPage?: boolean;
   /** One line about a tab the user left open ("site: title"). The model sees only this line until it chooses to read the tab. */
   openTab?: string;
+  /** What the user's screen and browser card look like (device, layout, card size). Background for the model, never a command. */
+  device?: string;
   /** The conversation so far in this app (oldest first, without the current task). Background for follow-ups, never a command. */
   chat?: { role: "user" | "agent"; text: string }[];
   /** Pauses (ms) before each new try when no AI could answer a step. Default: 4 s, 12 s, 30 s. */
@@ -71,7 +73,7 @@ const MAX_PROVIDER_WAIT_MS = 120_000;
 
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n)}…` : s);
 /** Stops data from closing its own delimiter block. */
-const fence = (tag: string, body: string) => `<${tag}>\n${body.replace(/<\/?(PAGE_DATA|RESULT_DATA|MEMORY|USER_TASK|USER_REPLY|USER_FILES|CHAT|NOTES)>/gi, "")}\n</${tag}>`;
+const fence = (tag: string, body: string) => `<${tag}>\n${body.replace(/<\/?(PAGE_DATA|RESULT_DATA|MEMORY|USER_TASK|USER_REPLY|USER_FILES|CHAT|NOTES|DEVICE)>/gi, "")}\n</${tag}>`;
 
 /**
  * A normal question must never collect a secret: it goes to the AI and into history. The agent answers in the user's
@@ -128,6 +130,11 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
   let chipId = 0;
   let consecutiveErrors = 0;
   let stalls = 0;
+  /** Rounds in which the agent was told to try a different method (one round before the user is asked). */
+  let otherMethod = 0;
+  let lastPage = "";
+  /** One line from the app (trusted, unlike page data) for the next step: what to do differently after repeated failures. */
+  let appNote = "";
   let lastSig = "";
   let userReply = "";
   let step = 0;
@@ -442,15 +449,18 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
       const chatText = (opts.chat ?? []).map((m) => `${m.role === "user" ? "user" : "krish"}: ${clip(m.text.replace(/\s+/g, " ").trim(), 500)}`).join("\n");
       const prompt = scrub([
         chatText ? fence("CHAT", redactChat(chatText)) : "",
+        opts.device ? fence("DEVICE", opts.device) : "",
         fence("USER_TASK", redactText(opts.task)),
         notes.length ? fence("NOTES", notes.map((n, i) => `${i + 1}. ${n}`).join("\n")) : "",
         memoryText ? fence("MEMORY", memoryText) : "",
         attached.length ? fence("USER_FILES", attachedList) : "",
         userReply ? fence("USER_REPLY", userReply) : "",
+        appNote ? `App note: ${appNote}` : "",
         turns.length ? `Previous steps:\n${turns.join("\n")}` : "",
         fence("PAGE_DATA", text),
       ].filter(Boolean).join("\n\n"));
       userReply = "";
+      appNote = "";
 
       let action: Action;
       for (let waits = 0; ; waits++) {
@@ -537,12 +547,23 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
       history.push({ action: actionText, result });
 
       consecutiveErrors = failed ? consecutiveErrors + 1 : 0;
-      const sig = `${obs.url}|${obs.text.length}|${actionText}`;
+      const pageSig = `${obs.url}|${obs.text.length}`;
+      const sig = `${pageSig}|${JSON.stringify({ ...action, thought: undefined, plan: undefined })}`; // the model's own wording must not count as a change
       stalls = sig === lastSig ? stalls + 1 : 0;
       lastSig = sig;
+      if (!failed && pageSig !== lastPage) otherMethod = 0; // the page really changed: a later jam gets its own "another way" round
+      lastPage = pageSig;
 
       if (consecutiveErrors >= lim.maxConsecutiveErrors || stalls >= lim.maxStalls) {
         const why = consecutiveErrors >= lim.maxConsecutiveErrors ? "repeated errors" : "no progress";
+        // The same approach failed several times: the user is not asked yet. The agent must try something else first.
+        if (otherMethod++ < 1) {
+          appNote = `${why}: the same approach did not work ${Math.max(consecutiveErrors, stalls)} times in a row. Use a different method now: another element or button, its exact visible text, scroll to find it, submit the form, open the page's direct URL, or another site that does the same. Do not repeat the failed step. Do not ask the user yet.`;
+          chip("Trying another way", "done");
+          consecutiveErrors = 0;
+          stalls = 0;
+          continue;
+        }
         const reply = await raceStop(ui.ask(`I'm stuck (${why}). What should I do? Leave empty to stop.`, signal), signal);
         if (!reply?.trim()) return finish("failed", `stopped: ${why}`);
         userReply = reply;

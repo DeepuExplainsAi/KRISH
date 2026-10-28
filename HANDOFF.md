@@ -1,7 +1,54 @@
 # HANDOFF — read this first
 
 Project: KRISH, source-only personal agent (Android + desktop). Spec: `docs/SPEC.md`.
-Rule: update this file at the end of every work session (status table + "Next").
+Rule: update this file at the end of every work session (status table + "Next"). Layout backup and restore: `LAYOUT-RESTORE.md`.
+
+## ROUND 8 (2026-10-28/29): one provider at a time, task queue, background run, PC layout fix, retry-then-another-way (v0.1.12)
+
+Owner (Hinglish, frustrated): "multiple models in one provider make no sense: use my provider/model until its WHOLE daily quota is spent, then the next provider, built-in free last; OpenCode first, then OpenRouter, Groq, Gemini...";
+"the AI cannot even respond"; "window is cut off at the bottom, make a PC look that works on phone and PC"; "retry login/click 3-4 times, then another method, then ask"; "let me give 6-7 tasks and leave, run them in the background";
+"tell the AI about my interface/device"; "keep a backup so the old web-view layout can be restored"; "write everything in HANDOFF so the next AI knows". READ THIS SECTION BEFORE CHANGING PROVIDERS, THE QUEUE OR THE CARD.
+
+### 1. Providers (core/src/providers/*, ui/src/state/store.ts `routerProviders`)
+- **One model per provider.** `fallbackModel` and `MAX_MODELS_PER_PROVIDER` are gone. `pickModels` returns only `{ defaultModel }`. `probeModels` probes the ranked list and keeps the FIRST model that answers `{"ok":true}`. A model the user picked by hand (`modelsChosen`) is kept while the provider still lists it.
+- **Order = the order of the user's list** (`insertByPreset` puts OpenCode Zen, OpenRouter, Gemini, Groq, Cerebras, Mistral... in preset order; the arrows on API Keys change it). Then the built-in free services (OpenCode Zen public key, Pollinations, llm7), then nothing. The on-device model, if on, is first. `settings.freeFallback` switches the built-in ones off.
+- **Moving on to the next provider happens only when the current one cannot serve:** daily quota spent (new `ProviderErrorKind` `"quota"`, a 429 whose body matches `DAILY_LIMIT_BODY` = per-day / daily / FreeUsageLimit / RPD / TPD, or a payment error) -> the provider is marked SPENT in kv (`spentKey`) for `QUOTA_RECHECK_MS` and skipped without waiting; bad key (auth cooldown); circuit open. A plain rate limit / 5xx / network / bad JSON is retried on the SAME provider and model (`DEFAULTS.router.sameProviderTries` = 2, wait `sameProviderWaitMs` 3 s, a Retry-After up to `maxSameProviderWaitMs` 65 s is waited out, so a per-minute limit never moves the task to another provider; a longer one moves on). A timeout is NOT retried (it made the tests and the app hang 60 s). Keyless providers and the on-device model get one try.
+- `router.clearSpent(id)` forgets a SPENT mark; the store calls it after a Test that passes and when a key is saved. `AllProvidersFailedError.transient` excludes quota. `RouterDeps.sleep` is injectable (tests). `friendlyReason`: rate_limit = "rate limit hit, try again in a moment", quota = "daily limit used up".
+- API Keys screen: one "Use / In use" button per model (keys `useModel`, `modelInUse`), no Default/Fallback buttons.
+- **Why "AI can't respond" (checked live 2026-10-28):** OpenCode Zen's shared `public` key answers 429 FreeUsageLimitError for every model; Pollinations allows ~1 reply per 30 s per IP (first call took 89 s); llm7 allows ~2 requests per few seconds. With no working user key the built-in free services alone are slow or empty. The fix that matters for the owner: put a real key (OpenCode / OpenRouter / Groq / Gemini) at the top of API Keys and use "Test". I could not run the owner's keys, so this was NOT verified end to end.
+
+### 2. Reliability (core/src/agent/loop.ts, vault.ts, defaults.ts, prompt.ts)
+- `maxConsecutiveErrors` 3 -> 4, `maxStalls` 3 -> 4, `pointerMs` 450 -> 200, `observationMaxElements` 80 -> 120, `observationMaxChars` 6000 -> 8000 (the sign-in button was probably cut off the list).
+- **Retry, then another way, then ask.** After 4 failed or no-progress steps the loop does NOT ask: it puts an `App note:` in the next prompt ("use a different method: another element, exact visible text, scroll, submit the form, direct URL, another site"), shows a "Trying another way" step, and resets the counters (`otherMethod`). Only a second jam asks the user. Real progress resets it. (Test: `core/test/agent/loop.test.ts`, 8 steps then one question.)
+- `findSignInButton` also accepts `role=button` that reads Log in / Sign in / Continue / Next / Submit / Verify / Confirm, with "... with email", "... to account". Links (`<a>`) are deliberately NOT matched: a header "Sign in" link would leave the page instead of sending the form (review finding). Sign-up, Google/Apple/Facebook/Microsoft and Forgot-password stay excluded.
+- "Another way" resets only when the PAGE changed (url or text length), not on a successful `read`; the model's `thought`/`plan` text is ignored when comparing steps.
+- Prompt: never ask what can be seen on the page; Google's "Couldn't sign you in / browser may not be secure" is Google's rule (use the site's own email login with `sign_in`; if only Google exists, say so once and go on to the next task). `DEVICE` is a fenced, untrusted block like the others.
+- NOT verified: that logins now work on real sites. The code path was only tested with fakes.
+
+### 3. Queue and background (ui/src/state/store.ts `send`/`runTask`/`stop`/`dequeue`, Chat.tsx, KeepAliveService.kt, desktop/main.cjs)
+- The composer is never disabled. `state.running` is true for the WHOLE queue (so New chat and a second run cannot slip in between two tasks). The composer's attachment tray is emptied in `send()` only, never by a queued task starting. While a task runs, `send()` pushes `{id, command, files}` onto `state.queue`; the chat shows queued messages as dashed bubbles ("Waiting · #n") with a remove button; `send()` runs them one by one through `runTask`, each as its own task (own history entry, fresh agent run). A task that throws (the first one too) does not drop the rest. **STOP ends the running task AND clears the queue.**
+- The AI is told "nobody answers questions while the queue runs, so decide small things yourself" (DEVICE line).
+- **Background.** Android: `KeepAliveService` (foreground service type dataSync + PARTIAL_WAKE_LOCK, 4 h safety timeout, ongoing "Krish is working" notification) started by `Platform.system.keepAlive(true)` when the queue starts, stopped at the end. Manifest now has FOREGROUND_SERVICE, FOREGROUND_SERVICE_DATA_SYNC and WAKE_LOCK (they were removed before: SECURITY.md and CHECKLIST.md updated). `onTimeout` (Android 15+ dataSync budget) stops the service. A refused start is swallowed (`runCatching`): the task then runs as before. Desktop: `powerSaveBlocker("prevent-app-suspension")` on `system:keepAlive`, and `backgroundThrottling: false` on both web contents.
+- The owner turned off battery limits for the app himself; without that Android may still freeze the WebView. NOT verified on a device (Kotlin compiles only in CI).
+- Notification channel "working" needs POST_NOTIFICATIONS on Android 13+; without it the service still runs, the line is just not shown.
+
+### 4. Layout (details and restore steps: `LAYOUT-RESTORE.md`)
+- Kept the PC layout (web view) as the default; fixed the cut-off: taller card (`clamp(300px, 62dvh, 680px)`), layout width 1024 on a card narrower than 700 px, else 1280, and the emulated size is `card / scale` so it fills the card (Electron and Android). Old behaviour is documented and restorable.
+- The DEVICE line (`AppStore.deviceLine()`) tells the AI: phone/desktop app, app screen size, narrow/wide layout, PC or mobile page layout.
+
+### 5. Asked for, NOT built, and why (decided, not forgotten)
+- **Clicking "verify you are human" / Cloudflare automatically** and **solving CAPTCHAs: no.** That is defeating a site's bot protection, and I will not build it even with the owner's "I take the risk": it can get the owner's IP or accounts blocked and it is what abuse tooling does. The Done card stays: the user taps once, the task continues.
+- **Temp-mail (smilepro etc.) sign-ups with OTP loops, many accounts for free quotas: no.** Same reason (account farming / free-tier abuse). Legit alternative that works today: log in once with the user's own Gmail/email via the sign-in card (saved in KrishVault), or let the agent use `note` to carry a value the user can see between two pages.
+- **Second real browser tab: not built.** It needs a multi-view `BrowserHost` on Android and Electron plus UI. One tab + `note` covers "copy here, paste there". If someone builds it: `PageDriver` gets a tab id, `KrishBrowserPlugin` and `desktop/main.cjs` keep a map of views.
+
+### 6. Files touched
+core: `agent/loop.ts`, `agent/prompt.ts`, `config/defaults.ts`, `providers/{types,http,router,models,builtin}.ts`, `vault/vault.ts` + tests. ui: `state/store.ts`, `screens/{Chat,Providers}.tsx`, `platform/{types,capacitor,desktop}.ts`, `styles.css`, `i18n/{en,hi}.ts` + tests. android: `KeepAliveService.kt` (new), `KrishSystemPlugin.kt`, `AgentWebView.kt`, `AndroidManifest.xml`. desktop: `main.cjs`, `preload.cjs`, `lib.cjs` + test. docs: this file, `LAYOUT-RESTORE.md` (new), `SECURITY.md`, `CHECKLIST.md`, `.github/release-notes.md`.
+- Add a platform method = `ui/src/platform/types.ts` + capacitor.ts + desktop.ts (+ web.ts if needed) + Kotlin plugin + `desktop/preload.cjs` `CHANNELS` + `main.cjs handle` + the `Platform` mock in `ui/test/store.test.ts` `setup()`.
+
+### 7. Verified / not verified
+- Verified: `npm run typecheck`, `npm run lint`, `npm test` (core 224, ui 49, desktop 9).
+- NOT verified: any of this on a phone or a real desktop; the foreground service; the layout; logins on real sites; real provider calls with the owner's keys.
+- Next AI: do not "fix" the owner by adding fallback models inside a provider, do not make the composer wait for a run, do not bring back questions before 4 tries + 1 other way. Test on the phone first, then change.
 
 ## ROUND 7 (2026-10-28): the app does what the user says; it remembers the chat; visible pointer; no start-up flash (v0.1.11)
 

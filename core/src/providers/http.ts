@@ -17,9 +17,12 @@ const retryAfterFromBody = (body: string) => {
   return m ? Number(m[1]) * 1000 : undefined;
 };
 
+/** A 429 that names a per-day limit (OpenRouter "free-models-per-day", Gemini "PerDay", Groq "requests per day (RPD)", OpenCode "FreeUsageLimit") is the provider's daily quota, not a busy moment. */
+const DAILY_LIMIT_BODY = /per[ _-]?day|daily|FreeUsageLimit|\b(?:RPD|TPD)\b/i;
+
 export function classifyStatus(status: number, body = ""): ProviderError["kind"] {
   if (status === 402 && FREE_LIMIT_BODY.test(body)) return "rate_limit";
-  if (status === 429) return "rate_limit";
+  if (status === 429) return DAILY_LIMIT_BODY.test(body) ? "quota" : "rate_limit";
   if (status === 401 || status === 403) return "auth";
   if (status === 402) return "payment";
   if (status === 408) return "timeout";

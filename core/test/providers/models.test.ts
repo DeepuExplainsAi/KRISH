@@ -94,12 +94,10 @@ describe("pickModels / withAutoModels", () => {
   it("prefers a newer, bigger, stable chat model and skips embeddings, audio and image models", () => {
     const r = pickModels(ids("text-embedding-004", "gemini-2.5-flash-lite", "gemini-2.5-pro", "gemini-2.5-flash", "gemini-3-pro-preview", "gemini-2.5-flash-preview-tts"));
     expect(r.defaultModel).toBe("gemini-2.5-pro"); // stable beats preview
-    expect(r.fallbackModel).toBe("gemini-2.5-flash");
   });
   it("uses only free models when the provider marks some as free", () => {
     const r = pickModels([{ id: "big-paid-pro-5" }, { id: "llama-3.3-70b:free", free: true }, { id: "tiny-8b:free", free: true }]);
     expect(r.defaultModel).toBe("llama-3.3-70b:free");
-    expect(r.fallbackModel).toBe("tiny-8b:free");
   });
   it("lists free models first (marked by pricing or by the provider's own -free / :free naming), then paid, then non-chat", () => {
     const sorted = sortModels([{ id: "text-embedding-3" }, { id: "paid-pro-9" }, { id: "tiny-8b-free", free: true }, { id: "big-70b:free", free: true }, { id: "paid-mini-1" }]);
@@ -108,16 +106,15 @@ describe("pickModels / withAutoModels", () => {
   it("never picks a model the provider says is leaving", () => {
     expect(pickModels([{ id: "old-pro-9", free: true, expiring: true }, { id: "new-pro-3", free: true }]).defaultModel).toBe("new-pro-3");
   });
-  it("an empty list picks nothing; a single model has no fallback", () => {
-    expect(pickModels([])).toEqual({ defaultModel: undefined, fallbackModel: undefined });
-    expect(pickModels(ids("only-one"))).toEqual({ defaultModel: "only-one", fallbackModel: undefined });
+  it("an empty list picks nothing", () => {
+    expect(pickModels([])).toEqual({ defaultModel: undefined });
+    expect(pickModels(ids("only-one"))).toEqual({ defaultModel: "only-one" });
   });
-  it("keeps models the user chose and fills only the missing one", () => {
+  it("keeps the model the user chose and fills only a missing one", () => {
     const base = provider("p", { defaultModel: undefined, models: { fetchedAt: 1, items: ids("m-2", "m-1") } });
-    expect(withAutoModels(base)).toMatchObject({ defaultModel: "m-2", fallbackModel: "m-1" });
+    expect(withAutoModels(base)).toMatchObject({ defaultModel: "m-2" });
     const chosen = { ...base, defaultModel: "m-1" };
-    expect(withAutoModels(chosen)).toMatchObject({ defaultModel: "m-1", fallbackModel: "m-2" });
-    expect(withAutoModels({ ...chosen, fallbackModel: "x" })).toEqual({ ...chosen, fallbackModel: "x" });
+    expect(withAutoModels(chosen)).toBe(chosen);
   });
 });
 
@@ -129,10 +126,10 @@ describe("probeModels", () => {
   };
   const openaiOk = () => json({ choices: [{ message: { content: '{"ok":true}' } }] });
 
-  it("keeps the first two models that really answer and skips rate-limited and unpaid ones", async () => {
+  it("keeps the first model that really answers and skips rate-limited and unpaid ones", async () => {
     const { deps: d } = deps({ "o.test": chat({ "chat-9": 429, "chat-8": 402 }) });
     const out = await probeModels(withList(["chat-9", "chat-8", "chat-7", "chat-6", "chat-5"]), "k", d);
-    expect(out).toMatchObject({ defaultModel: "chat-7", fallbackModel: "chat-6", health: { ok: true } });
+    expect(out).toMatchObject({ defaultModel: "chat-7", health: { ok: true } });
   });
   it("skips models that are gone (404) and models that cannot follow the JSON format", async () => {
     const answer = (_u: string, init?: RequestInit) => {
@@ -142,22 +139,24 @@ describe("probeModels", () => {
     };
     const { deps: d } = deps({ "o.test": answer });
     const out = await probeModels(withList(["chat-9", "chat-8", "chat-7", "chat-6"]), "k", d);
-    expect(out).toMatchObject({ defaultModel: "chat-7", fallbackModel: "chat-6", health: { ok: true } });
+    expect(out).toMatchObject({ defaultModel: "chat-7", health: { ok: true } });
   });
   it("nothing works: no model chosen, health says why", async () => {
     const { deps: d } = deps({ "o.test": chat({ "chat-2": 429, "chat-1": 429 }) });
     const out = await probeModels(withList(["chat-2", "chat-1"]), "k", d);
     expect(out.defaultModel).toBeUndefined();
-    expect(out.health).toMatchObject({ ok: false, note: "free limit used up, try again later" });
+    expect(out.health).toMatchObject({ ok: false, note: "rate limit hit, try again in a moment" });
   });
-  it("keeps hand-picked models that are still listed; replaces automatic ones; clears a model that is no longer offered", async () => {
+  it("keeps a hand-picked model that is still listed (even when its test fails); replaces an automatic one; drops one that is no longer offered", async () => {
     const { deps: d } = deps({ "o.test": chat({}) });
     const list = withList(["chat-9", "chat-8", "chat-7"]);
-    expect(await probeModels({ ...list, modelsChosen: true, defaultModel: "chat-7" }, "k", d)).toMatchObject({ defaultModel: "chat-7", fallbackModel: "chat-9" });
-    expect(await probeModels({ ...list, defaultModel: "chat-7" }, "k", d)).toMatchObject({ defaultModel: "chat-9", fallbackModel: "chat-8" });
+    expect(await probeModels({ ...list, modelsChosen: true, defaultModel: "chat-7" }, "k", d)).toMatchObject({ defaultModel: "chat-7", health: { ok: true } });
+    expect(await probeModels({ ...list, defaultModel: "chat-7" }, "k", d)).toMatchObject({ defaultModel: "chat-9" });
     expect(await probeModels({ ...list, modelsChosen: true, defaultModel: "gone-1" }, "k", d)).toMatchObject({ defaultModel: "chat-9" });
+    const spent = deps({ "o.test": chat({ "chat-7": 429 }) }).deps;
+    expect(await probeModels({ ...list, modelsChosen: true, defaultModel: "chat-7" }, "k", spent)).toMatchObject({ defaultModel: "chat-7", health: { ok: false } });
     const dead = deps({ "o.test": chat({ "chat-9": 404, "chat-8": 404, "chat-7": 404 }) }).deps;
-    expect((await probeModels({ ...list, defaultModel: "old-1", fallbackModel: "old-2" }, "k", dead)).defaultModel).toBeUndefined();
+    expect((await probeModels({ ...list, defaultModel: "old-1" }, "k", dead)).defaultModel).toBeUndefined();
   });
   it("a rejected key stops after the first batch", async () => {
     const { calls, deps: d } = deps({ "o.test": () => json({}, 401) });

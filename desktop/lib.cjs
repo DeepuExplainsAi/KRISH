@@ -11,6 +11,9 @@ const isHttps = (u) => {
   }
 };
 
+/** Width (CSS px) a page is laid out at in PC layout: 1024 in a narrow card, 1280 in a wide one. Same rule as AgentWebView.layoutWidth. */
+const layoutWidth = (cardWidth) => (cardWidth < 700 ? 1024 : 1280);
+
 /** Same wrapper as AgentWebView.kt: the page script is evaluated fresh into a local `K` on every call. */
 const wrapCall = (pageScript, expr) =>
   `(function(){try{var K=${pageScript}\n;return JSON.stringify({ok:true,v:${expr}});}catch(e){return JSON.stringify({ok:false,e:String(e&&e.message||e)});}})()`;
@@ -128,4 +131,4 @@ function dockerArgs({ image, workDir, name }) {
   ];
 }
 
-module.exports = { isHttps, wrapCall, parseCallResult, expr, validateFetch, FileTokens, createSecretStore, dockerArgs };
+module.exports = { isHttps, layoutWidth, wrapCall, parseCallResult, expr, validateFetch, FileTokens, createSecretStore, dockerArgs };

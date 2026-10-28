@@ -286,13 +286,34 @@ describe("runAgent", () => {
     expect(r).toMatchObject({ status: "max_steps", steps: 3 });
   });
 
-  it("asks the user when stuck and stops when they leave it empty", async () => {
-    const { router } = await harness([A({ type: "click", elementId: 99 })]);
+  it("when stuck it first tells the model to use a different method, and only then asks the user; an empty answer stops", async () => {
+    const { router, prompts } = await harness([A({ type: "click", elementId: 99 })]);
     const { driver } = fakeDriver({ [home]: {} }, home);
-    const { ui } = fakeUI({ ask: async () => "" });
+    const asked: string[] = [];
+    const { ui } = fakeUI({ ask: async (q) => (asked.push(q), "") });
     const r = await runAgent({ task: "t" }, { driver, router, ui, controller: new AgentController() });
     expect(r.status).toBe("failed");
-    expect(r.steps).toBe(3);
+    expect(r.steps).toBe(8); // four tries, one round of "another way", four more tries, then the question
+    expect(asked).toHaveLength(1);
+    expect(prompts.filter((p) => p.includes("App note:") && p.includes("different method"))).toHaveLength(1);
+  });
+
+  it("a successful read on an unchanged page is not progress: failures after it go straight to the question", async () => {
+    const { router, prompts } = await harness([A({ type: "click", elementId: 99 }), A({ type: "click", elementId: 99 }), A({ type: "click", elementId: 99 }), A({ type: "click", elementId: 99 }), A({ type: "read" }), A({ type: "click", elementId: 99 })]);
+    const { driver } = fakeDriver({ [home]: {} }, home);
+    const asked: string[] = [];
+    const { ui } = fakeUI({ ask: async (q) => (asked.push(q), "") });
+    await runAgent({ task: "t" }, { driver, router, ui, controller: new AgentController() });
+    expect(prompts.filter((p) => p.includes("different method"))).toHaveLength(1);
+    expect(asked).toHaveLength(1);
+  });
+
+  it("the model is told what the user's screen looks like", async () => {
+    const { router, prompts } = await harness([A({ type: "done", summary: "ok" })]);
+    const { driver } = fakeDriver({ [home]: {} }, home);
+    const { ui } = fakeUI();
+    await runAgent({ task: "t", device: "Phone, portrait, browser card 360x300 px" }, { driver, router, ui, controller: new AgentController() });
+    expect(prompts[0]).toContain("<DEVICE>\nPhone, portrait, browser card 360x300 px\n</DEVICE>");
   });
 
   it("every provider failing ends the run as failed", async () => {

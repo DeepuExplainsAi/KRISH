@@ -42,7 +42,8 @@ export function Chat() {
   const prompts = useAppSelector((s) => s.prompts);
   const attachments = useAppSelector((s) => s.attachments);
   const running = useAppSelector((s) => s.running);
-  const s = { items, prompts, attachments, running };
+  const queue = useAppSelector((s) => s.queue);
+  const s = { items, prompts, attachments, running, queue };
   const { t } = useT();
   const [text, setText] = useState("");
   const end = useRef<HTMLDivElement>(null);
@@ -88,6 +89,13 @@ export function Chat() {
           ),
         )}
         {thinking && <Thinking />}
+        {s.queue.map((q, n) => (
+          <div key={q.id} className="msg user queued">
+            <span className="txt">{q.command}</span>
+            <small>{t("queuedN", { n: String(n + 1) })}</small>
+            <button type="button" className="icon" aria-label={t("remove")} title={t("remove")} onClick={() => app.dequeue(q.id)}><IconClose size={14} /></button>
+          </div>
+        ))}
         {s.prompts.map((p) => <PromptCard key={p.id} p={p} />)}
         <div ref={end} />
       </div>
@@ -103,10 +111,10 @@ export function Chat() {
         </div>
       )}
       <form className="composer" onSubmit={submit}>
-        <button type="button" className="icon" aria-label={t("attachFile")} title={t("attachFile")} disabled={s.running || s.attachments.length >= MAX_ATTACHMENTS} onClick={() => void app.attach().catch((e: unknown) => app.notify(String(e instanceof Error ? e.message : e)))}><IconClip /></button>
+        <button type="button" className="icon" aria-label={t("attachFile")} title={t("attachFile")} disabled={s.attachments.length >= MAX_ATTACHMENTS} onClick={() => void app.attach().catch((e: unknown) => app.notify(String(e instanceof Error ? e.message : e)))}><IconClip /></button>
         <button type="button" className="icon" aria-label={t("browser")} title={t("browser")} onClick={app.openWindow}><IconGlobe /></button>
-        <input value={text} onChange={(e) => setText(e.target.value)} placeholder={t("composerPlaceholder")} disabled={s.running} />
-        <button className="send" type="submit" aria-label={t("send")} title={t("send")} disabled={s.running || !text.trim()}><IconSend /></button>
+        <input value={text} onChange={(e) => setText(e.target.value)} placeholder={s.running ? t("composerQueue") : t("composerPlaceholder")} enterKeyHint="send" />
+        <button className="send" type="submit" aria-label={t("send")} title={t("send")} disabled={!text.trim()}><IconSend /></button>
       </form>
     </section>
   );

@@ -3,7 +3,7 @@ import {
   runAgent, Scheduler, nextRun, nextBriefAt, briefCommand, Vault,
   type AgentEvent, type AgentUI, type BriefSettings, type ChipState, type PageDriver, type ProviderConfig,
   type LoginAnswer, type LoginRequest, type MemoryPort, type SecureKind, type SelectedFile, type Sandbox, setLocalEngine, type ModelInfo,
-  BUILTIN_PROVIDERS, DEFAULT_BUILTIN_ID, rankModels,
+  BUILTIN_PROVIDERS, rankModels,
 } from "@krish/core";
 import type { Platform } from "../platform";
 import { Tier0Sandbox } from "../sandbox/tier0";
@@ -88,6 +88,13 @@ export type Prompt =
   | { id: number; type: "login"; req: LoginRequest; resolve: (v: LoginAnswer | undefined) => void }
   | { id: number; type: "captcha"; reason: string; resolve: () => void };
 
+export interface QueuedTask {
+  id: number;
+  command: string;
+  files: SelectedFile[];
+  startUrl?: string;
+}
+
 export interface ChatItem {
   id: number;
   role: "user" | "agent";
@@ -114,6 +121,8 @@ export interface State {
   attachments: SelectedFile[];
   prompts: Prompt[];
   running: boolean;
+  /** Messages sent while a task runs. They run one after another in the background, each as its own task. */
+  queue: QueuedTask[];
   /** The browser card is shown (in the layout, never floating). */
   /** Provider ids whose connection is being tested right now. */
   checking: string[];
@@ -151,7 +160,7 @@ const LIST_REFRESH_MS = 6 * 36e5;
 export class AppStore {
   state: State = {
     ready: false, screen: "home", settings: DEFAULT_SETTINGS, providers: [], freeProviders: BUILTIN_PROVIDERS, items: [], attachments: [], prompts: [],
-    running: false, checking: [], windowOpen: false, windowExpanded: false,
+    running: false, queue: [], checking: [], windowOpen: false, windowExpanded: false,
     page: { url: "", title: "", loading: false }, status: "idle", deviceLowRam: false, linuxAvailable: false,
     localModels: [], localStatus: "",
   };
@@ -186,7 +195,7 @@ export class AppStore {
   /** KrishVault: saved logins, kept for good in the platform key store (Android Keystore / OS keychain). */
   readonly vault: Vault;
 
-  constructor(readonly platform: Platform, private readonly opts: { providerWaits?: number[] } = {}) {
+  constructor(readonly platform: Platform, private readonly opts: { providerWaits?: number[]; sleep?: (ms: number) => Promise<void> } = {}) {
     this.vault = new Vault(platform.keys);
     this.vault.onChange(() => this.set({}));
     this.memory = new Memory(platform.kv);
@@ -196,17 +205,17 @@ export class AppStore {
     this.scheduler = new Scheduler(platform.kv);
     this.router = new ProviderRouter({
       keys: platform.keys, kv: platform.kv, fetch: platform.fetch,
-      providers: () => this.routerProviders(),
+      providers: () => this.routerProviders(), sleep: opts.sleep,
       onResult: (id, ok, note) => this.recordHealth(id, ok, note),
     });
   }
 
-  /** The on-device model goes first when enabled; then the free OpenCode Zen; then the user's own providers; the other built-in free services are the last resort. */
+  /** The on-device model goes first when enabled; then the user's own providers in the order the user set; the built-in free services are the last resort. */
   private routerProviders(): ProviderConfig[] {
     const { localModel, localModelConsent, localModelId } = this.state.settings;
     const mine = this.state.providers;
     const free = this.state.settings.freeFallback ? this.state.freeProviders : [];
-    const all = [...free.filter((p) => p.id === DEFAULT_BUILTIN_ID), ...mine, ...free.filter((p) => p.id !== DEFAULT_BUILTIN_ID)];
+    const all = [...mine, ...free];
     if (!localModel || !localModelConsent || !localModelId || !webgpuAvailable()) return all;
     const local: ProviderConfig = {
       id: "local", name: "On-device", kind: "webgpu-local", baseUrl: "local:", enabled: true, defaultModel: localModelId,
@@ -266,7 +275,7 @@ export class AppStore {
     const saved: ProviderConfig[] = f ? JSON.parse(f) : [];
     const freeProviders = BUILTIN_PROVIDERS.map((b) => {
       const o = saved.find((x) => x.id === b.id);
-      return o?.models ? { ...b, models: o.models, defaultModel: o.defaultModel, fallbackModel: o.fallbackModel, modelsChanged: o.modelsChanged } : b;
+      return o?.models ? { ...b, models: o.models, defaultModel: o.defaultModel, modelsChanged: o.modelsChanged } : b;
     });
     const thread = await this.platform.kv.get(THREAD_KEY).then((t) => (t ? (JSON.parse(t) as ChatItem[]) : [])).catch(() => []);
     this.seq = thread.reduce((m, i) => Math.max(m, i.id), this.seq);
@@ -323,7 +332,7 @@ export class AppStore {
     await this.check(id, async (p) => autoFetchOnce(p, apiKey, { fetch: this.platform.fetch }));
   }
 
-  /** Fetches (optionally), then really asks the best models: the first two that answer become default and fallback. */
+  /** Fetches (optionally), then really asks the best models: the first one that answers becomes the provider's model. */
   private async check(id: string, prepare?: (p: ProviderConfig) => Promise<ProviderConfig>) {
     this.set({ checking: [...this.state.checking, id] });
     try {
@@ -350,6 +359,9 @@ export class AppStore {
   testProvider = (id: string) => this.check(id, async (p) => {
     const key = (await this.platform.keys.get(id)) ?? "";
     return refreshModels(p, key, { fetch: this.platform.fetch });
+  }).then(async () => {
+    // A Test that passes means the provider answers again (new key, new day): routing must not keep skipping it.
+    if (this.state.providers.find((x) => x.id === id)?.health?.ok) await this.router.clearSpent(id);
   });
 
   /**
@@ -374,8 +386,8 @@ export class AppStore {
       // The seeded names stay first while the service still lists them; otherwise the best free models of the live list.
       const listed = (id: string) => items.some((m) => m.id === id);
       const seeds = (BUILTIN_PROVIDERS.find((b) => b.id === p.id)?.models?.items ?? []).map((m) => m.id).filter(listed);
-      const [defaultModel, fallbackModel] = [...new Set([...seeds, ...rankModels(items).map((m) => m.id)])];
-      next.push({ ...r, defaultModel, fallbackModel, modelsAutoFetched: true });
+      const [defaultModel] = [...seeds, ...rankModels(items).map((m) => m.id)];
+      next.push({ ...r, defaultModel, modelsAutoFetched: true });
     }
     this.set({ freeProviders: next });
     await this.platform.kv.set(FREE_KEY, JSON.stringify(next));
@@ -400,19 +412,20 @@ export class AppStore {
     if (!p || !key) return this.notify("Add an API key first");
     const next = await refreshModels(p, key, { fetch: this.platform.fetch });
     const gone = (m?: string) => m !== undefined && next.models !== undefined && !next.models.items.some((i) => i.id === m && !i.expiring);
-    await this.updateProvider(withAutoModels({ ...next, defaultModel: gone(next.defaultModel) ? undefined : next.defaultModel, fallbackModel: gone(next.fallbackModel) ? undefined : next.fallbackModel }));
+    await this.updateProvider(withAutoModels({ ...next, defaultModel: gone(next.defaultModel) ? undefined : next.defaultModel }));
   }
 
   /** Back to automatic model choice: the hand-picked pair is dropped and the working models are found again. */
   async autoModels(id: string) {
     const p = this.state.providers.find((x) => x.id === id);
     if (!p) return;
-    await this.updateProvider({ ...p, modelsChosen: false, defaultModel: undefined, fallbackModel: undefined });
+    await this.updateProvider({ ...p, modelsChosen: false, defaultModel: undefined });
     await this.testProvider(id);
   }
 
   async setProviderKey(id: string, key: string) {
     await this.platform.keys.set(id, key);
+    await this.router.clearSpent(id); // a new key is a new quota
   }
 
   async removeProvider(id: string) {
@@ -570,16 +583,56 @@ export class AppStore {
     };
   }
 
-  /** `command` must be text the user typed in this app (or their own saved task/panel). */
+  /**
+   * `command` must be text the user typed in this app (or their own saved task/panel).
+   * While a task runs, a new message joins the queue (it does not interrupt): the queue runs in the background, one task after the other,
+   * and the returned promise then ends at once. Otherwise it resolves when this task and everything queued behind it are done.
+   */
   async send(command: string, opts: { startUrl?: string; files?: SelectedFile[] } = {}) {
-    if (this.state.running || !command.trim()) return;
+    if (!command.trim()) return;
+    // Only the composer passes files; saved tasks, panels and the brief never pick up the composer's tray. The tray is emptied here, at submission, and nowhere else.
+    if (opts.files) this.draftEpoch++;
+    const taken = opts.files ? { attachments: [] } : {};
+    if (this.state.running) {
+      this.set({ queue: [...this.state.queue, { id: ++this.seq, command, files: opts.files ?? [], startUrl: opts.startUrl }], ...taken });
+      return;
+    }
+    this.set({ running: true, status: "running", ...taken }); // `running` covers the whole queue, so nothing (New chat, a second run) can slip in between two tasks
+    void this.platform.system.keepAlive?.(true).catch(() => undefined);
+    try {
+      let task: Omit<QueuedTask, "id"> | undefined = { command, files: opts.files ?? [], startUrl: opts.startUrl };
+      while (task) {
+        // One task that breaks must not drop the ones behind it.
+        await this.runTask(task.command, { startUrl: task.startUrl, files: task.files }).catch((e: unknown) =>
+          this.push({ role: "agent", text: e instanceof Error ? e.message : String(e), failed: true }));
+        task = this.state.queue[0];
+        if (task) this.set({ queue: this.state.queue.slice(1) });
+      }
+    } finally {
+      this.set({ running: false, status: "idle", queue: [] });
+      void this.platform.system.keepAlive?.(false).catch(() => undefined);
+    }
+  }
+
+  dequeue = (id: number) => this.set({ queue: this.state.queue.filter((q) => q.id !== id) });
+
+  /** One line about the user's screen, so the AI knows what they see (phone or PC, size of the card, page layout). */
+  private deviceLine() {
+    const g = globalThis as { innerWidth?: number; innerHeight?: number };
+    const w = Math.round(g.innerWidth ?? 0);
+    const h = Math.round(g.innerHeight ?? 0);
+    const kind = this.platform.kind === "android" ? "an Android phone app" : this.platform.kind === "desktop" ? "a desktop app (Windows or Linux)" : "a web page";
+    const screen = w && h ? `, app screen ${w}x${h} CSS px (${w < WIDE ? "narrow: one column, the browser card sits above the message box" : "wide: the browser card is a column beside the chat"})` : "";
+    const page = this.state.settings.desktopLayout ? "Pages are laid out as on a PC (1024-1280 px wide) and scaled down into the card, so they look small but complete." : "Pages use the mobile layout of each site.";
+    return `The user is on ${kind}${screen}; they watch the browser card and can tap it. ${page} They may queue several tasks and leave: nobody answers questions while the queue runs, so decide small things yourself.`;
+  }
+
+  private async runTask(command: string, opts: { startUrl?: string; files?: SelectedFile[] }) {
     const runId = newId();
     const controller = (this.controller = new AgentController());
     this.chipItems.clear();
-    // Only the composer passes files; saved tasks, panels and the brief never pick up the composer's tray.
     const files = opts.files ?? [];
-    if (opts.files) this.draftEpoch++;
-    this.set({ running: true, status: "running", screen: "chat", ...(opts.files ? { attachments: [] } : {}) });
+    this.set({ status: "running", screen: "chat" });
     if (opts.startUrl) this.openWindow();
     else this.closeWindow(); // a plain chat starts without the card (and without the tab left open before)
     const chat = this.chatForAgent();
@@ -592,22 +645,26 @@ export class AppStore {
       const { url, title } = this.state.page;
       const openTab = url && url !== "about:blank" ? `${title ? `${title} — ` : ""}${url}` : undefined;
       await runAgent(
-        { task, files, screenshots: this.state.settings.screenshots, startOnPage: Boolean(opts.startUrl), openTab, chat, providerWaits: this.opts.providerWaits },
+        { task, files, screenshots: this.state.settings.screenshots, startOnPage: Boolean(opts.startUrl), openTab, chat, device: this.deviceLine(), providerWaits: this.opts.providerWaits },
         { driver: this.driver(), router: this.router, ui: this.buildUI(runId), controller, sandbox: this.sandbox, memory: this.memoryPort(), vault: this.vault },
       );
     } finally {
       this.controller = undefined;
-      this.set({ running: false, status: "idle", prompts: [] });
+      this.set({ prompts: [], status: this.state.queue.length ? "running" : "idle" });
       await this.platform.browser.setMode(this.state.windowOpen ? "live" : "hidden").catch(() => undefined);
     }
   }
 
-  stop = () => this.controller?.stop();
+  /** STOP ends the running task and drops everything still queued behind it. */
+  stop = () => {
+    this.set({ queue: [] });
+    this.controller?.stop();
+  };
   clearChat = () => this.set({ items: [] });
   dismissItem = (id: number) => this.set({ items: this.state.items.filter((i) => i.id !== id) });
   /** Opens the system picker (any file type). Throws if the platform cannot read the file; the UI shows the message. */
   async attach() {
-    if (this.picking || this.state.running || this.state.attachments.length >= MAX_ATTACHMENTS) return;
+    if (this.picking || this.state.attachments.length >= MAX_ATTACHMENTS) return;
     this.picking = true;
     const epoch = this.draftEpoch;
     try {

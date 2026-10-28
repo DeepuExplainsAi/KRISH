@@ -145,7 +145,7 @@ export function findLoginFields(elements: PageElement[]): { password: PageElemen
   return { password: elements[at]!, username };
 }
 
-const SIGN_IN_BUTTON = /^\s*(log[\s-]?in|sign[\s-]?in|continue|next|लॉग\s?इन|लॉगिन|साइन\s?इन|आगे)\s*[.!→>]*\s*$/iu;
+const SIGN_IN_BUTTON = /^\s*(log[\s-]?in|sign[\s-]?in|continue|next|submit|verify|confirm|लॉग\s?इन|लॉगिन|साइन\s?इन|आगे)(\s+(?:to|with|using)\s+(?:your\s+)?(?:account|email|e-mail|password|[\w.-]+))?\s*[.!→>]*\s*$/iu;
 const SIGN_UP_BUTTON = /\b(sign[\s-]?up|create|register|join|subscribe|forgot|reset)\b|साइन\s?अप/iu;
 const labelsOf = (e: PageElement) => [e.text, e.label, e.title, e.value].filter((x): x is string => Boolean(x)).map((x) => x.trim());
 

@@ -9,6 +9,12 @@ describe("desktop lib", () => {
     for (const u of ["http://a.test", "file:///etc/passwd", "javascript:1", "https://u:p@a.test", "nope"]) expect(lib.isHttps(u)).toBe(false);
   });
 
+  it("PC layout width: 1024 in a narrow card, 1280 in a wide one", () => {
+    expect(lib.layoutWidth(360)).toBe(1024);
+    expect(lib.layoutWidth(699)).toBe(1024);
+    expect(lib.layoutWidth(700)).toBe(1280);
+  });
+
   it("validateFetch limits scheme, method, headers", () => {
     expect(lib.validateFetch("https://a.test", { method: "post", headers: { "x-goog-api-key": "k", "bad header": "x" }, body: "{}" })).toEqual({
       method: "POST", headers: { "x-goog-api-key": "k" }, body: "{}",

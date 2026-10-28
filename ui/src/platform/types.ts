@@ -67,6 +67,8 @@ export interface Platform {
     requestNotifications(): Promise<boolean>;
     scheduleDue(id: string, at: number, title: string): Promise<void>;
     cancelDue(id: string): Promise<void>;
+    /** While tasks run: keeps the app working with the screen off or another app in front (Android foreground service, desktop power-save blocker). */
+    keepAlive?(on: boolean): Promise<void>;
     /** Opens an https page in the user's own browser (never in the agent's browser, which must not see the user's logins). */
     openExternal(url: string): Promise<void>;
   };

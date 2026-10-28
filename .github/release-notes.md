@@ -1,11 +1,13 @@
 **Unsigned DEBUG builds. They were NOT tested on a real phone or on a real Windows/Linux desktop.** What was checked: the files build in CI, the APK is valid and carries the expected application ID, the Windows and Linux packages contain the app, and the Linux build starts and keeps running for 25 seconds under a virtual display. Nothing beyond that.
 
-## What changed in 0.1.11
-- Krish remembers the conversation (kept on the device, secrets removed) and follows what you write: no built-in extra steps, no automatic sign-in. It signs in only when the task needs it.
-- It says its plan first, then works with a visible pointer and tap marks.
-- "Free limit used up" fixed at the root: a wait from the free AI is no longer shown as "needs paid credit", busy services are retried, and a shared free pool is no longer hit on every step.
-- No "Krish" text flash at start.
-- Not included: automatic "I am human" checks (you still tap Done), temporary-mail sign-ups, a second browser tab.
+## What changed in 0.1.12
+- **One provider at a time.** Krish uses your first provider and its one model until that provider's daily limit is really used up, then the next one. The built-in free services come last. OpenCode, OpenRouter, Groq, Gemini... follow the order on the API Keys screen. No more many models inside one provider.
+- **Task queue.** Type the next task while one is running: it waits in the chat and runs afterwards. STOP stops the running task and clears the queue. A "Krish is working" notification (Android) and a no-sleep lock (PC) keep it running with the screen off.
+- **Retry, then another way, then ask.** After 4 failed tries Krish tries a different method before it asks you.
+- **PC layout fixed:** the browser card is taller and the page fits it without being cut off. The AI is told what screen you have.
+- Sign-in button detection is wider (links, "Continue with email", "Submit").
+- Not included, on purpose: automatic "I am human" / CAPTCHA clicking and temp-mail account sign-ups (they defeat sites' protection; you still tap Done), and a second tab (one tab, with copy and paste between pages, works).
+- If the AI still does not answer: add a real key at the top of API Keys and press Test. The built-in free services are shared and often full.
 
 Built with the help of TODOforAI (https://todofor.ai).
 

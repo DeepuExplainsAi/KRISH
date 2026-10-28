@@ -89,6 +89,15 @@ class KrishSystemPlugin : Plugin() {
         call.resolve()
     }
 
+    /** On: a foreground service (ongoing "Krish is working" line + CPU wake lock) keeps tasks running with the screen off. Off: it stops. */
+    @PluginMethod fun keepAlive(call: PluginCall) {
+        val intent = Intent(context, KeepAliveService::class.java)
+        val on = call.getBoolean("on") ?: false
+        // A start that Android refuses (app not in the foreground) must not break the task: it then runs as before, without the service.
+        runCatching { if (on) androidx.core.content.ContextCompat.startForegroundService(context, intent) else context.stopService(intent) }
+        call.resolve()
+    }
+
     private companion object {
         const val LOW_RAM_BYTES = 3L * 1024 * 1024 * 1024
     }

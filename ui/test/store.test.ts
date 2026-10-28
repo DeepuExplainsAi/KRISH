@@ -35,7 +35,7 @@ function setup(script: object[]) {
     files: { pick: async () => undefined, read: async () => new Uint8Array(), save: async () => false },
     system: { deviceInfo: async () => ({ lowRam: false, totalMemMb: 4096, linuxSandbox: false }), requestNotifications: async () => true, scheduleDue: async () => {}, cancelDue: async () => {}, openExternal: async () => {} },
   };
-  return { store: new AppStore(platform, { providerWaits: [] }), filled, prompts, platform, hooks };
+  return { store: new AppStore(platform, { providerWaits: [], sleep: async () => undefined }), filled, prompts, platform, hooks };
 }
 
 const tick = () => new Promise((r) => setTimeout(r, 10));
@@ -51,7 +51,7 @@ describe("AppStore", () => {
     expect(JSON.stringify(await platform.kv.get("providers"))).not.toContain("SECRET-KEY");
   });
 
-  it("a provider added with a key is ready at once: enabled, last in the fallback list, best model chosen", async () => {
+  it("a provider added with a key is ready at once: enabled, last in the order of use, one best model chosen", async () => {
     const { store, platform } = setup([]);
     platform.fetch = async (url) =>
       url.endsWith("/models")
@@ -62,7 +62,7 @@ describe("AppStore", () => {
     await store.addProvider({ name: "B", kind: "openai-compat", baseUrl: "https://b.test/v1" }, "k2");
     const [a, b] = store.getState().providers;
     expect([a!.name, b!.name]).toEqual(["A", "B"]);
-    expect(b).toMatchObject({ enabled: true, defaultModel: "chat-3-pro", fallbackModel: "chat-small-mini", health: { ok: true } });
+    expect(b).toMatchObject({ enabled: true, defaultModel: "chat-3-pro", health: { ok: true } });
   });
 
   it("only models that really answer are chosen; a provider that answers nothing shows why, not a tick", async () => {
@@ -74,7 +74,7 @@ describe("AppStore", () => {
     };
     await store.init();
     await store.addProvider({ name: "A", kind: "openai-compat", baseUrl: "https://a.test/v1" }, "k");
-    expect(store.getState().providers[0]).toMatchObject({ defaultModel: "chat-7", fallbackModel: undefined, health: { ok: true } });
+    expect(store.getState().providers[0]).toMatchObject({ defaultModel: "chat-7", health: { ok: true } });
 
     platform.fetch = async (url) => (url.endsWith("/models") ? new Response(JSON.stringify({ data: [{ id: "chat-1" }] }), { status: 200 }) : new Response("{}", { status: 402 }));
     await store.addProvider({ name: "Z", kind: "openai-compat", baseUrl: "https://z.test/v1" }, "k");
@@ -92,9 +92,9 @@ describe("AppStore", () => {
     expect(store.getState().providers[0]!.health?.ok).toBe(true);
     hooks.fetch = () => new Response("{}", { status: 429 });
     await store.send("hi");
-    expect(store.getState().providers[0]!.health).toMatchObject({ ok: false, note: "free limit used up, try again later" });
+    expect(store.getState().providers[0]!.health).toMatchObject({ ok: false, note: "rate limit hit, try again in a moment" });
     const failed = store.getState().items.find((i) => i.failed)!;
-    expect(failed.text).toMatch(/^No AI provider could answer\. .*free limit used up, try again later/);
+    expect(failed.text).toMatch(/^No AI provider could answer\. .*rate limit hit, try again in a moment/);
     expect(failed.text).toContain("shared free limit is full right now (not your usage)"); // the built-in free services say it is their shared pool, not the user's
     store.dismissItem(failed.id);
     expect(store.getState().items.some((i) => i.failed)).toBe(false);
@@ -141,6 +141,64 @@ describe("AppStore", () => {
     expect(prompts[0]).toContain("No page is open");
     await store.send("open site.test");
     expect(store.getState().windowOpen).toBe(true);
+  });
+
+  it("a message sent while a task runs joins the queue, runs next in its own task and tells the AI about the screen; STOP drops the queue", async () => {
+    const { store, prompts } = setup([{ type: "ask_user", question: "Which one?" }, { type: "done", summary: "first" }, { type: "done", summary: "second" }, { type: "done", summary: "third" }]);
+    await store.init();
+    await store.addProvider({ name: "P", kind: "openai-compat", baseUrl: "https://p.test/v1" }, "k");
+    await store.updateProvider({ ...store.getState().providers[0]!, defaultModel: "m1" });
+    const run = store.send("one");
+    await tick();
+    await store.send("two");
+    await store.send("three");
+    expect(store.getState().queue.map((q) => q.command)).toEqual(["two", "three"]);
+    await tick();
+    store.answer(store.getState().prompts[0]!.id, "this one");
+    await run;
+    const texts = store.getState().items.map((i) => i.text ?? "");
+    expect(texts.indexOf("one")).toBeLessThan(texts.indexOf("two"));
+    expect(texts.indexOf("two")).toBeLessThan(texts.indexOf("three"));
+    expect(texts).toEqual(expect.arrayContaining(["first", "second", "third"]));
+    expect(store.getState().queue).toEqual([]);
+    expect(store.getState().running).toBe(false);
+    expect(prompts.every((p) => p.includes("<DEVICE>"))).toBe(true);
+  });
+
+  it("a queued task never touches the attachments of the next draft; New chat waits for the whole queue", async () => {
+    const { store } = setup([{ type: "ask_user", question: "Which one?" }, { type: "done", summary: "first" }, { type: "done", summary: "second" }]);
+    await store.init();
+    await store.addProvider({ name: "P", kind: "openai-compat", baseUrl: "https://p.test/v1" }, "k");
+    await store.updateProvider({ ...store.getState().providers[0]!, defaultModel: "m1" });
+    const f = { name: "a.txt", size: 1, token: "t1" };
+    const run = store.send("one");
+    await tick();
+    await store.send("two", { files: [f] });
+    expect(store.getState().attachments).toEqual([]);
+    const draft = { name: "b.txt", size: 2, token: "t2" };
+    (store as unknown as { set(p: object): void }).set({ attachments: [draft] }); // the user attaches a file for the next message
+    await tick();
+    store.answer(store.getState().prompts[0]!.id, "ok");
+    store.newChat(); // refused while the queue is not finished
+    expect(store.getState().items.length).toBeGreaterThan(0);
+    await run;
+    expect(store.getState().attachments).toEqual([draft]);
+    expect(store.getState().running).toBe(false);
+  });
+
+  it("STOP also drops the tasks waiting behind the running one", async () => {
+    const { store } = setup([{ type: "navigate", url: "https://site.test/login" }, { type: "ask_user", question: "Code?", secure: { kind: "otp", elementId: 0 } }]);
+    await store.init();
+    await store.addProvider({ name: "P", kind: "openai-compat", baseUrl: "https://p.test/v1" }, "k");
+    await store.updateProvider({ ...store.getState().providers[0]!, defaultModel: "m1" });
+    const run = store.send("go");
+    await tick(); await tick();
+    await store.send("later");
+    expect(store.getState().queue).toHaveLength(1);
+    store.stop();
+    await run;
+    expect(store.getState().queue).toEqual([]);
+    expect(store.getState().running).toBe(false);
   });
 
   it("STOP resolves pending prompts and ends the run", async () => {
@@ -424,7 +482,7 @@ describe("attachments", () => {
 describe("free services and live model lists", () => {
   const zenList = (ids: string[]) => new Response(JSON.stringify({ data: ids.map((id) => ({ id })) }), { status: 200 });
 
-  it("OpenCode Zen's free models are asked first, with the public key, before the user's own keys", async () => {
+  it("the user's own provider answers first; the built-in free services (OpenCode Zen first) are only the last resort", async () => {
     const { store, hooks } = setup([{ type: "done", summary: "Hello" }]);
     const calls: { host: string; auth: string }[] = [];
     hooks.fetch = (url, init) => (url.endsWith("/chat/completions") && calls.push({ host: new URL(url).host, auth: String((init?.headers as Record<string, string>).authorization) }), undefined);
@@ -432,7 +490,11 @@ describe("free services and live model lists", () => {
     await store.addProvider({ name: "P", kind: "openai-compat", baseUrl: "https://p.test/v1" }, "mine");
     calls.length = 0;
     await store.send("hi");
-    expect(calls[0]).toEqual({ host: "opencode.ai", auth: "Bearer public" });
+    expect(calls).toEqual([{ host: "p.test", auth: "Bearer mine" }]); // stays on P: nothing else is asked while P works
+    hooks.fetch = (url, init) => (url.endsWith("/chat/completions") ? (calls.push({ host: new URL(url).host, auth: String((init?.headers as Record<string, string>).authorization) }), url.includes("p.test") ? new Response('{"error":{"message":"free-models-per-day limit"}}', { status: 429 }) : undefined) : undefined);
+    calls.length = 0;
+    await store.send("hi again");
+    expect(calls).toEqual([{ host: "p.test", auth: "Bearer mine" }, { host: "opencode.ai", auth: "Bearer public" }]); // P's day is spent: OpenCode Zen free, with the public key
   });
 
   it("the live list replaces the seeded models, and what appeared or vanished is reported", async () => {

@@ -42,7 +42,7 @@ class AgentWebView(context: Context, private val pageScript: String, private val
 
     /** When false, touches fall through to the app UI underneath (hidden / snapshot mode). */
     var interactive = true
-    /** PC layout: the page is laid out 1280 CSS px wide (a real desktop width) and the view is scaled down to the card, so nothing is cut off. */
+    /** PC layout: the page is laid out 1024-1280 CSS px wide (a real desktop width, see layoutWidth) and the view is scaled down to the card, so nothing is cut off. */
     var desktopLayout = false
         private set
     private val defaultUserAgent: String
@@ -126,13 +126,13 @@ class AgentWebView(context: Context, private val pageScript: String, private val
     }
 
     /**
-     * Puts the view over the card: x/y/w/h are the card in CSS px of the app UI. In PC layout the view itself is 1280 CSS px wide
+     * Puts the view over the card: x/y/w/h are the card in CSS px of the app UI. In PC layout the view itself is 1024-1280 CSS px wide
      * and as tall as the card needs at that width, then scaled down from its top-left corner to exactly fill the card. The page
      * lays out as on a PC (no viewport tricks, nothing cut off); touches are mapped back by Android.
      */
     fun place(x: Double, y: Double, w: Double, h: Double, radius: Double, left0: Int, top0: Int) {
         val d = resources.displayMetrics.density
-        val scale = if (desktopLayout) minOf(1.0, w / DESKTOP_WIDTH) else 1.0
+        val scale = if (desktopLayout) minOf(1.0, w / layoutWidth(w)) else 1.0
         layoutParams = FrameLayout.LayoutParams((w / scale * d).toInt().coerceAtLeast(1), (h / scale * d).toInt().coerceAtLeast(1), Gravity.TOP or Gravity.START).apply {
             leftMargin = left0 + (x * d).toInt()
             topMargin = top0 + (y * d).toInt()
@@ -202,6 +202,7 @@ class AgentWebView(context: Context, private val pageScript: String, private val
     }
 
     companion object {
-        const val DESKTOP_WIDTH = 1280.0
+        /** Width (CSS px) the page is laid out at in PC layout: 1024 in a narrow card (phone: bigger text, still a PC page), 1280 in a wide one. Keep in sync with desktop/lib.cjs `layoutWidth`. */
+        fun layoutWidth(cardWidth: Double) = if (cardWidth < 700.0) 1024.0 else 1280.0
     }
 }

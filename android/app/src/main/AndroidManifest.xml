@@ -29,6 +29,9 @@
             </intent-filter>
         </activity>
 
+        <!-- Keeps the app alive while tasks run with the screen off or another app in front. Started only by a task run, stopped when the queue is empty. -->
+        <service android:name=".KeepAliveService" android:exported="false" android:foregroundServiceType="dataSync" />
+
     </application>
 
     <!-- Lets the app see which browser opens https links (to open pages in the user's default browser). -->
@@ -39,14 +42,15 @@
         </intent>
     </queries>
 
-    <!-- v1 permissions: INTERNET, plus POST_NOTIFICATIONS requested only when the user opts in to the morning brief. -->
+    <!-- Permissions: INTERNET; POST_NOTIFICATIONS (morning brief opt-in, and the "Krish is working" line);
+         FOREGROUND_SERVICE(+DATA_SYNC) and WAKE_LOCK only while tasks run in the background (KeepAliveService, since v0.1.12). -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
 
-    <!-- WorkManager's library manifest adds these. We use none of them (JobScheduler only, no network constraints,
-         no foreground work; schedules are re-armed on each app start), and the v1 rule is INTERNET + POST_NOTIFICATIONS only. -->
-    <uses-permission android:name="android.permission.WAKE_LOCK" tools:node="remove" />
+    <!-- WorkManager's library manifest adds these two. We use neither (no network constraints, no boot start). -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" tools:node="remove" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" tools:node="remove" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" tools:node="remove" />
 </manifest>

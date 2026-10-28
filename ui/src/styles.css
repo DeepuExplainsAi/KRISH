@@ -133,6 +133,10 @@ h2 { font-size: 1.35rem; }
 .app { animation: fade .35s ease both; }
 main > section:not(.chat) { animation: rise .26s var(--ease) both; } /* never .chat: it holds the browser card, whose box must not move */
 .card, .glass.card { animation: rise .26s var(--ease) both; }
+.msg.queued { display: flex; align-items: center; gap: .6rem; opacity: .7; border-style: dashed; }
+.msg.queued .txt { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.msg.queued small { flex: none; color: var(--mute); }
+.msg.queued .icon { display: grid; place-items: center; width: 28px; height: 28px; min-height: 0; padding: 0; border-radius: 50%; flex: none; background: none; border: 0; }
 .msg.plan { font-style: italic; color: var(--mute); background: transparent; border: 1px dashed var(--line); }
 
 /* motion (reference timings: .24s with cubic-bezier(.24,.42,.42,.92), .12s ease-out press) */
@@ -153,7 +157,7 @@ button:active:not(:disabled) { scale: .96; }
 .file-chip.static { display: flex; width: fit-content; margin-top: .4rem; padding: .2rem .7rem; background: var(--field); }
 
 /* browser card: black rounded card in the layout (above the composer in Chat, at the bottom elsewhere); same on phone, desktop and Linux */
-.live { flex: none; display: flex; flex-direction: column; margin: 0 0 .5rem; height: clamp(240px, 50dvh, 520px); background: var(--live-bg); color: var(--on-pill-dark); border-radius: 28px; overflow: hidden; }
+.live { flex: none; display: flex; flex-direction: column; margin: 0 0 .5rem; height: clamp(300px, 62dvh, 680px); background: var(--live-bg); color: var(--on-pill-dark); border-radius: 28px; overflow: hidden; }
 .live.folded { height: auto; }
 .app > .live { margin: 0 .75rem .75rem; }
 .app > .live.full, .live.full { position: fixed; inset: 0; z-index: 50; height: auto; margin: 0; border-radius: 0; padding-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px)); }

@@ -83,10 +83,9 @@ export function rankModels(items: ModelInfo[]): ModelInfo[] {
   return sortModels(free.length ? free : chat);
 }
 
-/** Best default and fallback model by name alone (a guess: `probeModels` checks it with real calls). */
-export function pickModels(items: ModelInfo[]): Pick<ProviderConfig, "defaultModel" | "fallbackModel"> {
-  const ranked = rankModels(items);
-  return { defaultModel: ranked[0]?.id, fallbackModel: ranked[1]?.id };
+/** Best model by name alone (a guess: `probeModels` checks it with a real call). */
+export function pickModels(items: ModelInfo[]): Pick<ProviderConfig, "defaultModel"> {
+  return { defaultModel: rankModels(items)[0]?.id };
 }
 
 const PROBE = [{ role: "user" as const, content: 'Reply with exactly this JSON and nothing else: {"ok":true}' }];
@@ -94,15 +93,19 @@ const PROBE_OK = /\{\s*"ok"\s*:\s*true\s*\}/;
 const PROBE_BATCH = 3;
 
 /**
- * Finds models that really answer: sends one tiny request to the best-ranked models (at most `tries`, three at a time) and
- * keeps the first two, in rank order, that reply with the JSON asked for. Models that are gone, rate-limited, unpaid or that
- * cannot follow the format are skipped; a rejected key stops the search. `health.ok` is true when at least one model answered.
+ * Finds a model that really answers: sends one tiny request to the best-ranked models (at most `tries`, three at a time) and
+ * keeps the first, in rank order, that replies with the JSON asked for. Models that are gone, rate-limited, unpaid or that
+ * cannot follow the format are skipped; a rejected key stops the search. `health.ok` is true when a model answered.
+ * A model the user chose by hand stays while the provider still lists it.
  */
 export async function probeModels(config: ProviderConfig, apiKey: string, deps: RefreshDeps & { tries?: number }): Promise<ProviderConfig> {
-  const candidates = rankModels(config.models?.items ?? []).slice(0, deps.tries ?? 9);
-  const worked: string[] = [];
+  const items = config.models?.items ?? [];
+  const listed = (id?: string) => (config.modelsChosen && id && (items.length === 0 || items.some((m) => m.id === id && !m.expiring)) ? id : undefined);
+  const chosen = listed(config.defaultModel);
+  const candidates = chosen ? [{ id: chosen }] : rankModels(items).slice(0, deps.tries ?? 9);
+  let worked: string | undefined;
   let note = "no chat model found";
-  for (let i = 0; i < candidates.length && worked.length < 2; i += PROBE_BATCH) {
+  for (let i = 0; i < candidates.length && !worked; i += PROBE_BATCH) {
     const batch = candidates.slice(i, i + PROBE_BATCH);
     const results = await Promise.all(
       batch.map(async (model) => {
@@ -115,27 +118,22 @@ export async function probeModels(config: ProviderConfig, apiKey: string, deps: 
       }),
     );
     for (const [j, r] of results.entries()) {
-      if (r === "ok") worked.push(batch[j]!.id);
+      if (r === "ok") worked ??= batch[j]!.id;
       else note = friendlyReason(r.kind, r.status);
     }
     if (results.some((r) => r !== "ok" && r.kind === "auth")) break;
   }
   const at = (deps.now ?? Date.now)();
-  // Hand-picked models stay while the provider still lists them; automatic choices are replaced by what really answered.
-  const items = config.models?.items ?? [];
-  const listed = (id?: string) => (config.modelsChosen && id && (items.length === 0 || items.some((m) => m.id === id && !m.expiring)) ? id : undefined);
-  const defaultModel = listed(config.defaultModel) ?? worked.find((w) => w !== listed(config.fallbackModel));
-  const fallbackModel = listed(config.fallbackModel) ?? worked.find((w) => w !== defaultModel);
-  return { ...config, defaultModel, fallbackModel, health: worked.length ? { ok: true, at } : { ok: false, at, note } };
+  // A hand-picked model is kept even when the test failed (a spent quota is not a reason to forget the user's choice).
+  const defaultModel = chosen ?? worked;
+  return { ...config, defaultModel, health: worked ? { ok: true, at } : { ok: false, at, note } };
 }
 
-/** Fills a missing default / fallback model from the fetched list; models the user chose are kept. */
+/** Fills a missing model from the fetched list; a model the user chose is kept. */
 export function withAutoModels(p: ProviderConfig): ProviderConfig {
-  if (p.defaultModel && p.fallbackModel) return p;
-  const auto = pickModels(p.models?.items ?? []);
-  const defaultModel = p.defaultModel ?? auto.defaultModel;
-  const fallbackModel = p.fallbackModel ?? (auto.fallbackModel !== defaultModel ? auto.fallbackModel : auto.defaultModel !== defaultModel ? auto.defaultModel : undefined);
-  return defaultModel === p.defaultModel && fallbackModel === p.fallbackModel ? p : { ...p, defaultModel, fallbackModel };
+  if (p.defaultModel) return p;
+  const defaultModel = pickModels(p.models?.items ?? []).defaultModel;
+  return defaultModel ? { ...p, defaultModel } : p;
 }
 
 export function searchModels(items: ModelInfo[], query: string): ModelInfo[] {

@@ -2,15 +2,16 @@
 export const DEFAULTS = {
   agent: {
     maxSteps: 80,
-    maxConsecutiveErrors: 3,
-    maxStalls: 3,
-    observationMaxChars: 6000,
-    observationMaxElements: 80,
+    /** A step that keeps failing or changes nothing is tried this many times; then the agent is told to use a different method; only a second round asks the user. */
+    maxConsecutiveErrors: 4,
+    maxStalls: 4,
+    observationMaxChars: 8000,
+    observationMaxElements: 120,
     readMaxChars: 20000,
     sandboxOutputMaxChars: 4000,
     historyWindow: 16,
     /** The on-screen pointer is given this long to reach a control before the click, so the user sees it arrive. */
-    pointerMs: 450,
+    pointerMs: 200,
   },
   router: {
     requestTimeoutMs: 30_000,
@@ -19,6 +20,11 @@ export const DEFAULTS = {
     authCooldownMs: 10 * 60_000,
     circuitThreshold: 3,
     circuitOpenMs: 60_000,
+    /** Tries on one provider for a step before the next provider answers it (a retry after a hiccup, not a second model). */
+    sameProviderTries: 2,
+    sameProviderWaitMs: 3000,
+    /** A rate limit that clears within this long (a per-minute limit) is waited out on the selected provider; a longer one moves on. */
+    maxSameProviderWaitMs: 65_000,
   },
   /**
    * Provider catalog: URL only, the user adds the key and picks models from the live list.

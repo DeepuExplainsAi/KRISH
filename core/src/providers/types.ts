@@ -27,9 +27,9 @@ export interface ProviderConfig {
   keyless?: boolean;
   /** Sent as the key by a keyless service that expects one (OpenCode Zen's public free access). */
   anonymousKey?: string;
+  /** The one model this provider is used with. The provider is used until its daily quota is spent; there is no second model inside a provider. */
   defaultModel?: string;
-  fallbackModel?: string;
-  /** The user picked default/fallback by hand: automatic tests keep those (while the provider still lists them) instead of choosing again. */
+  /** The user picked the model by hand: automatic tests keep it (while the provider still lists it) instead of choosing again. */
   modelsChosen?: boolean;
   /** Optional user-set local daily request cap. */
   dailyLimit?: number;
@@ -59,6 +59,8 @@ export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>
 
 export type ProviderErrorKind =
   | "rate_limit"
+  /** The provider's daily (or free-tier) quota is spent: the provider is skipped until it has had time to reset. */
+  | "quota"
   | "server"
   | "timeout"
   | "network"
@@ -101,7 +103,8 @@ export interface Adapter {
 /** One short line for the user. The raw provider body stays in `Attempt.detail` and never reaches the chat. */
 export function friendlyReason(kind: ProviderErrorKind, status?: number): string {
   switch (kind) {
-    case "rate_limit": return "free limit used up, try again later";
+    case "rate_limit": return "rate limit hit, try again in a moment";
+    case "quota": return "daily limit used up";
     case "auth": return "key rejected";
     case "payment": return "needs paid credit";
     case "timeout": return "too slow";

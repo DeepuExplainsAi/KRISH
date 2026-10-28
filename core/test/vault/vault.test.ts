@@ -166,6 +166,12 @@ describe("findSignInButton", () => {
     expect(findSignInButton([b(1, "Enter", { form: 1 }), b(2, "Go", { form: 1 })], 1)).toBeUndefined();
     expect(findSignInButton([b(1, "Enter")])).toBeUndefined();
   });
+  it("takes a role=button that reads Log in with email / Submit, but never a link (a header 'Sign in' link would leave the page)", () => {
+    expect(findSignInButton([{ id: 1, tag: "div", role: "button", text: "Log in with email" }])?.id).toBe(1);
+    expect(findSignInButton([{ id: 1, tag: "button", text: "Submit", submits: true }])?.id).toBe(1);
+    expect(findSignInButton([{ id: 1, tag: "a", text: "Sign in" }, { id: 2, tag: "div", role: "button", text: "Continue" }])?.id).toBe(2);
+    expect(findSignInButton([{ id: 1, tag: "a", text: "Sign in" }])).toBeUndefined();
+  });
   it("skips disabled buttons and non-login words like Forgot password", () => {
     expect(findSignInButton([b(1, "Log in", { disabled: true }), b(2, "Forgot password?"), b(3, "Next")])?.id).toBe(3);
   });

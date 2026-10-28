@@ -11,7 +11,7 @@ async function setup(handlers: Parameters<typeof mockFetch>[0], providers = [pro
   const { fn, calls } = mockFetch(handlers);
   const s = await stores(providers.map((p) => p.id));
   let t = 1_000_000;
-  const router = new ProviderRouter({ ...s, fetch: fn, providers: () => providers, now: () => t, config: cfg });
+  const router = new ProviderRouter({ ...s, fetch: fn, providers: () => providers, now: () => t, sleep: async () => undefined, config: cfg });
   return { router, calls, advance: (ms: number) => (t += ms), ...s };
 }
 
@@ -54,7 +54,7 @@ describe("ProviderRouter fallback", () => {
     const limit = { success: false, error: { code: "FREE_LIMIT", message: "Free limit reached: 1 reply every 30 seconds per IP. Retry after 30s" } };
     const { router, advance } = await setup({ "a.test": () => json(limit, 402) }, [provider("a")]);
     const err = (await router.run(msgs, parseAction).catch((e) => e)) as Error;
-    expect(err.message).toContain("free limit used up, try again later");
+    expect(err.message).toContain("rate limit hit, try again in a moment");
     expect(err.message).not.toContain("paid credit");
     expect(await router.retryInMs()).toBe(30_000);
     advance(31_000);
@@ -66,7 +66,7 @@ describe("ProviderRouter fallback", () => {
   it("falls back on 5xx", async () => {
     const { router } = await setup({ "a.test": () => json({}, 503), "b.test": () => openaiReply(DONE) });
     const r = await router.run(msgs, parseAction);
-    expect(r.attempts.map((a) => a.outcome)).toEqual(["server", "ok"]);
+    expect(r.attempts.map((a) => a.outcome)).toEqual(["server", "server", "ok"]); // one retry on the same provider, then the next
   });
 
   it("falls back on network error", async () => {
@@ -104,21 +104,70 @@ describe("ProviderRouter fallback", () => {
     expect(r.providerId).toBe("b");
   });
 
-  it("tries the fallback model on the same provider first", async () => {
+  it("a hiccup is retried once on the same provider with the same model, never with another model", async () => {
     const seen: string[] = [];
+    let n = 0;
     const { router } = await setup(
-      {
-        "a.test": (_u, init) => {
-          const model = JSON.parse(String(init?.body)).model as string;
-          seen.push(model);
-          return model === "m1" ? json({}, 500) : openaiReply(DONE);
-        },
-      },
-      [provider("a", { fallbackModel: "m2" })],
+      { "a.test": (_u, init) => (seen.push(JSON.parse(String(init?.body)).model), ++n === 1 ? json({}, 500) : openaiReply(DONE)) },
+      [provider("a", { models: { fetchedAt: 1, items: ["m1", "m2", "m3"].map((id) => ({ id })) } })],
     );
     const r = await router.run(msgs, parseAction);
-    expect(seen).toEqual(["m1", "m2"]);
-    expect(r.model).toBe("m2");
+    expect(seen).toEqual(["m1", "m1"]);
+    expect(r.providerId).toBe("a");
+  });
+
+  it("stays on the first provider and its model for every step while it works", async () => {
+    const { router, calls } = await setup({ "a.test": () => openaiReply(DONE), "b.test": () => openaiReply(DONE) });
+    for (let i = 0; i < 5; i++) expect((await router.run(msgs, parseAction)).providerId).toBe("a");
+    expect(calls.every((c) => c.url.includes("a.test"))).toBe(true);
+  });
+
+  it("moves to the next provider only when the daily quota is spent, and keeps skipping the spent one", async () => {
+    const day = { error: { message: "Quota exceeded: free-models-per-day limit reached" } };
+    const { router, calls, advance } = await setup({ "a.test": () => json(day, 429), "b.test": () => openaiReply(DONE) });
+    expect((await router.run(msgs, parseAction)).providerId).toBe("b");
+    expect(calls.filter((c) => c.url.includes("a.test"))).toHaveLength(1); // a quota is not retried
+    for (let i = 0; i < 3; i++) await router.run(msgs, parseAction);
+    expect(calls.filter((c) => c.url.includes("a.test"))).toHaveLength(1); // later steps do not wait on a spent provider
+    advance(4 * 3_600_000);
+    await router.run(msgs, parseAction);
+    expect(calls.filter((c) => c.url.includes("a.test"))).toHaveLength(2); // asked again once its quota may have reset
+  });
+
+  it("a spent provider is remembered across a restart and forgotten when the user fixes it", async () => {
+    const day = { error: { message: "Rate limit: 200 requests per day" } };
+    const first = await setup({ "a.test": () => json(day, 429), "b.test": () => openaiReply(DONE) });
+    await first.router.run(msgs, parseAction);
+    const { fn, calls } = mockFetch({ "a.test": () => openaiReply(DONE), "b.test": () => openaiReply(DONE) });
+    const again = new ProviderRouter({ keys: first.keys, kv: first.kv, fetch: fn, providers: () => [provider("a"), provider("b")], now: () => 1_000_000 });
+    expect((await again.run(msgs, parseAction)).providerId).toBe("b"); // new router, same storage
+    await again.clearSpent("a");
+    expect((await again.run(msgs, parseAction)).providerId).toBe("a");
+    expect(calls.filter((c) => c.url.includes("a.test"))).toHaveLength(1);
+  });
+
+  it("a short per-minute 429 is waited on and retried, it does not spend the provider's day", async () => {
+    let n = 0;
+    const { router } = await setup({ "a.test": () => (++n === 1 ? json({}, 429, { "retry-after": "2" }) : openaiReply(DONE)), "b.test": () => openaiReply("x") });
+    expect((await router.run(msgs, parseAction)).providerId).toBe("a");
+  });
+
+  it("a 429 that clears within a minute is waited out on the SAME provider (the second provider is never called); a longer one moves on", async () => {
+    let n = 0;
+    const a = await setup({ "a.test": () => (++n === 1 ? json({}, 429, { "retry-after": "60" }) : openaiReply(DONE)), "b.test": () => openaiReply("x") });
+    const r = await a.router.run(msgs, parseAction);
+    expect(r.providerId).toBe("a");
+    expect(a.calls.some((c) => c.url.includes("b.test"))).toBe(false);
+    const b = await setup({ "a.test": () => json({}, 429, { "retry-after": "600" }), "b.test": () => openaiReply(DONE) });
+    expect((await b.router.run(msgs, parseAction)).providerId).toBe("b");
+  });
+
+  it("when every provider has spent its day the error says so and is not worth waiting for", async () => {
+    const day = { error: { message: "daily limit" } };
+    const { router } = await setup({ "a.test": () => json(day, 429), "b.test": () => json(day, 429) });
+    const err = (await router.run(msgs, parseAction).catch((e) => e)) as AllProvidersFailedError;
+    expect(err.message).toBe("No AI provider could answer. daily limit used up");
+    expect(err.transient).toBe(false);
   });
 
   it("opens the circuit after repeated failures", async () => {
@@ -134,7 +183,7 @@ describe("ProviderRouter fallback", () => {
     expect(calls.filter((c) => c.url.includes("a.test")).length).toBe(n);
     advance(61_000);
     await router.run(msgs, parseAction);
-    expect(calls.filter((c) => c.url.includes("a.test")).length).toBe(n + 1);
+    expect(calls.filter((c) => c.url.includes("a.test")).length).toBe(n + 2); // the provider is asked again (one try and its retry)
   });
 
   it("enforces the local daily limit and counts usage", async () => {
@@ -164,7 +213,7 @@ describe("ProviderRouter fallback", () => {
     const big = JSON.stringify({ error: { message: "x".repeat(300) } });
     const { router } = await setup({ "a.test": () => json(big, 429), "b.test": () => json({}, 402) }, [provider("a", { name: "Gemini" }), provider("b", { name: "Zen" })]);
     const msg = String(await router.run(msgs, parseAction).catch((e: Error) => e.message));
-    expect(msg).toBe("No AI provider could answer. free limit used up, try again later · needs paid credit");
+    expect(msg).toBe("No AI provider could answer. rate limit hit, try again in a moment · needs paid credit");
     expect(msg).not.toMatch(/Gemini|Zen|xxxx/);
   });
 
@@ -176,18 +225,6 @@ describe("ProviderRouter fallback", () => {
     const router = new ProviderRouter({ ...s, fetch: fn, providers: () => ps });
     expect((await router.run(msgs, parseAction)).providerId).toBe("free");
     expect(seen).toHaveLength(1);
-  });
-
-  it("when the chosen models fail it tries the next best listed models of the same provider", async () => {
-    const tried: string[] = [];
-    const items = ["m1", "m2", "m3", "m4"].map((id) => ({ id, free: true }));
-    const { fn } = mockFetch({ "a.test": (_u, init) => { const m = JSON.parse(String(init?.body)).model as string; tried.push(m); return m === "m3" ? openaiReply(DONE) : json({}, 429); } });
-    const ps = [provider("a", { defaultModel: "m1", fallbackModel: "m2", models: { fetchedAt: 1, items } })];
-    const s = await stores(["a"]);
-    const router = new ProviderRouter({ ...s, fetch: fn, providers: () => ps });
-    const r = await router.run(msgs, parseAction);
-    expect(r.model).toBe("m3");
-    expect(tried.slice(0, 2)).toEqual(["m1", "m2"]);
   });
 
   it("reports every real result to onResult", async () => {

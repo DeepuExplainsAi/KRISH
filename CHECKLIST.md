@@ -28,7 +28,7 @@ Legend: **RUN** = executed in the build environment with the result observed. **
 | `cap sync android`; Alpine rootfs and proot `.so` SHA-256 match `SHA256SUMS`; repo scan: no secrets, `eval`, telemetry, `addJavascriptInterface` | shell | clean |
 | `TarGz.kt` extracts the real Alpine rootfs identically to GNU tar (83 files, 335 symlinks, contents equal) | kotlinc + diff | identical |
 | Independent review of the safety rules (static) and fixes | 12 findings; 11 fixed in code with tests that fail on the old code (policy, loop, page script, sandbox limits, keyring check, upload binding, layout). #1 is partly open on Android (see SECURITY.md gaps 0, 0b) | fixed as described |
-| Merged manifest permissions | inspected merged manifests | only INTERNET and POST_NOTIFICATIONS (WorkManager extras removed) |
+| Merged manifest permissions | inspected merged manifests | INTERNET, POST_NOTIFICATIONS (WorkManager ACCESS_NETWORK_STATE / RECEIVE_BOOT_COMPLETED removed). v0.1.12 adds FOREGROUND_SERVICE, FOREGROUND_SERVICE_DATA_SYNC, WAKE_LOCK for `KeepAliveService`: NOT re-inspected in a merged manifest, check after the first CI build |
 
 ## NOT RUN: needs a real device or display (please test)
 - **(new 2026-10-27)** Kotlin `KrishSystemPlugin.openExternal` not compiled; vault on real Android Keystore / Electron safeStorage; "Get key" opening the real browser; vault autofill on a real login page.

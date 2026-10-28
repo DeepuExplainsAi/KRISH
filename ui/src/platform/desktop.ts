@@ -71,6 +71,7 @@ export function createDesktopPlatform(bridge: Bridge): Platform {
       scheduleDue: (id, at, title) => inv("system:scheduleDue", { id, at, title }),
       cancelDue: (id) => inv("system:cancelDue", { id }),
       openExternal: (url) => inv("system:openExternal", { url }),
+      keepAlive: (on) => inv("system:keepAlive", { on }),
     },
   };
 }

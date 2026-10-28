@@ -40,6 +40,7 @@ interface System {
   requestNotifications(): Promise<{ granted: boolean }>;
   scheduleDue(a: { id: string; at: number; title: string }): Promise<void>;
   cancelDue(a: { id: string }): Promise<void>;
+  keepAlive(a: { on: boolean }): Promise<void>;
 }
 
 export const toBase64 = (b: Uint8Array) => {
@@ -115,6 +116,7 @@ export function createCapacitorPlatform(): Platform {
       scheduleDue: (id, at, title) => Sys.scheduleDue({ id, at, title }),
       openExternal: (url) => Sys.openExternal({ url }),
       cancelDue: (id) => Sys.cancelDue({ id }),
+      keepAlive: (on) => Sys.keepAlive({ on }),
     },
   };
 }

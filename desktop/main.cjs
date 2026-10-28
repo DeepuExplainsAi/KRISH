@@ -1,5 +1,5 @@
 "use strict";
-const { app, BrowserWindow, WebContentsView, ipcMain, dialog, safeStorage, session, Notification, protocol, net, shell } = require("electron");
+const { app, BrowserWindow, WebContentsView, ipcMain, dialog, safeStorage, session, Notification, protocol, net, shell, powerSaveBlocker } = require("electron");
 const { execFile } = require("node:child_process");
 const crypto = require("node:crypto");
 const fs = require("node:fs");
@@ -48,7 +48,7 @@ function hardenAgentSession() {
 
 function createView() {
   view = new WebContentsView({
-    webPreferences: { partition: AGENT_PARTITION, sandbox: true, contextIsolation: true, nodeIntegration: false, webSecurity: true, allowRunningInsecureContent: false, spellcheck: false },
+    webPreferences: { partition: AGENT_PARTITION, backgroundThrottling: false, sandbox: true, contextIsolation: true, nodeIntegration: false, webSecurity: true, allowRunningInsecureContent: false, spellcheck: false },
   });
   const wc = view.webContents;
   wc.setWindowOpenHandler(() => ({ action: "deny" }));
@@ -81,8 +81,10 @@ function applyEmulation() {
   if (!wc || wc.isDestroyed() || !wc.getURL()) return;
   if (desktopLayout) {
     wc.setUserAgent(DESKTOP_UA);
-    const scale = Math.min(bounds.width / 1280, bounds.height / 800);
-    wc.enableDeviceEmulation({ screenPosition: "desktop", screenSize: { width: 1280, height: 800 }, viewPosition: { x: 0, y: 0 }, viewSize: { width: 1280, height: 800 }, deviceScaleFactor: 0, scale });
+    // The page is laid out as wide as a PC window and as tall as the card needs at that width, then scaled to fill the card: nothing is cut off at the bottom.
+    const scale = Math.min(1, bounds.width / lib.layoutWidth(bounds.width));
+    const size = { width: Math.round(bounds.width / scale), height: Math.round(bounds.height / scale) };
+    wc.enableDeviceEmulation({ screenPosition: "desktop", screenSize: size, viewPosition: { x: 0, y: 0 }, viewSize: size, deviceScaleFactor: 0, scale });
   } else {
     wc.disableDeviceEmulation();
   }
@@ -243,6 +245,12 @@ function registerIpc() {
     timers.set(id, setTimeout(() => { if (Notification.isSupported()) new Notification({ title: String(title || "Something is due"), body: "Open Krish to review" }).show(); }, delay));
   });
   handle("system:openExternal", ({ url }) => { if (!lib.isHttps(url)) throw new Error("only https URLs are allowed"); return shell.openExternal(url); });
+  // While tasks run the computer may dim the screen but must not sleep, or the queue stops. The window itself keeps working when minimised.
+  let blocker;
+  handle("system:keepAlive", ({ on }) => {
+    if (on && blocker === undefined) blocker = powerSaveBlocker.start("prevent-app-suspension");
+    if (!on && blocker !== undefined) { powerSaveBlocker.stop(blocker); blocker = undefined; }
+  });
   handle("system:cancelDue", ({ id }) => { clearTimeout(timers.get(id)); timers.delete(id); });
 
   handle("shell:available", () => dockerPresent());
@@ -255,7 +263,7 @@ app.whenReady().then(() => {
   hardenAgentSession();
   win = new BrowserWindow({
     width: 1100, height: 760,
-    webPreferences: { preload: path.join(__dirname, "preload.cjs"), contextIsolation: true, sandbox: true, nodeIntegration: false, webSecurity: true },
+    webPreferences: { backgroundThrottling: false, preload: path.join(__dirname, "preload.cjs"), contextIsolation: true, sandbox: true, nodeIntegration: false, webSecurity: true },
   });
   win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   win.webContents.on("will-navigate", (e, url) => { if (!url.startsWith(`${UI_ORIGIN}/`)) e.preventDefault(); });
