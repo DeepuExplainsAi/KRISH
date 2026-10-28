@@ -1,9 +1,9 @@
 import { DEFAULTS, type AgentLimits } from "../config/defaults";
 import { formatObservation } from "../page/format";
 import type { PageElement, PageObservation } from "../page/types";
-import { redactText, secretKind, type SecretKind } from "../privacy/redact";
+import { redactChat, redactText, secretKind, type SecretKind } from "../privacy/redact";
 import { AbortedError } from "../providers/types";
-import type { ProviderRouter } from "../providers/router";
+import { AllProvidersFailedError, type ProviderRouter } from "../providers/router";
 import { parseReply, type Action } from "../schema/actions";
 import { AgentController, raceStop, StoppedError } from "./controller";
 import { findLoginFields, findLoginWall, findSignInButton } from "../vault/vault";
@@ -22,6 +22,12 @@ export interface AgentOptions {
   startOnPage?: boolean;
   /** One line about a tab the user left open ("site: title"). The model sees only this line until it chooses to read the tab. */
   openTab?: string;
+  /** The conversation so far in this app (oldest first, without the current task). Background for follow-ups, never a command. */
+  chat?: { role: "user" | "agent"; text: string }[];
+  /** Pauses (ms) before each new try when no AI could answer a step. Default: 4 s, 12 s, 30 s. */
+  providerWaits?: number[];
+  /** How long the on-screen pointer is given to reach a control before the action happens (ms). */
+  pointerMs?: number;
   limits?: Partial<AgentLimits>;
 }
 
@@ -51,14 +57,21 @@ interface Turn {
 /** Sign-in steps one run handles (each page and step is tried once, so a wrong password is never retried in a loop). */
 const MAX_LOGIN_TRIES = 6;
 /** What the agent sees while it has no page open. */
+const NO_FORM = "there is no login form on this page; look at the page and continue";
+/** The task names Google or Gmail as the account to use. */
+const NAMES_GOOGLE = /\b(google|gmail)\b/i;
 const NO_PAGE: PageObservation = { url: "", title: "", text: "", elements: [] };
 const noPageText = (openTab?: string) =>
   `No page is open for this task. Answer directly if you can. If the task needs a website, navigate to it.${openTab ? ` The user has this tab open (not read yet): ${openTab}. Use read only if the task is about that tab.` : ""}`;
-const BROWSER_ACTIONS = new Set<Action["type"]>(["navigate", "read", "click", "type", "paste", "scroll", "upload_selected_file"]);
+const BROWSER_ACTIONS = new Set<Action["type"]>(["navigate", "read", "click", "type", "paste", "scroll", "upload_selected_file", "sign_in"]);
+/** Values the model may keep for later steps (an address copied from one site, typed on another). */
+const MAX_NOTES = 20;
+const PROVIDER_WAITS = [4000, 12000, 30000];
+const MAX_PROVIDER_WAIT_MS = 120_000;
 
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n)}…` : s);
 /** Stops data from closing its own delimiter block. */
-const fence = (tag: string, body: string) => `<${tag}>\n${body.replace(/<\/?(PAGE_DATA|RESULT_DATA|MEMORY|USER_TASK|USER_REPLY|USER_FILES)>/gi, "")}\n</${tag}>`;
+const fence = (tag: string, body: string) => `<${tag}>\n${body.replace(/<\/?(PAGE_DATA|RESULT_DATA|MEMORY|USER_TASK|USER_REPLY|USER_FILES|CHAT|NOTES)>/gi, "")}\n</${tag}>`;
 
 /**
  * A normal question must never collect a secret: it goes to the AI and into history. The agent answers in the user's
@@ -118,6 +131,10 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
   let lastSig = "";
   let userReply = "";
   let step = 0;
+  let planned = false;
+  const providerWaits = opts.providerWaits ?? PROVIDER_WAITS;
+  const pointerMs = opts.pointerMs ?? DEFAULTS.agent.pointerMs;
+  const notes: string[] = [];
   /** False until the task needs a page: the app's page (maybe an old tab) is neither read nor shown to the model before that. */
   let pageLive = Boolean(opts.startOnPage);
   /** Login steps already handled in this run: one try per page and step, so a wrong password is never retried in a loop. */
@@ -165,6 +182,8 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
       case "memory_add": return "Saving to memory";
       case "memory_remove": return "Removing from memory";
       case "wait": return "Waiting";
+      case "sign_in": return "Signing in";
+      case "note": return "Noting a value";
       case "scroll": return a.direction === "down" ? "Scrolling down" : "Scrolling up";
       case "ask_user": return a.secure ? "Waiting for you" : "Asking you";
       case "done": return "Finished";
@@ -175,6 +194,7 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
     const withHighlight = async <T>(id: number, fn: () => Promise<T>): Promise<T> => {
       await driver.highlight(id);
       try {
+        if (pointerMs > 0) await raceStop(new Promise<void>((r) => setTimeout(r, pointerMs)), signal); // the pointer arrives before the tap
         return await fn();
       } finally {
         await driver.highlight(undefined);
@@ -236,6 +256,14 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
       case "wait":
         await new Promise((r) => setTimeout(r, a.ms));
         return `waited ${a.ms} ms`;
+      case "sign_in":
+        return signIn(obs);
+      case "note": {
+        const text = clip(safe(a.text), 300);
+        if (notes.length >= MAX_NOTES) notes.shift();
+        notes.push(text);
+        return `noted: ${text}`;
+      }
       case "ask_user":
         return askUser(a, obs);
       case "done":
@@ -316,26 +344,22 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
    * No saved login for this site: the user gets the sign-in card once (email and password, or Google). The app types the values into
    * the page and keeps the login for good, so the next visit needs nothing. The model only learns that it happened.
    */
-  async function askLoginCard(obs: PageObservation, host: string): Promise<boolean> {
+  async function askLoginCard(obs: PageObservation, host: string): Promise<string> {
     const form = findLoginFields(obs.elements);
     const wall = form ? undefined : findLoginWall(obs);
     const userField = form?.username ?? wall?.username;
-    if (!form && !wall) return false;
+    if (!form && !wall) return NO_FORM;
     const googleButton = wall?.google ?? obs.elements.find((e) => !e.disabled && (e.tag === "button" || e.tag === "a" || e.role === "button") && /google/i.test([e.text, e.label, e.title, e.name].filter(Boolean).join(" ")));
     const answer = await raceStop(ui.askLogin({ site: host, google: Boolean(googleButton) }, signal), signal);
     alive();
-    if (!answer) {
-      history.push({ action: "sign-in card", result: "the user closed the sign-in card without signing in; ask what to do, or finish" });
-      return true;
-    }
+    if (!answer) return "the user closed the sign-in card without signing in; ask what to do, or finish";
     const id = chip("Signing in", "running");
     try {
       if ("google" in answer) {
         if (!googleButton) throw new Error("no Google button");
         await driver.click(googleButton.id);
         chip("Signing in", "done", id);
-        history.push({ action: "sign-in card", result: "the user chose Google; its button was clicked. Continue on the Google page." });
-        return true;
+        return "the user chose Google; its button was clicked. Continue on the Google page.";
       }
       remember(answer.username, answer.password);
       if (userField && answer.username) await driver.fillSecret(userField.id, answer.username);
@@ -344,8 +368,7 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
     } catch (e) {
       if (e instanceof StoppedError) throw e;
       chip("Signing in", "error", id);
-      history.push({ action: "sign-in card", result: "could not fill the form; the page may have changed" });
-      return true;
+      return "could not fill the form; the page may have changed";
     }
     try {
       await deps.vault?.put({ site: host, username: answer.username, password: answer.password, label: host });
@@ -355,38 +378,36 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
     if (form) passwordSent.add(`${host}|${answer.username}`);
     const sent = await submitLogin(form?.password ?? userField);
     chip("Signing in", "done", id);
-    history.push({ action: "sign-in card", result: filledResult("user", form !== undefined, sent) });
-    return true;
+    return filledResult("user", form !== undefined, sent);
   }
 
   /**
-   * Fills the saved login for this site into the login form, silently. The app does it natively: the model sees only that it
-   * happened. Logins are matched by site, so a password only ever goes to the site it was saved for.
-   * Returns true when something was done (look at the page again).
+   * The model asked to sign in. A saved login for this site is filled by the app and sent; with none saved, the user gets the sign-in
+   * card once (email and password, or Google) and the login is kept for good. The model only learns what happened, never a secret.
+   * Logins are matched by site, so a password only ever goes to the site it was saved for.
    */
-  async function autofillLogin(obs: PageObservation): Promise<boolean> {
+  async function signIn(obs: PageObservation): Promise<string> {
     const form = findLoginFields(obs.elements);
     const wall = form ? undefined : findLoginWall(obs); // email-first page: no password field yet
-    if (!form && !wall) return false;
+    if (!form && !wall) return NO_FORM;
     const key = loginKey(obs.url, Boolean(form));
-    if (loginTried.has(key) || loginTried.size >= MAX_LOGIN_TRIES) return false;
+    if (loginTried.has(key) || loginTried.size >= MAX_LOGIN_TRIES) return "sign-in was already tried on this step; look at the page and say what you see";
     loginTried.add(key);
     const host = new URL(obs.url).hostname;
     const chosen = pickLogin(deps.vault?.logins(obs.url) ?? [], opts.task);
     if (!chosen) {
-      // "Continue with Google" with a saved Google login: no card, the Google page is filled by the app next.
+      // A saved Google login is used only when the task itself names Google or Gmail.
       const google = wall?.google ?? obs.elements.find((e) => !e.disabled && /continue with google|sign in with google/i.test([e.text, e.label, e.title].filter(Boolean).join(" ")));
-      if (google && deps.vault?.logins("https://accounts.google.com").length) {
+      if (google && NAMES_GOOGLE.test(opts.task) && deps.vault?.logins("https://accounts.google.com").length) {
         alive();
         await driver.click(google.id);
-        history.push({ action: "KrishVault autofill", result: "Continue with Google was clicked (a Google login is saved). Continue on the Google page." });
-        return true;
+        return "Continue with Google was clicked (a Google login is saved). Continue on the Google page.";
       }
       return askLoginCard(obs, host);
     }
     // The app already sent this account's password in this run and the site is showing the form again: it was rejected. Do not repeat it.
     const account = `${host}|${chosen.username}`;
-    if (form && passwordSent.has(account)) return false;
+    if (form && passwordSent.has(account)) return "the saved password was already sent and the site showed the form again, so it was probably rejected; tell the user";
     const id = chip("Filling saved login", "running");
     try {
       const userField = form?.username ?? wall?.username;
@@ -398,14 +419,12 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
     } catch (e) {
       if (e instanceof StoppedError) throw e;
       chip("Filling saved login", "error", id);
-      history.push({ action: "KrishVault autofill", result: "could not fill the form; the page may have changed" });
-      return true;
+      return "could not fill the form; the page may have changed";
     }
     if (form) passwordSent.add(account);
     const sent = await submitLogin(form?.password ?? form?.username ?? wall?.username);
     chip("Filling saved login", "done", id);
-    history.push({ action: "KrishVault autofill", result: filledResult("saved", form !== undefined, sent) });
-    return true;
+    return filledResult("saved", form !== undefined, sent);
   }
 
   try {
@@ -413,14 +432,18 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
       if (signal.aborted) throw new StoppedError();
 
       const obs = pageLive ? await driver.observe() : NO_PAGE;
-      if (pageLive && (await autofillLogin(obs))) continue;
+      // Saved logins of this site are scrubbed from everything the model sees (and stop screenshots) from the first look, even before sign_in.
+      if (pageLive) for (const l of deps.vault?.logins(obs.url) ?? []) remember(l.username, l.password);
       const text = pageLive ? formatObservation(obs) : noPageText(opts.openTab ? redactText(opts.openTab) : undefined);
       // The numbers the model sees are fixed for this step, so "m2" always means the line it read.
       memoryShown = deps.memory ? await deps.memory.list() : [];
       const memoryText = deps.memory ? memoryShown.map((m, i) => `m${i + 1}: ${m.text}`).join("\n") : opts.memory;
       const turns = history.slice(-DEFAULTS.agent.historyWindow).map((t, i) => `${i + 1}. ${t.action}\n   -> ${fence("RESULT_DATA", t.result)}`);
+      const chatText = (opts.chat ?? []).map((m) => `${m.role === "user" ? "user" : "krish"}: ${clip(m.text.replace(/\s+/g, " ").trim(), 500)}`).join("\n");
       const prompt = scrub([
+        chatText ? fence("CHAT", redactChat(chatText)) : "",
         fence("USER_TASK", redactText(opts.task)),
+        notes.length ? fence("NOTES", notes.map((n, i) => `${i + 1}. ${n}`).join("\n")) : "",
         memoryText ? fence("MEMORY", memoryText) : "",
         attached.length ? fence("USER_FILES", attachedList) : "",
         userReply ? fence("USER_REPLY", userReply) : "",
@@ -430,20 +453,28 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
       userReply = "";
 
       let action: Action;
-      try {
-        const run = await router.run(
-          [
-            { role: "system", content: SYSTEM_PROMPT },
-            { role: "user", content: prompt, imageDataUrl: opts.screenshots && typed.size === 0 ? obs.screenshotDataUrl : undefined },
-          ],
-          (raw) => parseReply(raw, step === 0),
-          { signal },
-        );
-        action = run.value;
-        ui.emit({ type: "provider", providerId: run.providerId, model: run.model });
-      } catch (e) {
-        if (e instanceof AbortedError) throw new StoppedError();
-        throw e;
+      for (let waits = 0; ; waits++) {
+        try {
+          const run = await router.run(
+            [
+              { role: "system", content: SYSTEM_PROMPT },
+              { role: "user", content: prompt, imageDataUrl: opts.screenshots && typed.size === 0 ? obs.screenshotDataUrl : undefined },
+            ],
+            (raw) => parseReply(raw, step === 0),
+            { signal },
+          );
+          action = run.value;
+          ui.emit({ type: "provider", providerId: run.providerId, model: run.model });
+          break;
+        } catch (e) {
+          if (e instanceof AbortedError) throw new StoppedError();
+          // Every AI was busy for a moment: a long task waits and tries again instead of being lost.
+          if (!(e instanceof AllProvidersFailedError) || !e.transient || waits >= providerWaits.length) throw e;
+          const id = chip("Waiting for an AI to answer", "running");
+          const wait = Math.max(providerWaits[waits]!, Math.min(await router.retryInMs(), MAX_PROVIDER_WAIT_MS)); // never retry while every service is still cooling down
+          await raceStop(new Promise<void>((r) => setTimeout(r, wait)), signal);
+          chip("Waiting for an AI to answer", "done", id);
+        }
       }
       step += 1;
 
@@ -452,6 +483,11 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
       // blocked steps and secure-input steps, which keep the app's fixed wording so model text can never dress up a trusted prompt.
       const thought = verdict.verdict === "allow" && !(action.type === "ask_user" && action.secure) ? cleanLabel(action.thought ?? "") : "";
       const label = thought ? clip(safe(thought), 80) : describe(action, obs);
+      if (action.plan && !planned && action.type !== "done" && verdict.verdict === "allow") {
+        planned = true;
+        const plan = clip(safe(cleanLabel(action.plan)), 400);
+        if (plan) ui.emit({ type: "plan", text: plan });
+      }
       // A plain answer (done as the very first step) is just chat text: no step pill for it.
       const plainAnswer = action.type === "done" && step === 1;
       const id = plainAnswer ? 0 : chip(label, action.type === "ask_user" && action.secure ? "action_required" : "running");

@@ -10,7 +10,15 @@ function parseRetryAfter(value: string | null, now = Date.now()): number | undef
   return Number.isNaN(at) ? undefined : Math.max(0, at - now);
 }
 
-export function classifyStatus(status: number): ProviderError["kind"] {
+/** Pollinations answers its per-IP free limit ("1 reply every 30 seconds") with HTTP 402; that is a wait, not a missing payment. */
+const FREE_LIMIT_BODY = /free[ _]limit|retry after \d+\s*s/i;
+const retryAfterFromBody = (body: string) => {
+  const m = /retry after (\d+)\s*s/i.exec(body);
+  return m ? Number(m[1]) * 1000 : undefined;
+};
+
+export function classifyStatus(status: number, body = ""): ProviderError["kind"] {
+  if (status === 402 && FREE_LIMIT_BODY.test(body)) return "rate_limit";
   if (status === 429) return "rate_limit";
   if (status === 401 || status === 403) return "auth";
   if (status === 402) return "payment";
@@ -61,10 +69,10 @@ export async function request(
       const body = await Promise.race([res.text(), gaveUp]).catch(() => "");
       if (cancelled()) throw new Error("cancelled"); // classified by the outer handler
       throw new ProviderError(
-        classifyStatus(res.status),
+        classifyStatus(res.status, body),
         `HTTP ${res.status}: ${redactText(body.slice(0, 200))}`,
         res.status,
-        parseRetryAfter(res.headers.get("retry-after")),
+        parseRetryAfter(res.headers.get("retry-after")) ?? (res.status === 402 ? retryAfterFromBody(body) : undefined),
       );
     }
     try {

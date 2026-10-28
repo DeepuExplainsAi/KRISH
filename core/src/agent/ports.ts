@@ -54,6 +54,8 @@ export type AgentEvent =
   | { type: "chip"; id: number; label: string; state: ChipState }
   | { type: "action"; step: number; action: Action; result: string }
   | { type: "provider"; providerId: string; model: string }
+  /** What the agent is about to do, in one or two sentences, said before the work starts. */
+  | { type: "plan"; text: string }
   /** The agent is about to use the browser (navigate, read, click, type...). A plain chat answer never emits this. */
   | { type: "browser" }
   | { type: "end"; status: AgentStatus; summary: string };

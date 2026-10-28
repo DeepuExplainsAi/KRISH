@@ -28,6 +28,11 @@ const KEY_SHAPES = [
   /\bAKIA[0-9A-Z]{16}\b/g,
 ];
 
+/** Chat messages are free text, so a spoken "password is hunter2" must go too (not applied to page text: "password is incorrect" matters there). */
+export function redactChat(input: string): string {
+  return redactText(input).replace(/\b(password|passwd|pwd|passcode|pin|otp|cvv|cvc)\b(\s+(?:is|was|hai|hain|=|:)\s+)("[^"]*"|'[^']*'|\S+)/gi, (_m, k: string, sep: string) => `${k}${sep}${mark("secret")}`);
+}
+
 /** Removes secrets from text before it can reach a model, log or history. */
 export function redactText(input: string): string {
   let s = input;

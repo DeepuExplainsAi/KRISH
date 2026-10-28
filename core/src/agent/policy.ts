@@ -37,7 +37,7 @@ export function gate(action: Action, obs: PageObservation): Gate {
     return { verdict: "block", reason: obs.url === "" ? "no page is open; navigate to a site first" : `no element [${action.elementId}] on this page; read the page again` };
   }
   if (action.type === "type" || action.type === "paste") {
-    if (el && secretKind(el)) return { verdict: "block", reason: "secret field: use ask_user with secure input; the model never types secrets" };
+    if (el && secretKind(el)) return { verdict: "block", reason: "secret field: use sign_in for a login, or ask_user with secure input; the model never types secrets" };
     if (action.text.includes("[REDACTED")) return { verdict: "block", reason: "text contains a redaction placeholder; ask the user for the real value" };
   }
   return { verdict: "allow" };

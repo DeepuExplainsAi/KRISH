@@ -3,6 +3,24 @@
 Project: KRISH, source-only personal agent (Android + desktop). Spec: `docs/SPEC.md`.
 Rule: update this file at the end of every work session (status table + "Next").
 
+## ROUND 7 (2026-10-28): the app does what the user says; it remembers the chat; visible pointer; no start-up flash (v0.1.11)
+
+Owner: "it cannot remember a single chat, it does the same thing whatever I say, something preset overrides me; make it work like Hark; no flash of 'Krish' at start; plan first".
+- **Chat memory.** `runAgent({ chat })`: the last 12 messages of the thread go to the model as a fenced `CHAT` block (passed through `redactChat`, which also removes spoken
+  "password is ..."). The thread is saved under kv key `thread` (60 messages, redacted, no errors/step pills) and restored at start. `ChatItem.plan` messages are not sent back.
+- **No presets.** `SYSTEM_PROMPT` rewritten: the USER_TASK is the whole instruction, no extra steps/sites/accounts/sign-ins, queued tasks done in order, chat is background,
+  greetings answered without the browser. The "earlier chats are never tasks" rule is gone. `maxSteps` 30 -> 80, `historyWindow` 8 -> 16.
+- **Sign-in is the model's call.** `autofillLogin` (ran on every login form) is gone. New action `sign_in`: saved login filled and sent by the app, else the sign-in card once (same code as before: `signIn()` / `askLoginCard()` in loop.ts).
+  A saved Google login is clicked only if the task names Google/Gmail. Saved logins of the current site are registered for scrubbing from the first look (before any `sign_in`), so an echoing page cannot leak them.
+- **New actions/fields:** `note` (value kept for later steps, shown as `NOTES`, max 20), `plan` on the first action (emitted as `{type:"plan"}`, shown in the chat as an italic message).
+- **Providers.** (1) Pollinations answers its per-IP free limit ("1 reply every 30 seconds") with **HTTP 402**; that was shown as "needs paid credit" and never retried. `http.ts` now maps a 402 with FREE_LIMIT / "retry after Ns" to `rate_limit` with that wait.
+  (2) OpenCode Zen's shared `public` key returns 429 `FreeUsageLimitError` for every model (checked live 2026-10-28; not the user's usage). Keyless providers stop after 2 rate-limited models; cooldown doubles per repeated failure (30 s .. 15 min); the message says "shared free limit is full right now (not your usage)".
+  (3) If every AI is busy the loop waits (4 s, 12 s, 30 s, and at least until `router.retryInMs()`) and retries instead of ending the task (`providerWaits`). (4) Gemini "flash" ranks above "pro" (the free key has no quota for most pro models).
+- **Pointer.** `krish-page.js`: orange arrow glides to the control, tap ripple on click (both the script click and the native-tap path `rect`), also on type/fill. Elements carry `data-krish-cursor`, `pointer-events:none`, not in `observe()`. The loop waits `pointerMs` (450) before a click so it is seen.
+- **Start-up.** No more "Krish" text: `index.html` root is empty, `ui/public/boot.js` (blocking, CSP-safe) sets `data-theme` before first paint, `App` renders nothing until ready then fades in; Android `splash.xml` is the theme's sky colour (+ `drawable-night`). Screens and cards rise in (`.chat` excluded: it holds the browser card).
+- **Deliberately NOT built:** clicking Cloudflare / "verify you are human" checks (bot-check bypass; the user still gets the Done card), and the temp-mail sign-up + OTP loop on third-party sites (account-farming; the model may still ask the user). Second browser tab: not built (`BrowserHost` has one view) - the model can `note` a value, navigate, and come back.
+- **Verified:** typecheck, lint, core 218 / ui 47 / desktop 8; real call to Pollinations with the new prompt returned `navigate` + `plan` for "open site, type gmail, do not log in". NOT verified: pointer on a phone, boot.js inside the packaged APK/Electron, Kotlin (unchanged; CI compiles it).
+
 ## ROUND 6 (2026-10-28): no Take over, no confirmation cards, logins saved for good and submitted by the app
 
 Owner (angry): "what is Take over, remove it"; Krish must type, open and click by itself like Hark; after email + password once it must log in by itself

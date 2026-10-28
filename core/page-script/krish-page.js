@@ -186,6 +186,53 @@
     fire(e, "keyup", init);
   }
 
+  // The visible pointer: an arrow that glides to the control the agent is about to use, and a ripple where it taps.
+  // It lives in the page only while the agent works (fades after a few idle seconds) and never takes a click itself.
+  var CURSOR_IDLE_MS = 4000;
+  function cursor() {
+    var c = state.cursor;
+    if (c && c.isConnected) return c;
+    c = state.cursor = document.createElement("div");
+    c.setAttribute("data-krish-cursor", "1");
+    c.style.cssText =
+      "position:fixed;left:0;top:0;width:28px;height:28px;pointer-events:none;z-index:2147483647;opacity:0;will-change:transform;" +
+      "transition:transform .45s cubic-bezier(.22,.8,.25,1),opacity .25s;filter:drop-shadow(0 2px 3px rgba(0,0,0,.35));" +
+      "transform:translate(" + Math.round(window.innerWidth / 2) + "px," + window.innerHeight + "px)";
+    try {
+      c.innerHTML = '<svg viewBox="0 0 24 24" width="28" height="28"><path d="M4 2l16 9-7 2-3 7z" fill="#ff7a1a" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/></svg>';
+    } catch {
+      c.style.cssText += ";width:14px;height:14px;border-radius:50%;background:#ff7a1a"; // a page that forbids innerHTML (Trusted Types) still gets a dot
+    }
+    document.documentElement.appendChild(c);
+    void c.offsetWidth; // the first move starts from where it was drawn, so it glides in
+    return c;
+  }
+  function point(e, tap) {
+    if (e.scrollIntoView) e.scrollIntoView({ block: "center" });
+    var r = e.getBoundingClientRect();
+    var x = r.left + r.width / 2;
+    var y = r.top + r.height / 2;
+    var c = cursor();
+    c.style.opacity = "1";
+    c.style.transform = "translate(" + Math.round(x - 5) + "px," + Math.round(y - 2) + "px)";
+    clearTimeout(state.cursorTimer);
+    state.cursorTimer = setTimeout(function () { c.style.opacity = "0"; }, CURSOR_IDLE_MS);
+    if (tap) ripple(x, y);
+    return r;
+  }
+  function ripple(x, y) {
+    var d = document.createElement("div");
+    d.setAttribute("data-krish-cursor", "1");
+    d.style.cssText =
+      "position:fixed;pointer-events:none;z-index:2147483646;border-radius:50%;border:3px solid #ff7a1a;width:14px;height:14px;opacity:.9;" +
+      "left:" + (x - 7) + "px;top:" + (y - 7) + "px;transition:transform .55s ease-out,opacity .55s ease-out";
+    document.documentElement.appendChild(d);
+    void d.offsetWidth;
+    d.style.transform = "scale(5)";
+    d.style.opacity = "0";
+    setTimeout(function () { d.remove(); }, 700);
+  }
+
   function highlight(id) {
     if (state.overlay) {
       state.overlay.remove();
@@ -193,12 +240,12 @@
     }
     if (id == null) return "ok";
     var e = get(id);
-    var r = e.getBoundingClientRect();
+    var r = point(e, false);
     var overlay = (state.overlay = document.createElement("div"));
     overlay.setAttribute("data-krish-overlay", "1");
     overlay.style.cssText =
-      "position:fixed;pointer-events:none;z-index:2147483647;border:3px solid #ff7a1a;border-radius:6px;box-shadow:0 0 0 3px rgba(255,122,26,.3);" +
-      "left:" + r.left + "px;top:" + r.top + "px;width:" + r.width + "px;height:" + r.height + "px";
+      "position:fixed;pointer-events:none;z-index:2147483645;border:3px solid #ff7a1a;border-radius:6px;box-shadow:0 0 0 3px rgba(255,122,26,.3);" +
+      "left:" + r.left + "px;top:" + r.top + "px;width:" + r.width + "px;height:" + r.height + "px;animation:none";
     document.documentElement.appendChild(overlay);
     return "ok";
   }
@@ -214,9 +261,8 @@
     click: function (id, fp) {
       var e = get(id, fp);
       if (e.disabled) throw new Error("element " + id + " is disabled");
-      if (e.scrollIntoView) e.scrollIntoView({ block: "center" });
+      var r = point(e, true);
       // The same events a real tap produces, so sites that listen for pointerdown/mousedown (menus, custom buttons) react too.
-      var r = e.getBoundingClientRect();
       var init = { bubbles: true, cancelable: true, button: 0, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, pointerType: "touch", isPrimary: true };
       fire(e, "pointerdown", init);
       fire(e, "mousedown", init);
@@ -228,6 +274,7 @@
     },
     type: function (id, text, submit, fp) {
       var e = get(id, fp);
+      point(e, false);
       e.focus();
       setValue(e, text);
       if (submit) {
@@ -240,6 +287,7 @@
     // Used for both model-requested paste and native secret fill. Value is passed by native code only.
     fill: function (id, value, fp) {
       var e = get(id, fp);
+      point(e, false);
       e.focus();
       setValue(e, value);
       return "ok";
@@ -258,8 +306,7 @@
         e = (e.labels && e.labels[0]) || e.closest("label");
         if (!e) throw new Error("hidden file input has no label to tap; ask the user");
       }
-      if (e.scrollIntoView) e.scrollIntoView({ block: "center" });
-      var r = e.getBoundingClientRect();
+      var r = point(e, true); // the native tap that follows lands exactly here: the pointer and ripple show it
       return JSON.stringify({ x: r.left + r.width / 2, y: r.top + r.height / 2, innerWidth: window.innerWidth });
     },
     // Clicking a file input opens the native chooser; native code answers it with the user-picked file.

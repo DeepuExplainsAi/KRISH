@@ -37,6 +37,32 @@ describe("ProviderRouter fallback", () => {
     expect(aCalls()).toBe(2);
   });
 
+  it("says how long until a provider is usable again, and a skipped-for-cooldown failure is not reported as 'nothing set up'", async () => {
+    const { router, advance } = await setup({ "a.test": () => json({}, 429, { "retry-after": "60" }) }, [provider("a")]);
+    expect(await router.retryInMs()).toBe(0);
+    const err = await router.run(msgs, parseAction).catch((e: Error) => e);
+    expect(await router.retryInMs()).toBe(60_000);
+    advance(20_000);
+    expect(await router.retryInMs()).toBe(40_000);
+    const again = (await router.run(msgs, parseAction).catch((e) => e)) as Error;
+    expect(err).toBeInstanceOf(Error);
+    expect(again.message).toMatch(/busy, trying again shortly/);
+    expect(again.message).not.toMatch(/Nothing is set up/);
+  });
+
+  it("a free service's 402 'free limit, retry after 30s' is a wait, not 'needs paid credit'; a real 402 still is", async () => {
+    const limit = { success: false, error: { code: "FREE_LIMIT", message: "Free limit reached: 1 reply every 30 seconds per IP. Retry after 30s" } };
+    const { router, advance } = await setup({ "a.test": () => json(limit, 402) }, [provider("a")]);
+    const err = (await router.run(msgs, parseAction).catch((e) => e)) as Error;
+    expect(err.message).toContain("free limit used up, try again later");
+    expect(err.message).not.toContain("paid credit");
+    expect(await router.retryInMs()).toBe(30_000);
+    advance(31_000);
+    expect(await router.retryInMs()).toBe(0);
+    const paid = await setup({ "a.test": () => json({ error: { message: "insufficient credits" } }, 402) }, [provider("a")]);
+    expect(String(await paid.router.run(msgs, parseAction).catch((e: Error) => e.message))).toContain("needs paid credit");
+  });
+
   it("falls back on 5xx", async () => {
     const { router } = await setup({ "a.test": () => json({}, 503), "b.test": () => openaiReply(DONE) });
     const r = await router.run(msgs, parseAction);

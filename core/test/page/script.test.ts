@@ -87,6 +87,24 @@ describe("page script", () => {
     expect(document.querySelector("[data-krish-overlay]")).toBeNull();
   });
 
+  it("a click shows a pointer and a tap ripple that never catch events or show up as page elements", () => {
+    const o = obs();
+    const before = o.elements.length;
+    k().click(o.elements[0]!.id as number);
+    const marks = document.querySelectorAll<HTMLElement>("[data-krish-cursor]");
+    expect(marks.length).toBeGreaterThanOrEqual(2); // the pointer and the ripple
+    for (const m of marks) expect(m.style.pointerEvents).toBe("none");
+    expect(obs().elements.length).toBe(before);
+    expect(k().read()).not.toContain("krish");
+  });
+
+  it("the native-tap path (rect) shows the pointer and ripple too, and returns the tap position", () => {
+    const o = obs();
+    const pos = JSON.parse(k().rect(o.elements[0]!.id as number)) as { x: number; y: number };
+    expect(typeof pos.x).toBe("number");
+    expect(document.querySelectorAll("[data-krish-cursor]").length).toBeGreaterThanOrEqual(2);
+  });
+
   it("lists a hidden file input (with nearby text as its label) but still skips other hidden elements", () => {
     document.body.innerHTML = '<div>Add your photo <input type="file" style="display:none"></div><button style="display:none">Nope</button><input type="file" aria-label="Doc">';
     const els = obs().elements;

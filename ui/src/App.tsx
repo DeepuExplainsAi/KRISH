@@ -59,7 +59,7 @@ export function App() {
       document.removeEventListener("visibilitychange", apply);
     };
   }, [themePref]);
-  if (!ready) return <div className="boot">Krish</div>;
+  if (!ready) return null; // the page already wears the theme colours (public/boot.js): nothing flashes
   const Screen = SCREENS[screen];
   return (
     <div className={`app${lite ? " lite" : ""}`}>

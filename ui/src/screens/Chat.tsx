@@ -75,7 +75,7 @@ export function Chat() {
           i.chip ? (
             <ChipPill key={i.id} label={i.chip.label} state={i.chip.state} latest={s.running && i.id === lastChipId} onClick={app.openWindow} />
           ) : (
-            <div key={i.id} className={`msg ${i.role}${i.failed ? " failed" : ""}`}>
+            <div key={i.id} className={`msg ${i.role}${i.failed ? " failed" : ""}${i.plan ? " plan" : ""}`}>
               {i.failed && i.text?.startsWith(NO_PROVIDER_PREFIX) ? <ProviderFailure text={i.text} /> : i.text}
               {i.failed && (
                 <span className="row">

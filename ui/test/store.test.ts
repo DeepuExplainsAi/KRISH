@@ -35,7 +35,7 @@ function setup(script: object[]) {
     files: { pick: async () => undefined, read: async () => new Uint8Array(), save: async () => false },
     system: { deviceInfo: async () => ({ lowRam: false, totalMemMb: 4096, linuxSandbox: false }), requestNotifications: async () => true, scheduleDue: async () => {}, cancelDue: async () => {}, openExternal: async () => {} },
   };
-  return { store: new AppStore(platform), filled, prompts, platform, hooks };
+  return { store: new AppStore(platform, { providerWaits: [] }), filled, prompts, platform, hooks };
 }
 
 const tick = () => new Promise((r) => setTimeout(r, 10));
@@ -94,7 +94,8 @@ describe("AppStore", () => {
     await store.send("hi");
     expect(store.getState().providers[0]!.health).toMatchObject({ ok: false, note: "free limit used up, try again later" });
     const failed = store.getState().items.find((i) => i.failed)!;
-    expect(failed.text).toBe("No AI provider could answer. free limit used up, try again later");
+    expect(failed.text).toMatch(/^No AI provider could answer\. .*free limit used up, try again later/);
+    expect(failed.text).toContain("shared free limit is full right now (not your usage)"); // the built-in free services say it is their shared pool, not the user's
     store.dismissItem(failed.id);
     expect(store.getState().items.some((i) => i.failed)).toBe(false);
   });
@@ -319,7 +320,7 @@ describe("attachments", () => {
   });
 
   it("a login page with no saved login opens the sign-in card in the chat; its values go to the page, not the AI", async () => {
-    const { store, filled, prompts, platform } = setup([{ type: "navigate", url: "https://site.test/login" }, { type: "done", summary: "in" }]);
+    const { store, filled, prompts, platform } = setup([{ type: "navigate", url: "https://site.test/login" }, { type: "sign_in" }, { type: "done", summary: "in" }]);
     platform.browser.observe = async () => ({
       url: "https://site.test/login", title: "Login", text: "Sign in",
       elements: [{ id: 0, tag: "input", type: "text", label: "Email" }, { id: 1, tag: "input", type: "password", label: "Password" }],
@@ -401,7 +402,7 @@ describe("attachments", () => {
   });
 
   it("a chat run fills the saved login into the page and sends it, with no card (value never in the prompt)", async () => {
-    const { store, filled, prompts, platform } = setup([{ type: "navigate", url: "https://site.test/login" }, { type: "done", summary: "ok" }]);
+    const { store, filled, prompts, platform } = setup([{ type: "navigate", url: "https://site.test/login" }, { type: "sign_in" }, { type: "done", summary: "ok" }]);
     platform.browser.observe = async () => ({
       url: "https://site.test/login", title: "Login", text: "Sign in",
       elements: [{ id: 0, tag: "input", type: "text", label: "Email" }, { id: 1, tag: "input", type: "password", label: "Password" }, { id: 2, tag: "button", text: "Log in", submits: true }],

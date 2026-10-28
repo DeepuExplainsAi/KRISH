@@ -1,5 +1,14 @@
 **Unsigned DEBUG builds. They were NOT tested on a real phone or on a real Windows/Linux desktop.** What was checked: the files build in CI, the APK is valid and carries the expected application ID, the Windows and Linux packages contain the app, and the Linux build starts and keeps running for 25 seconds under a virtual display. Nothing beyond that.
 
+## What changed in 0.1.11
+- Krish remembers the conversation (kept on the device, secrets removed) and follows what you write: no built-in extra steps, no automatic sign-in. It signs in only when the task needs it.
+- It says its plan first, then works with a visible pointer and tap marks.
+- "Free limit used up" fixed at the root: a wait from the free AI is no longer shown as "needs paid credit", busy services are retried, and a shared free pool is no longer hit on every step.
+- No "Krish" text flash at start.
+- Not included: automatic "I am human" checks (you still tap Done), temporary-mail sign-ups, a second browser tab.
+
+Built with the help of TODOforAI (https://todofor.ai).
+
 ## Files
 | File | For |
 |---|---|

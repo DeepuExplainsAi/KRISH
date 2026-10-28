@@ -49,7 +49,7 @@ export async function autoFetchOnce(config: ProviderConfig, apiKey: string, deps
   return { ...(await refreshModels(config, apiKey, deps)), modelsAutoFetched: true };
 }
 
-const NOT_CHAT = /embed|tts|whisper|transcri|speech|audio|realtime|image|imagen|dall|veo|video|moderation|guard|rerank|aqa|vision-only/i;
+const NOT_CHAT = /embed|tts|whisper|transcri|speech|audio|realtime|image|imagen|dall|veo|video|moderation|guard|rerank|aqa|vision-only|live|robotics|computer-use|learnlm/i;
 const TOP = /pro|opus|large|ultra|max|sonnet/i;
 const MID = /flash|plus|turbo/i;
 const SMALL = /lite|mini|small|nano|tiny|instant|haiku/i;
@@ -61,7 +61,9 @@ function score(m: ModelInfo): number {
   const text = `${m.id} ${m.displayName ?? ""}`;
   const params = Number(PARAMS.exec(m.id)?.[1] ?? 0);
   const version = Number(/\d+(?:\.\d+)?/.exec(m.id.replace(PARAMS, ""))?.[0] ?? 0);
-  const tier = TOP.test(text) ? 5 : MID.test(text) ? 3 : 0;
+  // Gemini's free tier gives "flash" models a quota and most "pro" models none, so on a free key flash must come first.
+  const geminiFlash = /^(models\/)?gemini-/i.test(m.id) && /flash/i.test(m.id) && !SMALL.test(m.id);
+  const tier = geminiFlash ? 7 : TOP.test(text) ? 5 : MID.test(text) ? 3 : 0;
   const small = SMALL.test(text) || (params > 0 && params <= 14);
   // OpenRouter's own free router picks whichever free model is up; Gemma (Google's open model) often rejects JSON mode, so Gemini goes first.
   const bias = /^openrouter\/free$/.test(m.id) ? 100 : /(^|\/)gemma/i.test(m.id) ? -60 : 0;

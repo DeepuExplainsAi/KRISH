@@ -42,12 +42,17 @@ export const NO_PROVIDER_PREFIX = "No AI provider could answer.";
 function summarize(attempts: Attempt[]): string {
   const reasons = new Set<string>();
   for (const a of attempts) if (a.outcome !== "skipped" && a.reason) reasons.add(a.reason);
-  return reasons.size ? [...reasons].join(" · ") : "Nothing is set up to answer yet.";
+  if (reasons.size) return [...reasons].join(" · ");
+  return attempts.some((a) => a.detail === "cooldown" || a.detail === "circuit open") ? "the AI services are busy, trying again shortly" : "Nothing is set up to answer yet.";
 }
 
 export class AllProvidersFailedError extends Error {
   constructor(readonly attempts: Attempt[]) {
     super(`${NO_PROVIDER_PREFIX} ${summarize(attempts)}`);
+  }
+  /** Trying again later can help: something answered badly or was busy (not just a missing key, a refused key or no credit). */
+  get transient() {
+    return this.attempts.some((a) => (a.outcome === "skipped" ? a.detail === "cooldown" || a.detail === "circuit open" : a.outcome !== "auth" && a.outcome !== "payment"));
   }
 }
 
@@ -98,6 +103,19 @@ export class ProviderRouter {
     return v;
   }
 
+  /** Milliseconds until the first usable provider is out of its cooldown (0 when one is usable now or none could ever be). */
+  async retryInMs(): Promise<number> {
+    const t = this.now();
+    let soonest = Infinity;
+    for (const p of this.deps.providers()) {
+      if (!p.enabled || !p.defaultModel) continue;
+      if (p.kind !== "webgpu-local" && !p.keyless && !(await this.deps.keys.get(p.id))) continue;
+      const h = this.h(p.id);
+      soonest = Math.min(soonest, Math.max(0, Math.max(h.cooldownUntil, h.circuitOpenUntil) - t));
+    }
+    return soonest === Infinity ? 0 : soonest;
+  }
+
   /** Why a provider is unavailable right now, or undefined if usable. */
   private async blockedReason(p: ProviderConfig, opts: RunOptions, hasKey: boolean): Promise<string | undefined> {
     const h = this.h(p.id);
@@ -126,7 +144,7 @@ export class ProviderRouter {
       e.kind === "auth"
         ? this.cfg.authCooldownMs
         : e.kind === "rate_limit"
-          ? (e.retryAfterMs ?? this.cfg.defaultCooldownMs)
+          ? (e.retryAfterMs ?? this.cfg.defaultCooldownMs * 2 ** Math.min(h.failures - 1, 5)) // a limit that keeps coming back (a shared free pool) is left alone for longer each time
           : 0;
     h.cooldownUntil = t + Math.min(wait, this.cfg.maxCooldownMs);
     if (h.failures >= this.cfg.circuitThreshold) h.circuitOpenUntil = t + this.cfg.circuitOpenMs;
@@ -151,6 +169,7 @@ export class ProviderRouter {
       // The chosen pair first, then the next best models the provider lists: one model being rate-limited or retired never ends the step.
       const models = [...new Set([p.defaultModel!, p.fallbackModel, ...rankModels(p.models?.items ?? []).slice(0, 4).map((m) => m.id)])].filter((m): m is string => Boolean(m)).slice(0, MAX_MODELS_PER_PROVIDER);
       let lastError: ProviderError | undefined;
+      let limited = 0;
       for (const model of models) {
         await this.bump(p.id);
         try {
@@ -172,10 +191,12 @@ export class ProviderRouter {
         } catch (e) {
           if (e instanceof AbortedError) throw e;
           lastError = e instanceof ProviderError ? e : new ProviderError("network", "unexpected provider failure");
-          const reason = friendlyReason(lastError.kind, lastError.status);
+          // A keyless free service has one limit shared by every user of the app: that is not the user's own usage.
+          const reason = p.keyless && lastError.kind === "rate_limit" ? "shared free limit is full right now (not your usage)" : friendlyReason(lastError.kind, lastError.status);
           attempts.push({ providerId: p.id, providerName: p.name, model, outcome: lastError.kind, detail: lastError.message, reason });
           this.deps.onResult?.(p.id, false, reason);
           if (lastError.kind === "auth" || lastError.kind === "payment") break; // same key or account: another model will not help
+          if (p.keyless && lastError.kind === "rate_limit" && ++limited >= 2) break; // a keyless service has one shared pool: two limits in a row mean all its models are out
         }
       }
       if (lastError) this.onFailure(p.id, lastError);

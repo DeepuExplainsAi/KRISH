@@ -1,14 +1,16 @@
 // Single editable defaults file. No model names or provider limits live anywhere else.
 export const DEFAULTS = {
   agent: {
-    maxSteps: 30,
+    maxSteps: 80,
     maxConsecutiveErrors: 3,
     maxStalls: 3,
     observationMaxChars: 6000,
     observationMaxElements: 80,
     readMaxChars: 20000,
     sandboxOutputMaxChars: 4000,
-    historyWindow: 8,
+    historyWindow: 16,
+    /** The on-screen pointer is given this long to reach a control before the click, so the user sees it arrive. */
+    pointerMs: 450,
   },
   router: {
     requestTimeoutMs: 30_000,

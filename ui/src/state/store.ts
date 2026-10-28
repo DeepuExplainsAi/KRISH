@@ -1,5 +1,5 @@
 import {
-  AgentController, DEFAULTS, autoFetchOnce, cleanLabel, friendlyReason, DEFAULT_BRIEF, History, Memory, newId, Panels, ProviderRouter, Projects, refreshModels, probeModels, withAutoModels,
+  AgentController, DEFAULTS, redactChat, autoFetchOnce, cleanLabel, friendlyReason, DEFAULT_BRIEF, History, Memory, newId, Panels, ProviderRouter, Projects, refreshModels, probeModels, withAutoModels,
   runAgent, Scheduler, nextRun, nextBriefAt, briefCommand, Vault,
   type AgentEvent, type AgentUI, type BriefSettings, type ChipState, type PageDriver, type ProviderConfig,
   type LoginAnswer, type LoginRequest, type MemoryPort, type SecureKind, type SelectedFile, type Sandbox, setLocalEngine, type ModelInfo,
@@ -97,6 +97,8 @@ export interface ChatItem {
   chip?: { label: string; state: ChipState };
   /** The run ended in an error: shown as an error note, not as an answer. */
   failed?: boolean;
+  /** What the agent said it will do, before it started (styled apart from answers, not sent back to the model). */
+  plan?: boolean;
   /** Which provider and model produced this answer (shown small under it). */
 }
 
@@ -139,6 +141,10 @@ export const WIDE = 900;
 const SETTINGS_KEY = "settings";
 const PROVIDERS_KEY = "providers";
 const FREE_KEY = "freeProviders";
+const THREAD_KEY = "thread";
+/** Chat messages kept on the device and the number of recent ones the agent is shown. */
+const THREAD_KEEP = 60;
+const CHAT_FOR_AGENT = 12;
 /** Model lists are fetched again this often while the app is open (and at every start), so new and retired models show up by themselves. */
 const LIST_REFRESH_MS = 6 * 36e5;
 
@@ -180,7 +186,7 @@ export class AppStore {
   /** KrishVault: saved logins, kept for good in the platform key store (Android Keystore / OS keychain). */
   readonly vault: Vault;
 
-  constructor(readonly platform: Platform) {
+  constructor(readonly platform: Platform, private readonly opts: { providerWaits?: number[] } = {}) {
     this.vault = new Vault(platform.keys);
     this.vault.onChange(() => this.set({}));
     this.memory = new Memory(platform.kv);
@@ -220,10 +226,26 @@ export class AppStore {
     this.set({ localModels: await engine.listModels().catch(() => []) });
   }
 
+  /** The conversation survives a restart: only finished messages (no step pills, no errors) are kept, newest last. */
+  private saveThread() {
+    const keep = this.state.items.filter((i) => i.text && !i.failed).slice(-THREAD_KEEP).map((i) => ({ ...i, text: redactChat(i.text!) }));
+    void this.platform.kv.set(THREAD_KEY, JSON.stringify(keep)).catch(() => undefined);
+  }
+
+  /** What the agent is shown of this conversation: the recent messages of both sides, without plans, errors or step pills. */
+  private chatForAgent() {
+    return this.state.items
+      .filter((i): i is ChatItem & { text: string } => Boolean(i.text) && !i.failed && !i.plan)
+      .slice(-CHAT_FOR_AGENT)
+      .map((i) => ({ role: i.role, text: i.text }));
+  }
+
   subscribe = (l: () => void) => (this.listeners.add(l), () => void this.listeners.delete(l));
   getState = () => this.state;
   private set(patch: Partial<State>) {
+    const items = this.state.items;
     this.state = { ...this.state, ...patch };
+    if (this.state.items !== items && this.state.ready) this.saveThread();
     this.listeners.forEach((l) => l());
   }
 
@@ -246,8 +268,10 @@ export class AppStore {
       const o = saved.find((x) => x.id === b.id);
       return o?.models ? { ...b, models: o.models, defaultModel: o.defaultModel, fallbackModel: o.fallbackModel, modelsChanged: o.modelsChanged } : b;
     });
+    const thread = await this.platform.kv.get(THREAD_KEY).then((t) => (t ? (JSON.parse(t) as ChatItem[]) : [])).catch(() => []);
+    this.seq = thread.reduce((m, i) => Math.max(m, i.id), this.seq);
     this.set({
-      ready: true, settings, providers: p ? JSON.parse(p) : [], freeProviders, deviceLowRam: info.lowRam,
+      ready: true, settings, providers: p ? JSON.parse(p) : [], freeProviders, deviceLowRam: info.lowRam, items: thread,
       linuxAvailable: info.linuxSandbox && !info.lowRam,
     });
     void this.platform.browser.setDesktopLayout(settings.desktopLayout).catch(() => undefined); // the saved choice reaches the native view at start, not only when changed
@@ -470,6 +494,8 @@ export class AppStore {
         this.set({ items: [...this.state.items, { id, role: "agent", chip: { label: e.label, state: e.state } }] });
       }
       void this.history.log(runId, "chip", e.label, undefined, e.state);
+    } else if (e.type === "plan") {
+      this.push({ role: "agent", text: e.text, plan: true });
     } else if (e.type === "browser") {
       // The card opens when the agent really uses the browser, never for a plain chat or an old tab.
       if (this.state.settings.autoOpenWindow) this.openWindow();
@@ -556,6 +582,7 @@ export class AppStore {
     this.set({ running: true, status: "running", screen: "chat", ...(opts.files ? { attachments: [] } : {}) });
     if (opts.startUrl) this.openWindow();
     else this.closeWindow(); // a plain chat starts without the card (and without the tab left open before)
+    const chat = this.chatForAgent();
     this.push({ role: "user", text: command, files: files.length ? files.map(({ name, size }) => ({ name, size })) : undefined });
     try {
       await this.history.log(runId, "run_start", command).catch(() => undefined); // a full disk must not lock the chat
@@ -565,7 +592,7 @@ export class AppStore {
       const { url, title } = this.state.page;
       const openTab = url && url !== "about:blank" ? `${title ? `${title} — ` : ""}${url}` : undefined;
       await runAgent(
-        { task, files, screenshots: this.state.settings.screenshots, startOnPage: Boolean(opts.startUrl), openTab },
+        { task, files, screenshots: this.state.settings.screenshots, startOnPage: Boolean(opts.startUrl), openTab, chat, providerWaits: this.opts.providerWaits },
         { driver: this.driver(), router: this.router, ui: this.buildUI(runId), controller, sandbox: this.sandbox, memory: this.memoryPort(), vault: this.vault },
       );
     } finally {

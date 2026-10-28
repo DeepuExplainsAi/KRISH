@@ -13,6 +13,8 @@ export const ACTION_TYPES = [
   "wait",
   "scroll",
   "ask_user",
+  "sign_in",
+  "note",
   "done",
 ] as const;
 
@@ -28,40 +30,47 @@ export function isHttpsUrl(value: string): boolean {
 const httpsUrl = z.string().max(2048).refine(isHttpsUrl, "must be an https URL without credentials");
 const elementId = z.number().int().nonnegative();
 const thought = z.string().max(300).optional();
+/** One or two sentences on the first step of a task: what the agent is about to do. Shown in the chat before the work starts. */
+const plan = z.string().max(400).optional();
 
 export const SecureKindSchema = z.enum(["password", "otp", "captcha", "2fa"]);
 
 export const ActionSchema = z.discriminatedUnion("type", [
-  z.strictObject({ type: z.literal("navigate"), url: httpsUrl, thought }),
-  z.strictObject({ type: z.literal("read"), elementId: elementId.optional(), thought }),
-  z.strictObject({ type: z.literal("click"), elementId, thought }),
+  z.strictObject({ type: z.literal("navigate"), url: httpsUrl, thought, plan }),
+  z.strictObject({ type: z.literal("read"), elementId: elementId.optional(), thought, plan }),
+  z.strictObject({ type: z.literal("click"), elementId, thought, plan }),
   z.strictObject({
     type: z.literal("type"),
     elementId,
     text: z.string().max(10_000),
     submit: z.boolean().optional(),
     thought,
+    plan,
   }),
-  z.strictObject({ type: z.literal("paste"), elementId, text: z.string().max(50_000), thought }),
-  z.strictObject({ type: z.literal("upload_selected_file"), elementId, file: z.string().regex(/^f\d{1,2}$/).optional(), thought }),
+  z.strictObject({ type: z.literal("paste"), elementId, text: z.string().max(50_000), thought, plan }),
+  z.strictObject({ type: z.literal("upload_selected_file"), elementId, file: z.string().regex(/^f\d{1,2}$/).optional(), thought, plan }),
   z.strictObject({
     type: z.literal("run_sandbox_task"),
     tool: z.enum(["zip", "unzip", "text", "script", "shell"]),
     code: z.string().max(20_000),
     writesFiles: z.boolean(),
     thought,
+    plan,
   }),
-  z.strictObject({ type: z.literal("memory_add"), text: z.string().min(1).max(500), thought }),
-  z.strictObject({ type: z.literal("memory_remove"), ids: z.array(z.string().regex(/^m\d{1,3}$/)).min(1).max(20), thought }),
-  z.strictObject({ type: z.literal("scroll"), direction: z.enum(["down", "up"]), thought }),
-  z.strictObject({ type: z.literal("wait"), ms: z.number().int().min(0).max(10_000), thought }),
+  z.strictObject({ type: z.literal("memory_add"), text: z.string().min(1).max(500), thought, plan }),
+  z.strictObject({ type: z.literal("memory_remove"), ids: z.array(z.string().regex(/^m\d{1,3}$/)).min(1).max(20), thought, plan }),
+  z.strictObject({ type: z.literal("scroll"), direction: z.enum(["down", "up"]), thought, plan }),
+  z.strictObject({ type: z.literal("wait"), ms: z.number().int().min(0).max(10_000), thought, plan }),
   z.strictObject({
     type: z.literal("ask_user"),
     question: z.string().min(1).max(500),
     secure: z.strictObject({ kind: SecureKindSchema, elementId: elementId.optional() }).optional(),
     thought,
+    plan,
   }),
-  z.strictObject({ type: z.literal("done"), summary: z.string().max(6000), thought }),
+  z.strictObject({ type: z.literal("sign_in"), thought, plan }),
+  z.strictObject({ type: z.literal("note"), text: z.string().min(1).max(300), thought, plan }),
+  z.strictObject({ type: z.literal("done"), summary: z.string().max(6000), thought, plan }),
 ]);
 
 export type Action = z.infer<typeof ActionSchema>;
