@@ -2,12 +2,12 @@ import type { Dict } from "./en";
 
 export const es: Partial<Dict> = {
   home: "Inicio", chat: "Chat", projects: "Proyectos", menu: "Menú", newChat: "Nuevo chat", back: "Atrás",
-  statusIdle: "Listo", statusWorking: "Trabajando", actionRequired: "Acción necesaria", statusPaused: "En pausa",
-  stop: "PARAR", takeOver: "Tomar el control", resume: "Continuar",
+  statusIdle: "Listo", statusWorking: "Trabajando", actionRequired: "Acción necesaria",
+  stop: "PARAR",
   composerPlaceholder: "Escribe a Krish",
   chatEmpty: "Pregúntame lo que quieras o dime qué hacer en un sitio web. Solo abro el navegador cuando la tarea lo necesita.",
   browser: "Navegador", send: "Enviar",
-  confirm: "Confirmar", cancel: "Cancelar", continue: "Continuar", question: "Pregunta",
+cancel: "Cancelar", done: "Listo", continue: "Continuar", question: "Pregunta",
   answerSent: "Tu respuesta se envía a la IA. No escribas contraseñas ni códigos aquí.",
   secureNote: "Va a {field} en {site}. No se envía a la IA.",
   securedBy: "Protegido por Krish", yourAnswer: "Tu respuesta",

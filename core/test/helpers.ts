@@ -24,7 +24,6 @@ export const provider = (id: string, over: Partial<ProviderConfig> = {}): Provid
   kind: "openai-compat",
   baseUrl: `https://${id}.test/v1`,
   enabled: true,
-  allowSensitive: false,
   defaultModel: "m1",
   ...over,
 });

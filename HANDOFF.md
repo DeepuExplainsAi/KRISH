@@ -3,6 +3,39 @@
 Project: KRISH, source-only personal agent (Android + desktop). Spec: `docs/SPEC.md`.
 Rule: update this file at the end of every work session (status table + "Next").
 
+## ROUND 6 (2026-10-28): no Take over, no confirmation cards, logins saved for good and submitted by the app
+
+Owner (angry): "what is Take over, remove it"; Krish must type, open and click by itself like Hark; after email + password once it must log in by itself
+without waiting for a send button; ask only for login passwords and bank details; no locks; save a login once and reuse it without asking.
+- **Take over / Resume / `paused` removed** (button, store methods, `AgentController.pause/resume/whenRunning`, status "paused", `statusPaused`/`takeOver`/`resume` keys).
+  CAPTCHA keeps a plain card (`ui.solveCaptcha`, prompt type `captcha`, button "Done"); it is the only step a model cannot do. A closed sign-in card no longer
+  hands the page over: the model is told and carries on or asks.
+- **No confirmations anywhere.** `policy.gate()` returns allow or block only (`Gate`); block = element not on the page, or the model typing into a secret field /
+  a `[REDACTED` text. Removed: `ConfirmRequest`/`ui.confirm`, off-site and consent/risky click rules, "Send?" on type+submit, sandbox/upload/memory/vault cards,
+  `sensitive-page` stop (`isSensitivePage`, `allowSensitive` on providers, `RouteOptions.sensitive`, `aiSeesLogin`, `confirmFill`, `MAX_SENSITIVE_STOPS`),
+  the page-site boundary (`homeUrl`). Screenshots are off only while the app has typed a secret (`typed`), not on login pages. `prompt.ts` now says the task is the permission.
+- **Vault without a passphrase.** `Vault(KeyStore)` stores the list as JSON under key `krishLogins` in the platform key store (Keystore / keychain; encrypted at rest).
+  No create/unlock/lock/auto-lock/erase, no PBKDF2. `MIN_PASSPHRASE`, `vaultLock`, `needMaster` are gone. The old `krishVault` blob (passphrase-encrypted) is NOT migrated
+  (it was never used by the owner; entries must be added again). Vault screen = list + add form.
+- **Login card always saves.** Email + password (or Google) typed once go into the page and into the vault (`site`, username, password). Next visit: no card.
+  `autofillLogin` runs on any task that lands on a login form (the old "task says log in" gate is gone); one try per page+step, max 6 per run.
+- **The app submits the form itself** (`findSignInButton` in vault.ts: submit button labelled Log in / Sign in / Continue / Next, else any submit button, never Google/Apple;
+  clicked right after the fill). Email-first pages: email filled and Continue clicked, then the password step is filled and sent on the next loop turn.
+  If a Google login is saved (site `google.com`) the page's Continue-with-Google button is clicked without a card.
+- **Review fixes (same round):** the sign-in button is chosen **inside the form that was filled** (page script now reports `form`, the 1-based form number; `findSignInButton(elements, form)`),
+  matches each label separately (an `<input type=submit>` repeats its value as text), never picks Sign up / Create / Forgot / Google / Apple, and with no confident match
+  does not click at all (the model is told to). A form with a single unnamed submit is accepted. After the app sent a password, the same account is not sent again in
+  that run when the form comes back (rejected password). STOP is checked between fill, fill and click (`alive()`), so a stop never lets a password or click go out afterwards.
+  Everything shown or stored (chips, `action` events, results, summaries, errors) passes `safe()`/`scrubAction()`, which also removes the values the app typed. Two-step pages with
+  only a "Sign in" heading + email + Next are recognised; Apple/Facebook buttons are no longer mistaken for Google. `Vault.put` upserts inside the queued write (no duplicate on a race).
+- **Known gaps:** a passwordless email-first site (magic link / email code) still gets the card with a password box (the owner can close it); an email-only "type then Enter" form with no button is not submitted by the app.
+- `SETTINGS_VERSION` 5 drops `aiSeesLogin` and `confirmFill` from saved settings. i18n: 7 languages updated (sec3, sec5, sec7, vaultIntro, tour2Body, tour3Body, loginNote; `done` added).
+- **Verified:** typecheck, lint, core 190 / ui 47 / desktop 8 tests; UI harness in headless Chrome (phone and PC): login card has email + password only and no checkbox,
+  answering it fills both fields and saves the login, the second run fills with no card, footer buttons are Expand + Close, no "Take over"/"Resume" text, password not in any prompt.
+- **NOT verified:** anything on a real phone (scaled WebView touch, the card showing the full PC page), real sites (Instagram, Google 2-step, OTP), the Windows build,
+  whether `findSignInButton` picks the right button on sites with odd markup (it is label based). Kotlin only compiled in CI.
+- **Trade-off the owner chose:** saved passwords are readable by anyone who opens the app on an unlocked device. A wrong model step runs without a second look; STOP is the only brake.
+
 ## ROUND 5 (2026-10-28): no Accessibility; the PC layout lives inside Krish's own window
 
 Owner: no Accessibility; the agent must work inside a window in the app, laid out like a PC, nothing cut off (like the reference video).

@@ -16,6 +16,8 @@ export interface PageElement {
   /** True when activating it submits a form (effective type, not just the attribute). */
   submits?: boolean;
   disabled?: boolean;
+  /** 1-based number of the <form> this control belongs to; controls with the same number are in the same form. */
+  form?: number;
   /** A file input the page hides behind a button or dropzone. It can still be given a file. */
   hidden?: boolean;
 }

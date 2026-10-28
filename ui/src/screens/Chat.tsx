@@ -42,14 +42,13 @@ export function Chat() {
   const prompts = useAppSelector((s) => s.prompts);
   const attachments = useAppSelector((s) => s.attachments);
   const running = useAppSelector((s) => s.running);
-  const paused = useAppSelector((s) => s.paused);
   const s = { items, prompts, attachments, running };
   const { t } = useT();
   const [text, setText] = useState("");
   const end = useRef<HTMLDivElement>(null);
   // Braces matter: newer Chrome/WebView return a Promise from scrollIntoView, and a returned value is treated as the effect cleanup.
   const lastItem = items[items.length - 1];
-  const thinking = running && !paused && prompts.length === 0 && !(lastItem?.chip?.state === "running");
+  const thinking = running && prompts.length === 0 && !(lastItem?.chip?.state === "running");
   useEffect(() => { end.current?.scrollIntoView({ block: "end" }); }, [items.length, prompts.length, thinking]);
 
   const submit = (e: React.FormEvent) => {

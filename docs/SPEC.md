@@ -1,7 +1,7 @@
 You are building the SOURCE CODE ONLY of an original cross-platform "personal agent" app (Android + desktop). Your only deliverable is ONE zip of source files. You must NOT build an APK or installer, NOT run anything on a device, NOT publish anything, NOT contact external services, and NOT claim anything works unless you actually tested it. The user will build the APK themselves in GitHub Codespaces.
 
 PRODUCT
-A free-to-run personal agent. The user logs into their own accounts once inside the app's built-in browser. Then they give plain-language commands and the agent reads pages, fills forms, pastes text, uploads user-selected files (zip, video, images, docs), and types prompts into AI chat sites, always asking confirmation before risky steps. No backend server; the user brings their own API keys. Everything the agent does is visible inside the app.
+A free-to-run personal agent. The user logs into their own accounts once inside the app's built-in browser. Then they give plain-language commands and the agent reads pages, fills forms, pastes text, uploads user-selected files (zip, video, images, docs), and types prompts into AI chat sites. No backend server; the user brings their own API keys. Everything the agent does is visible inside the app.
 
 BRANDING AND ORIGINALITY (mandatory)
 - Original name, logo, copy and icons. Do not use the names, logos, UI text or screenshots of Hark, Claude, Anthropic or any other product.
@@ -40,9 +40,10 @@ LIVE VIEW AND SECURE INPUT (original implementation)
 - Optional desktop-layout mode: desktop user agent and a 1280x800 viewport scaled to fit the card.
 - Highlight the element currently being clicked or typed into.
 - When the agent needs the user (OTP, password, CAPTCHA, 2FA), the status pill turns to "Action required" and a native input card appears in the chat (title, masked field, Continue). The user types the value into the app's own card; the APP (never the model) puts it into the page field. That value is never sent to any model, logged or stored. For CAPTCHA, offer "Take over".
-- Cosmetic popups ("Not now", cookie banners) may be dismissed automatically. Anything that grants permissions, consent or notifications, or saves a login, must ask the user first.
-- Before any send, show the exact draft with Confirm and Cancel, and ask for missing details (who, what) instead of guessing.
-- Always-visible STOP, and "Take over" that pauses the agent so the user can act directly, then "Resume".
+- The user's message is the permission: the agent opens, clicks, types, sends and uploads by itself, with no confirmation cards. It asks only for a password, a one-time code or a bank detail (native secure card), a CAPTCHA, and details it is missing (who, what).
+- A login typed once is saved for good and filled and submitted by the app on later visits (no master passphrase).
+- Ask for missing details (who, what) instead of guessing.
+- Always-visible STOP. There is no Take over: the agent does the work itself.
 - Settings has "Clear all site data".
 
 AGENT LOOP
@@ -69,7 +70,7 @@ Home, Chat (with live window), Projects as top tabs; Panels, Scheduled Tasks, Hi
 BUILD ORDER (finish and self-review each step first)
 1. Core: provider adapters, fallback, live model refresh, strict action schema, unit tests with mocked providers (429, 5xx, bad JSON, failed refresh).
 2. Android WebView plugin: open a site, read text, fill a field, click.
-3. Live window (chips, resize presets, Action required card) + file upload via picker + confirmation gate + STOP + redaction layer.
+3. Live window (chips, resize presets, Action required card) + file upload via picker + STOP + redaction layer.
 4. History, Lite mode, memory, Projects, Scheduled Tasks (WorkManager), opt-in morning brief.
 5. Desktop shell (Electron, same UI and core).
 6. Tier 0 sandbox, then the Tier 1 Linux sandbox in the "full" flavor.

@@ -1,11 +1,9 @@
 import { DEFAULTS } from "../config/defaults";
-import type { PageElement, PageObservation } from "../page/types";
+import type { PageElement } from "../page/types";
 
 const mark = (kind: string) => `[REDACTED:${kind}]`;
 const re = (src: string) => new RegExp(src, "i");
 const SECRET_FIELD = re(DEFAULTS.patterns.secretField);
-const SENSITIVE_URL = re(DEFAULTS.patterns.sensitiveUrl);
-const SENSITIVE_HOST = re(DEFAULTS.patterns.sensitiveHost);
 
 export function luhn(digits: string): boolean {
   let sum = 0;
@@ -83,19 +81,4 @@ export function redactElement(el: PageElement): PageElement {
   if (out.title) out.title = redactText(out.title);
   if (out.href) out.href = redactText(out.href);
   return out;
-}
-
-export function isSensitivePage(obs: Pick<PageObservation, "url" | "elements">): boolean {
-  if (obs.url === "" || obs.url === "about:blank") return false; // no page loaded yet: nothing sensitive to protect
-  let url: URL | undefined;
-  try {
-    url = new URL(obs.url);
-  } catch {
-    return true; // unknown page: treat as sensitive
-  }
-  if (SENSITIVE_HOST.test(url.hostname) || SENSITIVE_URL.test(url.pathname)) return true;
-  return obs.elements.some((e) => {
-    const k = secretKind(e);
-    return k === "password" || k === "otp" || k === "card";
-  });
 }

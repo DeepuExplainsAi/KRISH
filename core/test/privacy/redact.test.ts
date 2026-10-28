@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { formatObservation } from "../../src/page/format";
-import { isSensitivePage, luhn, redactElement, redactText, secretKind } from "../../src/privacy/redact";
+import { luhn, redactElement, redactText, secretKind } from "../../src/privacy/redact";
 
 describe("redactText", () => {
   it.each([
@@ -48,16 +48,6 @@ describe("fields and pages", () => {
   it("drops values of secret fields", () => {
     expect(redactElement(el({ type: "password", value: "hunter2" })).value).toBeUndefined();
     expect(redactElement(el({ type: "text", name: "q", value: "password: x1" })).value).toContain("[REDACTED");
-  });
-
-  it("flags sensitive pages by url and by fields", () => {
-    expect(isSensitivePage({ url: "https://x.com/login", elements: [] })).toBe(true);
-    expect(isSensitivePage({ url: "https://mybank.com/home", elements: [] })).toBe(true);
-    expect(isSensitivePage({ url: "https://x.com/a", elements: [el({ type: "password" })] })).toBe(true);
-    expect(isSensitivePage({ url: "https://x.com/a", elements: [el({ type: "text", name: "q" })] })).toBe(false);
-    expect(isSensitivePage({ url: "garbage", elements: [] })).toBe(true);
-    expect(isSensitivePage({ url: "", elements: [] })).toBe(false); // no page loaded yet
-    expect(isSensitivePage({ url: "about:blank", elements: [] })).toBe(false);
   });
 
   it("formatObservation marks a hidden file input so the model can still target it", () => {

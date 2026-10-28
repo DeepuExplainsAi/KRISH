@@ -77,7 +77,6 @@ h2 { font-size: 1.35rem; }
 .list.scroll { max-height: 16rem; overflow: auto; }
 .list.plain li { display: list-item; list-style: disc inside; }
 .pill { display: inline-flex; align-items: center; border-radius: 99px; padding: .3rem .9rem; min-height: 36px; background: var(--strong); color: var(--on-strong); border-color: var(--strong); }
-.pill.paused { background: var(--amber); color: #14171c; border-color: var(--amber); }
 .pill.action_required::before { content: "▲"; color: var(--acc); margin-right: .45rem; font-size: .8em; }
 .notice { margin: 0 .75rem .5rem; padding: .6rem .9rem; border-radius: 18px; }
 

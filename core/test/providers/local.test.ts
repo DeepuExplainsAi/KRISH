@@ -4,7 +4,7 @@ import { mockFetch, openaiReply, provider, stores } from "../helpers";
 
 const DONE = '{"type":"done","summary":"ok"}';
 const msgs = [{ role: "user" as const, content: "hi" }];
-const local = provider("local", { kind: "webgpu-local", baseUrl: "local:", allowSensitive: true });
+const local = provider("local", { kind: "webgpu-local", baseUrl: "local:" });
 afterEach(() => setLocalEngine(undefined));
 
 async function router(providers = [local, provider("a")]) {
@@ -31,9 +31,4 @@ describe("on-device model", () => {
     expect((await (await router()).r.run(msgs, parseAction)).providerId).toBe("a");
   });
 
-  it("works on sensitive pages (data stays on the device)", async () => {
-    setLocalEngine({ listModels: async () => [], complete: async () => DONE });
-    const { r } = await router();
-    expect((await r.run(msgs, parseAction, { sensitive: true })).providerId).toBe("local");
-  });
 });

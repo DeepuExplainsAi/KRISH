@@ -64,6 +64,7 @@
     if (title) d.title = clean(title).slice(0, 200);
     if ((tag === "button" && e.type === "submit" && e.form) || (tag === "input" && (e.type === "submit" || e.type === "image"))) d.submits = true;
     if (e.disabled) d.disabled = true;
+    if (e.form) d.form = Array.prototype.indexOf.call(document.forms, e.form) + 1;
     d.fp = fingerprint(e);
     return d;
   }
@@ -255,7 +256,7 @@
       if (isFileInput(e) && !visible(e)) {
         // Only a real <label> for this input: clicking it activates exactly this input, never some other control.
         e = (e.labels && e.labels[0]) || e.closest("label");
-        if (!e) throw new Error("hidden file input has no label to tap; ask the user to take over");
+        if (!e) throw new Error("hidden file input has no label to tap; ask the user");
       }
       if (e.scrollIntoView) e.scrollIntoView({ block: "center" });
       var r = e.getBoundingClientRect();

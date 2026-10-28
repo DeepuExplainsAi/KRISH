@@ -1,8 +1,6 @@
-/** STOP and Take over / Resume for a running agent. */
+/** STOP for a running agent. */
 export class AgentController {
   private abort = new AbortController();
-  private paused = false;
-  private waiters: (() => void)[] = [];
 
   get signal(): AbortSignal {
     return this.abort.signal;
@@ -10,31 +8,6 @@ export class AgentController {
 
   stop(): void {
     this.abort.abort();
-    this.release();
-  }
-
-  pause(): void {
-    this.paused = true;
-  }
-
-  resume(): void {
-    this.paused = false;
-    this.release();
-  }
-
-  get isPaused(): boolean {
-    return this.paused;
-  }
-
-  /** Resolves when the agent may continue (not paused, or stopped). */
-  async whenRunning(): Promise<void> {
-    while (this.paused && !this.abort.signal.aborted) {
-      await new Promise<void>((r) => this.waiters.push(r));
-    }
-  }
-
-  private release() {
-    for (const w of this.waiters.splice(0)) w();
   }
 }
 

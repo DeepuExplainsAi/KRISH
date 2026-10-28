@@ -88,7 +88,7 @@ describe("AppStore", () => {
     hooks.fetch = (_url, init) => (JSON.parse(String(init?.body ?? "{}")).messages?.length === 1 ? reply({ ok: true }) : undefined); // the one-message connection test
     await store.init();
     await store.addProvider({ name: "P", kind: "openai-compat", baseUrl: "https://p.test/v1" }, "k");
-    await store.updateProvider({ ...store.getState().providers[0]!, allowSensitive: true });
+    await store.updateProvider({ ...store.getState().providers[0]! });
     expect(store.getState().providers[0]!.health?.ok).toBe(true);
     hooks.fetch = () => new Response("{}", { status: 429 });
     await store.send("hi");
@@ -108,7 +108,7 @@ describe("AppStore", () => {
     await store.init();
     await store.addProvider({ name: "P", kind: "openai-compat", baseUrl: "https://p.test/v1" }, "k");
     const p = store.getState().providers[0]!;
-    await store.updateProvider({ ...p, defaultModel: "m1", allowSensitive: true });
+    await store.updateProvider({ ...p, defaultModel: "m1" });
 
     const run = store.send("log me in");
     await tick(); await tick();
@@ -131,7 +131,7 @@ describe("AppStore", () => {
     platform.browser.onPage = (cb) => ((listener = cb), () => {});
     await store.init();
     await store.addProvider({ name: "P", kind: "openai-compat", baseUrl: "https://p.test/v1" }, "k");
-    await store.updateProvider({ ...store.getState().providers[0]!, defaultModel: "m1", allowSensitive: true });
+    await store.updateProvider({ ...store.getState().providers[0]!, defaultModel: "m1" });
     listener({ url: "https://www.instagram.com/accounts/login/", title: "Login", loading: false }); // an old tab
     store.openWindow();
     await store.send("hi");
@@ -146,7 +146,7 @@ describe("AppStore", () => {
     const { store } = setup([{ type: "navigate", url: "https://site.test/login" }, { type: "ask_user", question: "Code?", secure: { kind: "otp", elementId: 0 } }]);
     await store.init();
     await store.addProvider({ name: "P", kind: "openai-compat", baseUrl: "https://p.test/v1" }, "k");
-    await store.updateProvider({ ...store.getState().providers[0]!, defaultModel: "m1", allowSensitive: true });
+    await store.updateProvider({ ...store.getState().providers[0]!, defaultModel: "m1" });
     const run = store.send("go");
     await tick(); await tick();
     expect(store.getState().prompts).toHaveLength(1);
@@ -186,7 +186,7 @@ describe("AppStore", () => {
     const { store } = setup([{ type: "navigate", url: "https://site.test/login" }, { type: "ask_user", question: "Code?", secure: { kind: "otp", elementId: 0 } }, { type: "done", summary: "ok" }]);
     await store.init();
     await store.addProvider({ name: "P", kind: "openai-compat", baseUrl: "https://p.test/v1" }, "k");
-    await store.updateProvider({ ...store.getState().providers[0]!, defaultModel: "m1", allowSensitive: true });
+    await store.updateProvider({ ...store.getState().providers[0]!, defaultModel: "m1" });
     const run = store.send("hello");
     await tick(); await tick();
     store.newChat();
@@ -247,7 +247,7 @@ describe("attachments", () => {
     const { store, prompts, platform } = withPicker([{ type: "done", summary: "ok" }]);
     await store.init();
     await store.addProvider({ name: "P", kind: "openai-compat", baseUrl: "https://p.test/v1" }, "k");
-    await store.updateProvider({ ...store.getState().providers[0]!, defaultModel: "m1", allowSensitive: true });
+    await store.updateProvider({ ...store.getState().providers[0]!, defaultModel: "m1" });
     await store.attach();
     await store.send("post this video", { files: store.getState().attachments });
     const user = store.getState().items.find((i) => i.role === "user")!;
@@ -277,7 +277,7 @@ describe("attachments", () => {
     const { store, prompts } = withPicker([{ type: "done", summary: "ok" }]);
     await store.init();
     await store.addProvider({ name: "P", kind: "openai-compat", baseUrl: "https://p.test/v1" }, "k");
-    await store.updateProvider({ ...store.getState().providers[0]!, defaultModel: "m1", allowSensitive: true });
+    await store.updateProvider({ ...store.getState().providers[0]!, defaultModel: "m1" });
     await store.attach();
     await store.send("run saved task");
     expect(prompts[0]).not.toContain("USER_FILES");
@@ -326,7 +326,7 @@ describe("attachments", () => {
     });
     await store.init();
     await store.addProvider({ name: "P", kind: "openai-compat", baseUrl: "https://p.test/v1" }, "k");
-    await store.updateProvider({ ...store.getState().providers[0]!, defaultModel: "m1", allowSensitive: true });
+    await store.updateProvider({ ...store.getState().providers[0]!, defaultModel: "m1" });
     const run = store.send("log me in to site.test");
     await tick(); await tick();
     const card = store.getState().prompts[0]!;
@@ -338,8 +338,15 @@ describe("attachments", () => {
     expect(prompts.join("\n")).not.toContain("Card-pw-9");
   });
 
-  it("defaults: a saved login is filled without asking, the AI may read sign-in pages, the free AI is the last resort", () => {
-    expect(setup([]).store.getState().settings).toMatchObject({ confirmFill: false, aiSeesLogin: true, freeFallback: true, tourDone: false });
+  it("defaults: the free AI is the last resort, and the old confirmation switches are gone (also from saved settings)", async () => {
+    expect(setup([]).store.getState().settings).toMatchObject({ freeFallback: true, tourDone: false });
+    expect(setup([]).store.getState().settings).not.toHaveProperty("confirmFill");
+    const { store, platform } = setup([]);
+    await platform.kv.set("settings", JSON.stringify({ version: 4, confirmFill: true, aiSeesLogin: false, liteMode: true }));
+    await store.init();
+    expect(store.getState().settings).toMatchObject({ liteMode: true, version: 5 });
+    expect(store.getState().settings).not.toHaveProperty("confirmFill");
+    expect(store.getState().settings).not.toHaveProperty("aiSeesLogin");
   });
 
   it("a new key is placed by the preset order: OpenCode Zen, OpenRouter, Gemini, then the others, custom last", () => {
@@ -381,37 +388,34 @@ describe("attachments", () => {
     expect(store.getState()).toMatchObject({ windowOpen: false, windowExpanded: false });
   });
 
-  it("is created in the store and kept in the key store as ciphertext, never in kv", async () => {
+  it("saved logins live in the key store (never in kv) and survive a restart with nothing to unlock", async () => {
     const { store, platform } = setup([]);
     await store.init();
-    expect(store.vault.exists).toBe(false);
-    await store.vault.create("master-pass");
     await store.vault.put({ site: "site.test", username: "me", password: "Sup3r-Secret" });
-    expect((await platform.keys.get("krishVault"))!).not.toContain("Sup3r-Secret");
-    expect(await platform.kv.get("krishVault")).toBeUndefined();
-    store.vault.lock();
-    expect(store.vault.unlocked).toBe(false);
+    expect(await platform.keys.get("krishLogins")).toContain("me");
+    expect(await platform.kv.get("krishLogins")).toBeUndefined();
+    const again = setup([]);
+    await again.platform.keys.set("krishLogins", (await platform.keys.get("krishLogins"))!);
+    await again.store.init();
+    expect(again.store.vault.logins("https://site.test/login")[0]?.password).toBe("Sup3r-Secret");
   });
 
-  it("a chat run fills the saved login into the page natively after the user confirms (value never in the prompt)", async () => {
+  it("a chat run fills the saved login into the page and sends it, with no card (value never in the prompt)", async () => {
     const { store, filled, prompts, platform } = setup([{ type: "navigate", url: "https://site.test/login" }, { type: "done", summary: "ok" }]);
     platform.browser.observe = async () => ({
       url: "https://site.test/login", title: "Login", text: "Sign in",
-      elements: [{ id: 0, tag: "input", type: "text", label: "Email" }, { id: 1, tag: "input", type: "password", label: "Password" }],
+      elements: [{ id: 0, tag: "input", type: "text", label: "Email" }, { id: 1, tag: "input", type: "password", label: "Password" }, { id: 2, tag: "button", text: "Log in", submits: true }],
     });
     await store.init();
     await store.addProvider({ name: "P", kind: "openai-compat", baseUrl: "https://p.test/v1" }, "k");
-    await store.updateProvider({ ...store.getState().providers[0]!, defaultModel: "m1", allowSensitive: true });
-    await store.vault.create("master-pass");
+    await store.updateProvider({ ...store.getState().providers[0]!, defaultModel: "m1" });
     await store.vault.put({ site: "site.test", username: "me", password: "Sup3r-Secret" });
-    await store.saveSettings({ confirmFill: true });
-    const run = store.send("log me in to site.test");
-    await tick(); await tick();
-    const card = store.getState().prompts[0]!;
-    expect(card).toMatchObject({ type: "confirm", req: { kind: "vault" } });
-    store.answer(card.id, true);
-    await run;
-    expect(filled.map(([, v]) => v)).toContain("Sup3r-Secret");
+    const seen: string[] = [];
+    const off = store.subscribe(() => store.getState().prompts.forEach((p) => seen.push(p.type)));
+    await store.send("log me in to site.test");
+    off();
+    expect(seen).toEqual([]);
+    expect(filled.map(([, v]) => v)).toEqual(["me", "Sup3r-Secret"]);
     expect(prompts.join("\n")).not.toContain("Sup3r-Secret");
   });
 });

@@ -2,12 +2,12 @@ import type { Dict } from "./en";
 
 export const bn: Partial<Dict> = {
   home: "হোম", chat: "চ্যাট", projects: "প্রজেক্ট", menu: "মেনু", newChat: "নতুন চ্যাট", back: "ফিরে যান",
-  statusIdle: "প্রস্তুত", statusWorking: "কাজ চলছে", actionRequired: "আপনার পদক্ষেপ দরকার", statusPaused: "থামানো",
-  stop: "থামান", takeOver: "নিয়ন্ত্রণ নিন", resume: "চালিয়ে যান",
+  statusIdle: "প্রস্তুত", statusWorking: "কাজ চলছে", actionRequired: "আপনার পদক্ষেপ দরকার",
+  stop: "থামান",
   composerPlaceholder: "Krish-কে মেসেজ করুন",
   chatEmpty: "যেকোনো কিছু জিজ্ঞাসা করুন, বা কোনো ওয়েবসাইটে কী করতে হবে বলুন। কাজে দরকার হলেই ব্রাউজার খোলে।",
   browser: "ব্রাউজার", send: "পাঠান",
-  confirm: "নিশ্চিত করুন", cancel: "বাতিল", continue: "এগিয়ে যান", question: "প্রশ্ন",
+cancel: "বাতিল", done: "হয়ে গেছে", continue: "এগিয়ে যান", question: "প্রশ্ন",
   answerSent: "আপনার উত্তর AI-কে পাঠানো হবে। এখানে পাসওয়ার্ড বা কোড লিখবেন না।",
   secureNote: "{site}-এর {field}-এ যাবে। AI-কে পাঠানো হয় না।",
   securedBy: "Krish দ্বারা সুরক্ষিত", yourAnswer: "আপনার উত্তর",

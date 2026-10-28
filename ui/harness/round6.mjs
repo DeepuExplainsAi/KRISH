@@ -1,0 +1,9 @@
+const skip = `__krish.saveSettings({tourDone:true, theme:"light"})`;
+const script = (...a) => `window.__script.push(...${JSON.stringify(a)})`;
+export default [
+  { name: "01-run-start", run: `(async()=>{ await ${skip}; ${script({ type: "navigate", url: "https://site.test/login" }, { type: "wait", ms: 1500 }, { type: "done", summary: "Logged in." })}; __krish.send("site.test pe login karo"); })()`, wait: 1500 },
+  { name: "02-login-card", run: `document.querySelector(".card.login") ? "card:" + [...document.querySelectorAll(".card.login input")].map(i=>i.type).join(",") + " | checkboxes=" + document.querySelectorAll(".card.login input[type=checkbox]").length : "NO CARD"`, wait: 300 },
+  { name: "03-fill-card", run: `(async()=>{ const p=__krish.getState().prompts[0]; __krish.answer(p.id,{username:"deepu@x.com",password:"Pw-12345"}); await new Promise(r=>setTimeout(r,3000)); return JSON.stringify({filled:window.__filled, prompts:__krish.getState().prompts.map(p=>p.type), saved:__krish.vault.list().map(e=>e.site+":"+e.username), leak: window.__prompts.join("").includes("Pw-12345")}); })()`, wait: 500 },
+  { name: "04-second-run-no-card", run: `(async()=>{ window.__filled.length=0; ${script({ type: "navigate", url: "https://site.test/login" }, { type: "wait", ms: 500 }, { type: "done", summary: "Again in." })}; const seen=[]; const off=__krish.subscribe(()=>__krish.getState().prompts.forEach(p=>seen.push(p.type))); await __krish.send("site.test pe login karo"); off(); return JSON.stringify({cards:seen, filled:window.__filled}); })()`, wait: 500 },
+  { name: "05-footer-buttons", run: `[...document.querySelectorAll(".live-foot button")].map(b=>b.getAttribute("aria-label")||b.textContent).join(" | ") + " || takeover-in-DOM=" + /take over|resume/i.test(document.body.innerText)`, wait: 200 },
+];

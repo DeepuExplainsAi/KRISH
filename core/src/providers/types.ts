@@ -27,8 +27,6 @@ export interface ProviderConfig {
   keyless?: boolean;
   /** Sent as the key by a keyless service that expects one (OpenCode Zen's public free access). */
   anonymousKey?: string;
-  /** Per-provider privacy flag. Default false. */
-  allowSensitive: boolean;
   defaultModel?: string;
   fallbackModel?: string;
   /** The user picked default/fallback by hand: automatic tests keep those (while the provider still lists them) instead of choosing again. */

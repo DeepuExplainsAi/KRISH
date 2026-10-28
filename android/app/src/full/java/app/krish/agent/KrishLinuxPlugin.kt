@@ -19,8 +19,7 @@ import java.util.concurrent.TimeUnit
  * asset and extracted to app-private storage on first run, after its SHA-256 is verified.
  *
  * Network: proot cannot cut network access, so the sandbox sees the host network. This tier is therefore treated as
- * "network-capable": every shell command requires the user's confirmation (see core/agent/policy.ts) and the app
- * never forwards cookies, keys or the agent browser's data into it.
+ * "network-capable": the app never forwards cookies, keys or the agent browser's data into it.
  *
  * Fallback if the OS blocks execution (SELinux / seccomp on some builds): run() returns a clear error and the app
  * keeps using Tier 0. Nothing else depends on this plugin.

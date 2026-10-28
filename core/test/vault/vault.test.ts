@@ -1,59 +1,28 @@
 import { describe, expect, it } from "vitest";
-import { ALL_SITES, findLoginFields, findLoginWall, normalizeSite, Vault, VaultError } from "../../src/vault/vault";
+import { ALL_SITES, findLoginFields, findLoginWall, findSignInButton, normalizeSite, Vault, VaultError } from "../../src/vault/vault";
 import { MemoryKeyStore } from "../../src/storage";
 
-const fast = { iterations: 1000 };
 const entry = { site: "https://www.instagram.com/accounts/login", username: "deepu", password: "p@ss-1234" };
 
 describe("Vault", () => {
-  it("stores nothing readable: the stored blob has no password, username or site", async () => {
+  it("keeps logins for good: a new Vault on the same store has them, with nothing to unlock", async () => {
     const store = new MemoryKeyStore();
-    const v = new Vault(store, fast);
-    await v.create("master-pass");
-    await v.put(entry);
-    const raw = (await store.get("krishVault"))!;
-    for (const secret of ["p@ss-1234", "deepu", "instagram"]) expect(raw).not.toContain(secret);
-  });
-
-  it("survives a restart: unlock with the right passphrase returns the login, a wrong one does not", async () => {
-    const store = new MemoryKeyStore();
-    const a = new Vault(store, fast);
-    await a.create("master-pass");
-    await a.put(entry);
-    const b = new Vault(store, fast);
+    await new Vault(store).put(entry);
+    const b = new Vault(store);
     await b.load();
-    expect(b.exists).toBe(true);
-    expect(b.unlocked).toBe(false);
-    expect(await b.unlock("wrong-pass!")).toBe(false);
-    expect(b.unlocked).toBe(false);
-    expect(await b.unlock("master-pass")).toBe(true);
     expect(b.list()).toMatchObject([{ site: "instagram.com", username: "deepu", password: "p@ss-1234" }]);
   });
 
-  it("is unreadable while locked and refuses a weak passphrase or a second create", async () => {
-    const v = new Vault(new MemoryKeyStore(), fast);
-    await expect(v.create("short")).rejects.toThrow(VaultError);
-    await v.create("master-pass");
-    await expect(v.create("another-pass")).rejects.toThrow(VaultError);
+  it("saving the same site and username again replaces the login instead of adding a second", async () => {
+    const v = new Vault(new MemoryKeyStore());
     await v.put(entry);
-    v.lock();
-    expect(() => v.list()).toThrow("locked");
-    await expect(v.put(entry)).rejects.toThrow("locked");
-  });
-
-  it("uses a fresh IV on every save", async () => {
-    const store = new MemoryKeyStore();
-    const v = new Vault(store, fast);
-    await v.create("master-pass");
-    const a = JSON.parse((await store.get("krishVault"))!).iv;
-    await v.put(entry);
-    const b = JSON.parse((await store.get("krishVault"))!).iv;
-    expect(a).not.toBe(b);
+    await v.put({ ...entry, password: "new-pass-9" });
+    await v.put({ ...entry, username: "other" });
+    expect(v.list().map((e) => [e.username, e.password])).toEqual([["deepu", "new-pass-9"], ["other", "p@ss-1234"]]);
   });
 
   it("a login for every site is a default; a login for the site itself comes first and wins", async () => {
-    const v = new Vault(new MemoryKeyStore(), fast);
-    await v.create("master-pass");
+    const v = new Vault(new MemoryKeyStore());
     await v.put({ site: ALL_SITES, username: "main", password: "main-pw-1" });
     expect(normalizeSite("*")).toBe(ALL_SITES);
     expect(v.logins("https://shop.test/login").map((e) => e.username)).toEqual(["main"]);
@@ -63,41 +32,27 @@ describe("Vault", () => {
   });
 
   it("matches logins by registrable site only (a look-alike host gets nothing)", async () => {
-    const v = new Vault(new MemoryKeyStore(), fast);
-    await v.create("master-pass");
+    const v = new Vault(new MemoryKeyStore());
     await v.put(entry);
     expect(v.logins("https://m.instagram.com/")).toHaveLength(1);
     expect(v.logins("https://instagram.com.evil.test/")).toHaveLength(0);
     expect(v.logins("https://notinstagram.com/")).toHaveLength(0);
-    expect(v.logins("not a url")).toHaveLength(0);
   });
 
-  it("updates an entry in place, removes it, and erases everything", async () => {
+  it("removes a login", async () => {
     const store = new MemoryKeyStore();
-    const v = new Vault(store, fast);
-    await v.create("master-pass");
+    const v = new Vault(store);
     const e = await v.put(entry);
-    await v.put({ ...entry, id: e.id, password: "new-pass-9" });
-    expect(v.list()).toHaveLength(1);
-    expect(v.list()[0]!.password).toBe("new-pass-9");
     await v.remove(e.id);
     expect(v.list()).toHaveLength(0);
-    await v.erase();
-    expect(await store.get("krishVault")).toBeUndefined();
-    expect(v.exists).toBe(false);
-  });
-
-  it("locks itself after the idle time", async () => {
-    const v = new Vault(new MemoryKeyStore(), { ...fast, autoLockMs: 20 });
-    await v.create("master-pass");
-    await new Promise((r) => setTimeout(r, 60));
-    expect(v.unlocked).toBe(false);
+    const again = new Vault(store);
+    await again.load();
+    expect(again.list()).toHaveLength(0);
   });
 
   it("rejects an empty password and a site it cannot read", async () => {
-    const v = new Vault(new MemoryKeyStore(), fast);
-    await v.create("master-pass");
-    await expect(v.put({ ...entry, password: "" })).rejects.toThrow("password");
+    const v = new Vault(new MemoryKeyStore());
+    await expect(v.put({ ...entry, password: "" })).rejects.toThrow(VaultError);
     await expect(v.put({ ...entry, site: "   " })).rejects.toThrow("site");
   });
 
@@ -105,55 +60,29 @@ describe("Vault", () => {
     expect(normalizeSite("Instagram.com")).toBe("instagram.com");
     expect(normalizeSite("https://accounts.google.com/x")).toBe("google.com");
   });
-});
 
-describe("Vault lifecycle", () => {
-  /** A key store whose writes finish in reverse order, to expose lost updates and resurrected data. */
-  const slowStore = (delays: number[]) => {
-    const inner = new MemoryKeyStore();
-    let n = 0;
-    return Object.assign(inner, {
-      set: async (k: string, v: string) => { const d = delays[n++ % delays.length]!; await new Promise((r) => setTimeout(r, d)); await MemoryKeyStore.prototype.set.call(inner, k, v); },
-    });
-  };
+  it("the same login saved twice at once is still one entry", async () => {
+    const v = new Vault(new MemoryKeyStore());
+    await Promise.all([v.put(entry), v.put({ ...entry, password: "second-pw-2" })]);
+    expect(v.list()).toHaveLength(1);
+    expect(v.list()[0]!.password).toBe("second-pw-2");
+  });
 
   it("two saves started together both end up in storage, even if the first one is slower", async () => {
-    const store = slowStore([0, 40, 5]);
-    const v = new Vault(store, fast);
-    await v.create("master-pass");
-    await Promise.all([v.put({ ...entry, site: "a.test" }), v.put({ ...entry, site: "b.test" })]);
-    const again = new Vault(store, fast);
-    await again.load();
-    await again.unlock("master-pass");
-    expect(again.list().map((e) => e.site)).toEqual(["a.test", "b.test"]);
-  });
-
-  it("erase wins over a save that was still running", async () => {
-    const store = slowStore([0, 30]);
-    const v = new Vault(store, fast);
-    await v.create("master-pass");
-    const saving = v.put(entry).catch(() => undefined);
-    await v.erase();
-    await saving;
-    expect(await store.get("krishVault")).toBeUndefined();
-    expect(v.exists).toBe(false);
-  });
-
-  it("an unlock that was still computing when the vault was locked does not unlock it", async () => {
     const store = new MemoryKeyStore();
-    const a = new Vault(store, { iterations: 200_000 });
-    await a.create("master-pass");
-    a.lock();
-    const pending = a.unlock("master-pass");
-    a.lock();
-    expect(await pending).toBe(false);
-    expect(a.unlocked).toBe(false);
+    const slow = store.set.bind(store);
+    let n = 0;
+    store.set = async (k, v) => { await new Promise((r) => setTimeout(r, [40, 0][n++ % 2]!)); await slow(k, v); };
+    const v = new Vault(store);
+    await Promise.all([v.put({ ...entry, site: "a.test" }), v.put({ ...entry, site: "b.test" })]);
+    const again = new Vault(store);
+    await again.load();
+    expect(again.list().map((e) => e.site)).toEqual(["a.test", "b.test"]);
   });
 
   it("a failed save changes nothing in memory", async () => {
     const store = new MemoryKeyStore();
-    const v = new Vault(store, fast);
-    await v.create("master-pass");
+    const v = new Vault(store);
     await v.put(entry);
     const ok = store.set.bind(store);
     store.set = async () => { throw new Error("disk full"); };
@@ -164,20 +93,13 @@ describe("Vault lifecycle", () => {
     expect(v.list()).toHaveLength(2);
   });
 
-  it("a stored vault that cannot be read is never treated as absent (so it cannot be overwritten)", async () => {
+  it("stored logins that cannot be read are never treated as empty (so they cannot be overwritten)", async () => {
     const store = new MemoryKeyStore();
     store.get = async () => { throw new Error("keystore busy"); };
-    const v = new Vault(store, fast);
+    const v = new Vault(store);
     await v.load();
     expect(v.unreadable).toBe(true);
-    await expect(v.create("master-pass")).rejects.toThrow("could not be read");
-  });
-
-  it("listing does not extend the idle timer", async () => {
-    const v = new Vault(new MemoryKeyStore(), { ...fast, autoLockMs: 60 });
-    await v.create("master-pass");
-    for (let i = 0; i < 5; i++) { await new Promise((r) => setTimeout(r, 20)); if (v.unlocked) v.list(); }
-    expect(v.unlocked).toBe(false);
+    await expect(v.put(entry)).rejects.toThrow("could not be read");
   });
 });
 
@@ -209,5 +131,42 @@ describe("findLoginWall", () => {
   it("ignores a newsletter box and a page without an email box", () => {
     expect(findLoginWall({ text: "Get our newsletter. Sign in to your account", elements: [email] })).toBeUndefined();
     expect(findLoginWall({ text: "Log in or create account", elements: [{ id: 1, tag: "button", text: "Go" }] })).toBeUndefined();
+  });
+});
+
+describe("findLoginWall: two-step sign-in", () => {
+  const email = { id: 0, tag: "input", type: "email", label: "Email" };
+  it("an email box under a Sign in heading with a Next button is the first step", () => {
+    expect(findLoginWall({ text: "Sign in", elements: [email, { id: 1, tag: "button", text: "Next", submits: true }] })?.username.id).toBe(0);
+  });
+  it("Apple or Facebook alone is not Google; the Google button is found among several", () => {
+    expect(findLoginWall({ text: "Welcome", elements: [email, { id: 1, tag: "button", text: "Continue with Apple" }] })?.google).toBeUndefined();
+    expect(findLoginWall({ text: "Welcome", elements: [email, { id: 1, tag: "button", text: "Continue with Apple" }, { id: 2, tag: "button", text: "Continue with Google" }] })?.google?.id).toBe(2);
+  });
+  it("a plain page with an email box and no sign-in wording is left alone", () => {
+    expect(findLoginWall({ text: "Join our newsletter", elements: [email, { id: 1, tag: "button", text: "Subscribe", submits: true }] })).toBeUndefined();
+  });
+});
+
+describe("findSignInButton", () => {
+  const b = (id: number, text: string, o: object = {}) => ({ id, tag: "button", text, submits: true, ...o });
+  it("takes the Log in button, not Sign up, Google or Apple, even when Sign up comes first", () => {
+    const els = [b(1, "Sign up"), b(2, "Continue with Google"), b(3, "Continue with Apple"), b(4, "Log in")];
+    expect(findSignInButton(els)?.id).toBe(4);
+  });
+  it("only looks inside the form that was filled", () => {
+    const els = [b(1, "Log in", { form: 1 }), b(2, "Log in", { form: 2 }), b(3, "Search", { form: 1 })];
+    expect(findSignInButton(els, 2)?.id).toBe(2);
+  });
+  it("an input submit whose value repeats as its text and aria-label still matches", () => {
+    expect(findSignInButton([{ id: 1, tag: "input", type: "submit", text: "Sign in", value: "Sign in", label: "Sign in", submits: true }])?.id).toBe(1);
+  });
+  it("custom wording is accepted only as the single submit of that form; with two it guesses nothing", () => {
+    expect(findSignInButton([b(1, "Enter", { form: 1 })], 1)?.id).toBe(1);
+    expect(findSignInButton([b(1, "Enter", { form: 1 }), b(2, "Go", { form: 1 })], 1)).toBeUndefined();
+    expect(findSignInButton([b(1, "Enter")])).toBeUndefined();
+  });
+  it("skips disabled buttons and non-login words like Forgot password", () => {
+    expect(findSignInButton([b(1, "Log in", { disabled: true }), b(2, "Forgot password?"), b(3, "Next")])?.id).toBe(3);
   });
 });

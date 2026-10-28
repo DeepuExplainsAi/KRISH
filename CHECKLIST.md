@@ -10,7 +10,7 @@ Legend: **RUN** = executed in the build environment with the result observed. **
 | Live model refresh: Gemini filter + pagination, OpenAI-compatible `/models`, `free` only when provider says so, failed refresh keeps cache, auto-fetch exactly once | same | pass |
 | Strict action schema (allowlist, https only, no creds, extra props) | same | pass |
 | Redaction (cookies, tokens, JWTs, key shapes, cards with Luhn, OTP phrases, secret fields) | same | pass |
-| Agent loop: confirm-before-send, secure-input flow (value never reaches model/history), CAPTCHA take-over, off-site and consent confirmations, upload confirm, injection fencing, STOP, Take over/Resume, step limit, stuck handling | same | pass |
+| Agent loop: no confirmation cards, secure-input flow (value never reaches model/history), CAPTCHA card, saved-login autofill and auto-submit, injection fencing, STOP, step limit, stuck handling | same | pass |
 | Memory, history, projects, panels, scheduler math, opt-in brief, **concurrent writes keep every entry, reads see queued writes** | same | pass |
 | Page script (observe, type/fill with native setter, click, highlight, stale ids, spoof resistance) | jsdom | pass |
 | App store flows with a fake platform, Lite mode default on low-RAM | `npm test -w ui` | pass |
@@ -57,7 +57,7 @@ Legend: **RUN** = executed in the build environment with the result observed. **
 
 ## Known limitations
 
-- Tier 1 cannot disable network (proot). Mitigated by mandatory confirmation. See SECURITY.md.
+- Tier 1 cannot disable network (proot). See SECURITY.md.
 - Redaction and sensitive-page detection are heuristics.
 - `phone-control/` is an empty stub (phase 2).
 - Payments/wallet, Google OAuth email/Drive, cloud background execution and password saving are out of scope and not present.

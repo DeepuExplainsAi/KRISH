@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { MIN_PASSPHRASE } from "@krish/core";
 import { useT } from "../i18n/useT";
 import type { Prompt } from "../state/store";
 import { useApp } from "../state/useStore";
@@ -17,30 +16,25 @@ function Head({ icon, title, onClose, closeLabel }: { icon: React.JSX.Element; t
 
 type LoginPrompt = Extract<Prompt, { type: "login" }>;
 
-/** Sign-in card: email and password (or Google) typed here go straight into the page, never to the AI. Can save the login to KrishVault. */
+/** Sign-in card: email and password (or Google) typed here go straight into the page, never to the AI. The login is saved for good and used next time without asking. */
 function LoginCard({ p, done }: { p: LoginPrompt; done: (v: unknown) => void }) {
   const { t } = useT();
   const [user, setUser] = useState("");
   const [pass, setPass] = useState("");
-  const [save, setSave] = useState(true);
-  const [master, setMaster] = useState("");
   const [show, setShow] = useState(false);
-  const { site, google, save: canSave, wall } = p.req;
-  const needMaster = Boolean(canSave === "new" && save);
-  const ready = user.trim() !== "" && (wall || pass !== "") && (!needMaster || master.length >= MIN_PASSPHRASE);
+  const { site, google } = p.req;
+  const ready = user.trim() !== "" && pass !== "";
   const field = { autoCapitalize: "off", autoCorrect: "off", spellCheck: false } as const;
   return (
-    <form className="glass card login" onSubmit={(e) => { e.preventDefault(); if (ready) done({ username: user.trim(), password: pass, save: Boolean(canSave) && save, passphrase: needMaster ? master : undefined }); }}>
-      <Head icon={<IconLock />} title={t("signInTo", { site })} closeLabel={t("takeOver")} onClose={() => done(undefined)} />
+    <form className="glass card login" onSubmit={(e) => { e.preventDefault(); if (ready) done({ username: user.trim(), password: pass }); }}>
+      <Head icon={<IconLock />} title={t("signInTo", { site })} closeLabel={t("close")} onClose={() => done(undefined)} />
       {google && <button type="button" className="google" onClick={() => done({ google: true })}><span aria-hidden="true">G</span>{t("continueGoogle")}</button>}
       {google && <p className="or">{t("orWithEmail")}</p>}
       <input {...field} autoFocus={!google} type="text" inputMode="email" autoComplete="username" value={user} onChange={(e) => setUser(e.target.value)} placeholder={t("emailOrUser")} aria-label={t("emailOrUser")} />
-      {!wall && <div className="pw">
+      <div className="pw">
         <input {...field} type={show ? "text" : "password"} autoComplete="current-password" value={pass} onChange={(e) => setPass(e.target.value)} placeholder={t("password")} aria-label={t("password")} />
         <button type="button" className="round small" onClick={() => setShow(!show)} aria-label={show ? t("hide") : t("show")}>{show ? "◌" : "●"}</button>
-      </div>}
-      {canSave && <label className="save"><input type="checkbox" checked={save} onChange={(e) => setSave(e.target.checked)} /> {t("saveLogin")}</label>}
-      {needMaster && <input {...field} type="password" autoComplete="new-password" value={master} onChange={(e) => setMaster(e.target.value)} placeholder={t("newPassphrase", { n: String(MIN_PASSPHRASE) })} aria-label={t("newPassphrase", { n: String(MIN_PASSPHRASE) })} />}
+      </div>
       <div className="row end"><button className="dark" type="submit" disabled={!ready}>{t("signIn")}</button></div>
       <p className="secured"><IconLock />{t("loginNote")}</p>
     </form>
@@ -54,24 +48,12 @@ export function PromptCard({ p }: { p: Prompt }) {
   const [text, setText] = useState("");
   const done = (v: unknown) => { setText(""); app.answer(p.id, v); };
 
-  if (p.type === "confirm") {
-    return (
-      <div className="glass card confirm">
-        <Head icon={<IconWarn />} title={p.req.title} closeLabel={t("cancel")} onClose={() => done(false)} />
-        <pre>{p.req.preview}</pre>
-        <div className="row">
-          <button className="dark" onClick={() => done(true)}>{t("confirm")}</button>
-          <button className="ghost" onClick={() => done(false)}>{t("cancel")}</button>
-        </div>
-      </div>
-    );
-  }
-  if (p.type === "takeover") {
+  if (p.type === "captcha") {
     return (
       <div className="glass card">
         <Head icon={<IconWarn />} title={t("actionRequired")} closeLabel={t("close")} />
         <p>{p.reason}</p>
-        <button className="dark" onClick={() => done(undefined)}>{t("resume")}</button>
+        <button className="dark" onClick={() => done(undefined)}>{t("done")}</button>
       </div>
     );
   }

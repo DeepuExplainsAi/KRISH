@@ -52,8 +52,6 @@ export class AllProvidersFailedError extends Error {
 }
 
 export interface RunOptions {
-  /** True when the observation came from a sensitive page. */
-  sensitive?: boolean;
   signal?: AbortSignal;
 }
 
@@ -106,7 +104,6 @@ export class ProviderRouter {
     const t = this.now();
     if (!p.enabled) return "disabled";
     if (!hasKey) return "no key";
-    if (opts.sensitive && !p.allowSensitive) return "sensitive page not allowed";
     if (!p.defaultModel) return "no model selected";
     if (t < h.cooldownUntil) return "cooldown";
     if (t < h.circuitOpenUntil) return "circuit open";

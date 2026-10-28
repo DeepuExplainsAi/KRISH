@@ -1,13 +1,13 @@
 import { DEFAULTS, type AgentLimits } from "../config/defaults";
 import { formatObservation } from "../page/format";
-import type { PageObservation } from "../page/types";
-import { isSensitivePage, redactText, secretKind, type SecretKind } from "../privacy/redact";
+import type { PageElement, PageObservation } from "../page/types";
+import { redactText, secretKind, type SecretKind } from "../privacy/redact";
 import { AbortedError } from "../providers/types";
-import { AllProvidersFailedError, type ProviderRouter } from "../providers/router";
+import type { ProviderRouter } from "../providers/router";
 import { parseReply, type Action } from "../schema/actions";
 import { AgentController, raceStop, StoppedError } from "./controller";
-import { findLoginFields, findLoginWall } from "../vault/vault";
-import { gate, sameSite, sandboxWrites, siteOf } from "./policy";
+import { findLoginFields, findLoginWall, findSignInButton } from "../vault/vault";
+import { gate, sandboxWrites, siteOf } from "./policy";
 import type { AgentStatus, AgentUI, ChipState, MemoryPort, PageDriver, Sandbox, SelectedFile, VaultPort } from "./ports";
 import { SYSTEM_PROMPT } from "./prompt";
 
@@ -22,8 +22,6 @@ export interface AgentOptions {
   startOnPage?: boolean;
   /** One line about a tab the user left open ("site: title"). The model sees only this line until it chooses to read the tab. */
   openTab?: string;
-  /** Ask before a saved login is filled in. On by default; the app turns it off once the user trusts the vault. */
-  askBeforeFill?: boolean;
   limits?: Partial<AgentLimits>;
 }
 
@@ -35,7 +33,7 @@ export interface AgentDeps {
   sandbox?: Sandbox;
   /** Lets the agent save and forget memory items when the user asks. The MEMORY block is then numbered m1, m2... */
   memory?: MemoryPort;
-  /** Saved logins (KrishVault). The app fills them into the login form; the model never sees them. */
+  /** Saved logins (KrishVault). The app fills them into the login form on its own; the model never sees them. */
   vault?: VaultPort;
 }
 
@@ -50,9 +48,9 @@ interface Turn {
   result: string;
 }
 
+/** Sign-in steps one run handles (each page and step is tried once, so a wrong password is never retried in a loop). */
+const MAX_LOGIN_TRIES = 6;
 /** What the agent sees while it has no page open. */
-/** Most sign-in/payment questions one run asks before giving up (each page asks only once anyway). */
-const MAX_SENSITIVE_STOPS = 6;
 const NO_PAGE: PageObservation = { url: "", title: "", text: "", elements: [] };
 const noPageText = (openTab?: string) =>
   `No page is open for this task. Answer directly if you can. If the task needs a website, navigate to it.${openTab ? ` The user has this tab open (not read yet): ${openTab}. Use read only if the task is about that tab.` : ""}`;
@@ -76,9 +74,6 @@ const SECRET_TERMS = [
   "senha", "código de verificação", "codigo de verificacao", "código de segurança", "número do cartão", "numero do cartao",
 ];
 const SECRET_ASK = new RegExp(`(?<![\\p{L}\\p{N}\\p{M}])(?:${SECRET_TERMS.join("|")})(?![\\p{L}\\p{N}\\p{M}])`, "iu");
-
-/** The user's task is about logging in. Without this (or a page the agent itself navigated to) a login form that merely happens to be open is left alone. */
-const LOGIN_INTENT = /log[\s-]*(me\s+|us\s+)?(in|on)|sign[\s-]*(me\s+|us\s+)?in|logg?in|vault|लॉग\s?इन|लॉगिन|साइन\s?इन/iu;
 
 /** Words in the task that name a saved login ("log in with this gmail", "use deepu's account"): the best match among the site's logins goes first. */
 export function pickLogin<T extends { label: string; username: string }>(logins: T[], task: string): T | undefined {
@@ -115,7 +110,6 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
   const { driver, router, ui, controller } = deps;
   const signal = controller.signal;
   const history: Turn[] = [];
-  const drafts: string[] = [];
   const attached = nameFiles(opts.files);
   const attachedList = attached.map((f) => `${f.id}: ${f.name} (${f.file.size} bytes)`).join("\n");
   let chipId = 0;
@@ -123,24 +117,27 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
   let stalls = 0;
   let lastSig = "";
   let userReply = "";
-  let homeUrl = "";
   let step = 0;
   /** False until the task needs a page: the app's page (maybe an old tab) is neither read nor shown to the model before that. */
   let pageLive = Boolean(opts.startOnPage);
-  /** The agent itself navigated to the page (it did not find it open), so a saved login may be offered there. */
-  let agentOpened = false;
-  /** Pages where the user already took over once; asking again would only repeat the same prompt. */
-  const takenOver = new Set<string>();
-  let sensitiveStops = 0;
-  /** Sign-in / payment pages the user let the AI see for this run. Passwords are never shown anyway (redacted). */
-  const consented = new Set<string>();
-  /** Login pages already offered a saved login in this run: one try per page, so a wrong password is never retried in a loop. */
-  const vaultTried = new Set<string>();
-  const loginAsked = LOGIN_INTENT.test(opts.task);
-  let startUrl = "";
+  /** Login steps already handled in this run: one try per page and step, so a wrong password is never retried in a loop. */
+  const loginTried = new Set<string>();
   /** Values the app typed into a page for the user (saved logins, secure-card entries). Scrubbed from everything bound for a model. */
   const typed = new Set<string>();
   const scrub = (text: string) => [...typed].reduce((t, v) => t.split(v).join("[REDACTED]"), text);
+  /** For everything shown or stored (chips, events, history, results): the generic redaction plus the values the app typed itself. */
+  const safe = (text: string) => scrub(redactText(text));
+  /** The model's action as shown to the UI: every string in it is scrubbed (the model may have copied a value from an echoing page). */
+  const scrubAction = (a: Action): Action => {
+    const walk = (v: unknown): unknown => (typeof v === "string" ? scrub(v) : Array.isArray(v) ? v.map(walk) : v && typeof v === "object" ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, walk(x)])) : v);
+    return walk(a) as Action;
+  };
+  /** The login steps are several awaits long: STOP must be honoured between them, never after a fill or click that was still pending. */
+  const alive = () => {
+    if (signal.aborted) throw new StoppedError();
+  };
+  /** Values shorter than 3 characters are not scrubbed: replacing every "a" in a page would destroy it. */
+  const remember = (...values: string[]) => values.forEach((v) => v.length >= 3 && typed.add(v));
   let memoryShown: { id: string; text: string }[] = [];
 
   const chip = (label: string, state: ChipState, id = ++chipId) => {
@@ -148,14 +145,15 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
     return id;
   };
 
-  const finish = (status: AgentStatus, summary: string): AgentResult => {
+  const finish = (status: AgentStatus, text: string): AgentResult => {
+    const summary = safe(text);
     ui.emit({ type: "end", status, summary });
     return { status, summary, steps: step };
   };
 
   const describe = (a: Action, obs: PageObservation): string => {
     const el = "elementId" in a && a.elementId !== undefined ? obs.elements.find((e) => e.id === a.elementId) : undefined;
-    const name = el ? redactText((el.label ?? el.text ?? el.name ?? "").trim()).slice(0, 40) : "";
+    const name = el ? safe((el.label ?? el.text ?? el.name ?? "").trim()).slice(0, 40) : "";
     switch (a.type) {
       case "navigate": return `Opening ${siteOf(a.url) ?? "a page"}`;
       case "read": return "Reading a page";
@@ -190,16 +188,12 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
         return clip(scrub(redactText(await driver.read(a.elementId))), lim.readMaxChars);
       case "click":
         await withHighlight(a.elementId, () => driver.click(a.elementId));
-        drafts.length = 0;
         return "clicked";
       case "type":
         await withHighlight(a.elementId, () => driver.type(a.elementId, a.text, a.submit));
-        if (a.submit) drafts.length = 0;
-        else drafts.push(a.text);
         return "typed";
       case "paste":
         await withHighlight(a.elementId, () => driver.paste(a.elementId, a.text));
-        drafts.push(a.text);
         return "pasted";
       case "upload_selected_file": {
         let chosen: ReturnType<typeof nameFiles>[number] | undefined;
@@ -212,11 +206,6 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
           chosen = nameFiles([picked])[0]!;
         }
         const { name, file } = chosen;
-        const ok = await raceStop(
-          ui.confirm({ kind: "upload", title: `Upload to ${new URL(obs.url).hostname}?`, preview: `${name} (${file.size} bytes)` }, signal),
-          signal,
-        );
-        if (!ok) return "user declined the upload";
         await withHighlight(a.elementId, () => driver.upload(a.elementId, file));
         return `uploaded ${name}`;
       }
@@ -228,7 +217,6 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
       case "memory_add": {
         if (!deps.memory) return "memory unavailable";
         const text = clip(redactText(a.text), 500);
-        if (!(await raceStop(ui.confirm({ kind: "memory", title: "Remember this?", preview: text }, signal), signal))) return "user declined; nothing was saved";
         await deps.memory.add(text);
         return `saved to memory: ${text}`;
       }
@@ -239,7 +227,6 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
         if (unknown.length) return `no such memory item: ${unknown.join(", ")}; ids must come from MEMORY. Nothing was removed.`;
         const chosen = [...new Map(picked.map((p) => [p.item!.id, p.item!])).values()];
         const preview = chosen.map((m) => `- ${m.text}`).join("\n");
-        if (!(await raceStop(ui.confirm({ kind: "memory", title: "Forget this?", preview }, signal), signal))) return "user declined; nothing was removed";
         for (const m of chosen) await deps.memory.remove(m.id);
         return `removed from memory:\n${preview}`;
       }
@@ -265,7 +252,7 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
       return "user replied (see USER_REPLY)";
     }
     if (a.secure.kind === "captcha") {
-      await raceStop(ui.takeOver("CAPTCHA: please solve it, then tap Resume", signal), signal);
+      await raceStop(ui.solveCaptcha("Solve the CAPTCHA in the page, then tap Done.", signal), signal);
       return "user handled the CAPTCHA";
     }
     // An explicit id must resolve exactly and be a secret field; there is no silent fallback to another element.
@@ -279,23 +266,55 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
     );
     if (value === undefined) return "user cancelled secure input";
     try {
-      if (value.length >= 3) typed.add(value);
+      remember(value);
       await driver.fillSecret(field.id, value); // value is never stored, logged or sent to a model
     } catch {
       // Page-originated error text could echo the value (a hostile page can hook setters), so it is never passed on.
-      return "could not fill the field; the page may have changed. Try again or ask the user to take over";
+      return "could not fill the field; the page may have changed. Try again or ask the user";
     }
     return "the user entered the value; it was filled into the page (not visible to you)";
   }
 
-  /** One offer per login page (query and fragment ignored) and at most 3 per run, so a page that rewrites its URL cannot make the agent ask forever. */
-  const pageKey = (url: string) => {
-    try { const u = new URL(url); return `${u.origin}${u.pathname}`; } catch { return url; }
+  /** One login step: the page without query and fragment, and whether it is the email step or the password step. */
+  const loginKey = (url: string, form: boolean) => {
+    try { const u = new URL(url); return `${u.origin}${u.pathname}|${form ? "pw" : "email"}`; } catch { return url; }
   };
 
+  const filledResult = (who: "saved" | "user", withPassword: boolean, sent: "sent" | "unsure" | "none") =>
+    `the ${who === "saved" ? "saved" : "user's"} ${withPassword ? "username and password were" : "email was"} filled into the login form (not visible to you)` +
+    (sent === "sent" ? " and the form was sent. Look at the page: if it asks for another step, continue; the app fills sign-in fields itself. Do not click the button again unless the page still shows the form."
+      : sent === "unsure" ? ". The app tried to send the form but is not sure it went out. Look at the page before clicking anything."
+      : ". Click the page's sign-in button next.");
+
+  /** Logins whose password the app already sent this run (site|username): a rejected password is never sent again by the app. */
+  const passwordSent = new Set<string>();
+
   /**
-   * No saved login for this page: the user gets a sign-in card in the chat (email, password, or Google). The app types the values
-   * into the page; the model only learns that it happened. A login can be saved to KrishVault for next time.
+   * After a login form was filled: the app sends it itself (Log in / Continue), choosing only a button of that form.
+   * "sent" = a click went out; "unsure" = the click threw, so it may or may not have gone out; "none" = no confident button.
+   */
+  async function submitLogin(near: PageElement | undefined): Promise<"sent" | "unsure" | "none"> {
+    alive();
+    let button: PageElement | undefined;
+    try {
+      button = findSignInButton((await driver.observe()).elements, near?.form);
+    } catch {
+      return "none";
+    }
+    if (!button) return "none";
+    alive();
+    try {
+      await driver.click(button.id);
+      return "sent";
+    } catch {
+      alive();
+      return "unsure";
+    }
+  }
+
+  /**
+   * No saved login for this site: the user gets the sign-in card once (email and password, or Google). The app types the values into
+   * the page and keeps the login for good, so the next visit needs nothing. The model only learns that it happened.
    */
   async function askLoginCard(obs: PageObservation, host: string): Promise<boolean> {
     const form = findLoginFields(obs.elements);
@@ -303,17 +322,13 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
     const userField = form?.username ?? wall?.username;
     if (!form && !wall) return false;
     const googleButton = wall?.google ?? obs.elements.find((e) => !e.disabled && (e.tag === "button" || e.tag === "a" || e.role === "button") && /google/i.test([e.text, e.label, e.title, e.name].filter(Boolean).join(" ")));
-    const vault = deps.vault;
-    const save = form ? (vault?.unlocked ? "open" : vault && !vault.exists ? "new" : undefined) : undefined;
-    const answer = await raceStop(ui.askLogin({ site: host, google: Boolean(googleButton), save, wall: !form }, signal), signal);
-    const id = chip("Signing in", "running");
+    const answer = await raceStop(ui.askLogin({ site: host, google: Boolean(googleButton) }, signal), signal);
+    alive();
     if (!answer) {
-      chip("Your turn", "action_required", id);
-      await raceStop(ui.takeOver("Sign in yourself in the browser. Krish does not see what you type. Tap Resume when you are done.", signal), signal);
-      chip("Your turn", "done", id);
-      history.push({ action: "sign-in card", result: "the user signed in themselves" });
+      history.push({ action: "sign-in card", result: "the user closed the sign-in card without signing in; ask what to do, or finish" });
       return true;
     }
+    const id = chip("Signing in", "running");
     try {
       if ("google" in answer) {
         if (!googleButton) throw new Error("no Google button");
@@ -322,100 +337,83 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
         history.push({ action: "sign-in card", result: "the user chose Google; its button was clicked. Continue on the Google page." });
         return true;
       }
-      if (answer.username.length >= 3) typed.add(answer.username);
-      if (userField) await driver.fillSecret(userField.id, answer.username);
-      if (form) {
-        if (answer.password.length >= 3) typed.add(answer.password);
-        await driver.fillSecret(form.password.id, answer.password);
-      }
-    } catch {
+      remember(answer.username, answer.password);
+      if (userField && answer.username) await driver.fillSecret(userField.id, answer.username);
+      alive();
+      if (form) await driver.fillSecret(form.password.id, answer.password);
+    } catch (e) {
+      if (e instanceof StoppedError) throw e;
       chip("Signing in", "error", id);
       history.push({ action: "sign-in card", result: "could not fill the form; the page may have changed" });
       return true;
     }
-    chip("Signing in", "done", id);
-    history.push({
-      action: "sign-in card",
-      result: form
-        ? "the user's email and password were filled into the login form (not visible to you). Submit the form next."
-        : "the user's email was filled. Click the page's continue button; the next page asks for the password and the app handles it.",
-    });
-    if (form && answer.save && vault) {
-      try {
-        if (!vault.exists) await vault.create(answer.passphrase ?? "");
-        await vault.put({ site: host, username: answer.username, password: answer.password, label: host });
-        chip("Login saved to KrishVault", "done");
-      } catch {
-        chip("Could not save the login", "error");
-      }
+    try {
+      await deps.vault?.put({ site: host, username: answer.username, password: answer.password, label: host });
+    } catch {
+      chip("Could not save the login", "error");
     }
+    if (form) passwordSent.add(`${host}|${answer.username}`);
+    const sent = await submitLogin(form?.password ?? userField);
+    chip("Signing in", "done", id);
+    history.push({ action: "sign-in card", result: filledResult("user", form !== undefined, sent) });
     return true;
   }
 
   /**
-   * Fills a saved login into the login form, with the user's OK. The app does it natively: the model sees only that it happened.
-   * Returns true when something was done (re-observe). Before filling, the page is looked at again: the unlock and confirm cards can
-   * take a long time and the page may have moved on, so the fields and the site are re-checked against the page that is live now.
+   * Fills the saved login for this site into the login form, silently. The app does it natively: the model sees only that it
+   * happened. Logins are matched by site, so a password only ever goes to the site it was saved for.
+   * Returns true when something was done (look at the page again).
    */
   async function autofillLogin(obs: PageObservation): Promise<boolean> {
-    const vault = deps.vault;
     const form = findLoginFields(obs.elements);
     const wall = form ? undefined : findLoginWall(obs); // email-first page: no password field yet
-    if ((!form && !wall) || !sameSite(obs.url, homeUrl) || vaultTried.has(pageKey(obs.url)) || vaultTried.size >= 3) return false;
-    if (!loginAsked && obs.url === startUrl) return false; // an unrelated task (e.g. "remember this") never triggers a login
-    vaultTried.add(pageKey(obs.url));
+    if (!form && !wall) return false;
+    const key = loginKey(obs.url, Boolean(form));
+    if (loginTried.has(key) || loginTried.size >= MAX_LOGIN_TRIES) return false;
+    loginTried.add(key);
     const host = new URL(obs.url).hostname;
-    if (!form) return askLoginCard(obs, host);
-    if (vault?.exists && !vault.unlocked) {
-      const pass = await raceStop(ui.askSecure({ kind: "password", title: "Unlock KrishVault to use your saved login", site: "KrishVault", field: "Master passphrase" }, signal), signal);
-      if (pass === undefined || !(await vault.unlock(pass))) {
-        history.push({ action: "KrishVault autofill", result: "KrishVault stayed locked; no saved login was used" });
-        return false;
+    const chosen = pickLogin(deps.vault?.logins(obs.url) ?? [], opts.task);
+    if (!chosen) {
+      // "Continue with Google" with a saved Google login: no card, the Google page is filled by the app next.
+      const google = wall?.google ?? obs.elements.find((e) => !e.disabled && /continue with google|sign in with google/i.test([e.text, e.label, e.title].filter(Boolean).join(" ")));
+      if (google && deps.vault?.logins("https://accounts.google.com").length) {
+        alive();
+        await driver.click(google.id);
+        history.push({ action: "KrishVault autofill", result: "Continue with Google was clicked (a Google login is saved). Continue on the Google page." });
+        return true;
       }
+      return askLoginCard(obs, host);
     }
-    const logins = vault?.unlocked ? vault.logins(obs.url) : [];
-    const chosen = pickLogin(logins, opts.task);
-    if (!vault || !chosen) return askLoginCard(obs, host);
-    const who = logins.length > 1 ? `${chosen.label} (${chosen.username}); ${logins.length - 1} more saved` : `${chosen.label} (${chosen.username})`;
-    const ok = opts.askBeforeFill === false || (await raceStop(ui.confirm({ kind: "vault", title: `Fill your saved login on ${host}?`, preview: who }, signal), signal));
-    if (!ok) {
-      history.push({ action: "KrishVault autofill", result: "user declined the saved login" });
-      return false;
-    }
+    // The app already sent this account's password in this run and the site is showing the form again: it was rejected. Do not repeat it.
+    const account = `${host}|${chosen.username}`;
+    if (form && passwordSent.has(account)) return false;
     const id = chip("Filling saved login", "running");
-    const abort = (why: string) => {
-      chip("Filling saved login", "error", id);
-      history.push({ action: "KrishVault autofill", result: why });
-      return true;
-    };
     try {
-      const live = await driver.observe();
-      const liveForm = findLoginFields(live.elements);
-      // Credentials are read from the vault only now, and only if it is still unlocked and the live page is the approved site.
-      const login = vault.unlocked && sameSite(live.url, homeUrl) ? vault.logins(live.url).find((e) => e.id === chosen.id) : undefined;
-      if (!liveForm || !login) return abort("the page changed or KrishVault was locked before the login could be filled; nothing was filled");
-      for (const v of [login.username, login.password]) if (v.length >= 3) typed.add(v);
-      if (liveForm.username && login.username) await driver.fillSecret(liveForm.username.id, login.username);
-      await driver.fillSecret(liveForm.password.id, login.password);
-    } catch {
-      return abort("could not fill the form; the page may have changed");
+      const userField = form?.username ?? wall?.username;
+      remember(chosen.username, form ? chosen.password : "");
+      alive();
+      if (userField && chosen.username) await driver.fillSecret(userField.id, chosen.username);
+      alive();
+      if (form) await driver.fillSecret(form.password.id, chosen.password);
+    } catch (e) {
+      if (e instanceof StoppedError) throw e;
+      chip("Filling saved login", "error", id);
+      history.push({ action: "KrishVault autofill", result: "could not fill the form; the page may have changed" });
+      return true;
     }
+    if (form) passwordSent.add(account);
+    const sent = await submitLogin(form?.password ?? form?.username ?? wall?.username);
     chip("Filling saved login", "done", id);
-    history.push({ action: "KrishVault autofill", result: "the saved username and password were filled into the login form (not visible to you). Submit the form next." });
+    history.push({ action: "KrishVault autofill", result: filledResult("saved", form !== undefined, sent) });
     return true;
   }
 
   try {
     for (; step < lim.maxSteps; ) {
-      await controller.whenRunning();
       if (signal.aborted) throw new StoppedError();
 
       const obs = pageLive ? await driver.observe() : NO_PAGE;
-      homeUrl ||= obs.url;
-      if (!agentOpened) startUrl ||= obs.url;
       if (pageLive && (await autofillLogin(obs))) continue;
-      const pageSensitive = isSensitivePage(obs);
-      const sensitive = pageSensitive && !consented.has(pageKey(obs.url));
       const text = pageLive ? formatObservation(obs) : noPageText(opts.openTab ? redactText(opts.openTab) : undefined);
       // The numbers the model sees are fixed for this step, so "m2" always means the line it read.
       memoryShown = deps.memory ? await deps.memory.list() : [];
@@ -436,56 +434,24 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
         const run = await router.run(
           [
             { role: "system", content: SYSTEM_PROMPT },
-            { role: "user", content: prompt, imageDataUrl: opts.screenshots && !pageSensitive && typed.size === 0 ? obs.screenshotDataUrl : undefined },
+            { role: "user", content: prompt, imageDataUrl: opts.screenshots && typed.size === 0 ? obs.screenshotDataUrl : undefined },
           ],
           (raw) => parseReply(raw, step === 0),
-          { sensitive, signal },
+          { signal },
         );
         action = run.value;
         ui.emit({ type: "provider", providerId: run.providerId, model: run.model });
       } catch (e) {
         if (e instanceof AbortedError) throw new StoppedError();
-        if (e instanceof AllProvidersFailedError) {
-          const blockedBySensitive = e.attempts.some((a) => a.detail === "sensitive page not allowed");
-          if (sensitive && blockedBySensitive) {
-            if (++sensitiveStops > MAX_SENSITIVE_STOPS) return finish("failed", "I kept landing on sign-in or payment pages. Finish them yourself, then send your request again.");
-            const key = pageKey(obs.url);
-            const where = key;
-            if (!takenOver.has(key)) {
-              const allowed = await raceStop(
-                ui.confirm({ kind: "sensitive", title: "This looks like a sign-in or payment page. Let the AI see it?", preview: `${where}\n\nPasswords and codes are never shown to the AI.` }, signal),
-                signal,
-              );
-              if (allowed) {
-                consented.add(key);
-                continue;
-              }
-              takenOver.add(key);
-              const id = chip("Your turn", "action_required");
-              await raceStop(ui.takeOver("Do this step yourself in the browser. Krish does not see what you type. Tap Resume when you are done.", signal), signal);
-              chip("Your turn", "done", id);
-              continue;
-            }
-            return finish("failed", "I stopped on a sign-in or payment page that the AI may not see. Finish it yourself, then send your request again.");
-          }
-          return finish("failed", e.message);
-        }
         throw e;
-      }
-      // The user took over while the AI was planning: that plan is for a page that may have changed. Plan again after Resume.
-      if (controller.isPaused && action.type !== "done") {
-        await controller.whenRunning();
-        if (signal.aborted) throw new StoppedError();
-        continue;
       }
       step += 1;
 
-      const verdict = gate(action, { obs, homeUrl, drafts });
-      // Display-only (the policy gate never reads it). The model's own status line follows the user's language, but only
-      // for steps that need no approval: a step that asks, confirms or is blocked keeps the app's fixed wording, and
-      // secure-input steps always use the fixed "Waiting for you", so model text can never dress up a trusted prompt.
+      const verdict = gate(action, obs);
+      // Display-only (the policy gate never reads it). The model's own status line follows the user's language, except for
+      // blocked steps and secure-input steps, which keep the app's fixed wording so model text can never dress up a trusted prompt.
       const thought = verdict.verdict === "allow" && !(action.type === "ask_user" && action.secure) ? cleanLabel(action.thought ?? "") : "";
-      const label = thought ? clip(redactText(thought), 80) : describe(action, obs);
+      const label = thought ? clip(safe(thought), 80) : describe(action, obs);
       // A plain answer (done as the very first step) is just chat text: no step pill for it.
       const plainAnswer = action.type === "done" && step === 1;
       const id = plainAnswer ? 0 : chip(label, action.type === "ask_user" && action.secure ? "action_required" : "running");
@@ -493,7 +459,7 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
 
       if (action.type === "done") {
         if (!plainAnswer) chip(label, "done", id);
-        ui.emit({ type: "action", step, action, result: action.summary });
+        ui.emit({ type: "action", step, action: scrubAction(action), result: safe(action.summary) });
         return finish("done", action.summary);
       }
 
@@ -516,28 +482,22 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
         } else if (openingTab) {
           result = "blocked: no page is open; navigate to a site first";
           failed = true;
-        } else if (verdict.verdict === "confirm" && !(await raceStop(ui.confirm(verdict.request, signal), signal))) {
-          result = "user declined this action; ask what to change or finish";
         } else {
-          if (verdict.verdict === "confirm" && verdict.request.kind === "navigate") homeUrl = verdict.request.preview; // previews of navigate confirmations are URLs
           if (BROWSER_ACTIONS.has(action.type)) ui.emit({ type: "browser" });
           const openUrl = !pageLive && action.type === "navigate" ? action.url : undefined;
           result = await execute(action, obs);
           // Only a page that really opened becomes the page the agent reads; a failed navigation leaves the old tab alone.
-          if (openUrl) {
-            homeUrl = openUrl;
-            agentOpened = true;
-            pageLive = true;
-          }
+          if (openUrl) pageLive = true;
         }
       } catch (e) {
         if (e instanceof StoppedError) throw e;
-        result = `error: ${e instanceof Error ? redactText(e.message) : "action failed"}`;
+        result = `error: ${e instanceof Error ? safe(e.message) : "action failed"}`;
         failed = true;
       }
 
+      result = scrub(result);
       chip(label, failed ? "error" : "done", id);
-      ui.emit({ type: "action", step, action, result });
+      ui.emit({ type: "action", step, action: scrubAction(action), result });
       history.push({ action: actionText, result });
 
       consecutiveErrors = failed ? consecutiveErrors + 1 : 0;
@@ -557,7 +517,7 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
     return finish("max_steps", `step limit (${lim.maxSteps}) reached`);
   } catch (e) {
     if (e instanceof StoppedError) return finish("stopped", "stopped by user");
-    return finish("failed", e instanceof Error ? redactText(e.message) : "unexpected error");
+    return finish("failed", e instanceof Error ? e.message : "unexpected error");
   } finally {
     if (pageLive) await driver.highlight(undefined).catch(() => undefined); // a plain chat never touches the browser, not even to clean up
   }

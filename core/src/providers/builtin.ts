@@ -1,7 +1,7 @@
 import type { ProviderConfig } from "./types";
 
 const free = (id: string, name: string, baseUrl: string, models: string[], anonymousKey?: string): ProviderConfig => ({
-  id, name, kind: "openai-compat", baseUrl, enabled: true, keyless: true, allowSensitive: false, ...(anonymousKey ? { anonymousKey } : {}),
+  id, name, kind: "openai-compat", baseUrl, enabled: true, keyless: true, ...(anonymousKey ? { anonymousKey } : {}),
   defaultModel: models[0], fallbackModel: models[1],
   models: { fetchedAt: 0, items: models.map((m) => ({ id: m })) },
 });

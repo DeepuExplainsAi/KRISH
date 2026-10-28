@@ -45,17 +45,8 @@ export const DEFAULTS = {
   ],
   /** Regex sources (case-insensitive). Edit freely. */
   patterns: {
-    sensitiveUrl:
-      "(login|log-in|signin|sign-in|sso|oauth|authenticate|checkout|payment|billing|2fa|mfa|verify|password|banking|netbanking|wallet)",
-    sensitiveHost: "(bank|paypal|stripe|razorpay|paytm|phonepe|upi|wise\\.com|revolut)",
     secretField:
       "(pass(word|wd)?|otp|2fa|mfa|cvv|cvc|card.?(number|num|no)|ccnum|\\bpin\\b|security.?code|verification.?code|one.?time)",
-    cosmeticClick:
-      "^(not now|no thanks|maybe later|skip|dismiss|close|got it|reject( all)?|decline|necessary only)$",
-    consentClick:
-      "\\b(allow|accept( all)?|agree|enable|grant|remember me|save (password|login)|stay signed in|turn on notifications?)\\b",
-    riskyClick:
-      "\\b(send|submit|post|publish|tweet|reply|share|delete|remove|pay|buy|purchase|place order|subscribe|unsubscribe|confirm|transfer|save changes|update (profile|settings)|deactivate)\\b",
   },
 } as const;
 

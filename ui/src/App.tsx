@@ -29,7 +29,7 @@ const SCREENS: Record<Screen, React.ComponentType> = {
   vault: screenOf(() => import("./screens/Vault"), "Vault"),
 };
 
-const STATUS_KEY = { idle: "statusIdle", running: "statusWorking", action_required: "actionRequired", paused: "statusPaused" } as const;
+const STATUS_KEY = { idle: "statusIdle", running: "statusWorking", action_required: "actionRequired" } as const;
 
 export function App() {
   const app = useApp();

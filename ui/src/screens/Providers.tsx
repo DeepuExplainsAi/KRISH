@@ -98,7 +98,6 @@ function ProviderCard({ p, index, rank, last }: { p: ProviderConfig; index: numb
       )}
       <details className="more">
         <summary>{t("moreOptions")}</summary>
-        <label><input type="checkbox" checked={p.allowSensitive} onChange={(e) => update({ allowSensitive: e.target.checked })} /> {t("allowSensitive")}</label>
         <label>{t("dailyCap")}
           <input type="number" min={1} value={p.dailyLimit ?? ""} onChange={(e) => update({ dailyLimit: e.target.value ? Number(e.target.value) : undefined })} />
         </label>

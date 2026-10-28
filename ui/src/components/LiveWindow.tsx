@@ -25,9 +25,9 @@ export function LiveWindow({ compact = false }: { compact?: boolean }) {
   const viewBox = useRef<HTMLDivElement>(null);
   const sent = useRef("");
 
-  // While a confirm / question / secure card is up, the page area folds away so nothing page-controlled sits next to it.
-  // Take-over prompts are the exception: the user needs the page to solve a CAPTCHA.
-  const blocking = s.prompts.some((p) => p.type !== "takeover");
+  // While a question / secure card is up, the page area folds away so nothing page-controlled sits next to it.
+  // The CAPTCHA prompt is the exception: the user needs the page to solve it.
+  const blocking = s.prompts.some((p) => p.type !== "captcha");
   const open = s.windowOpen;
   const expanded = s.windowExpanded;
   // On other screens (API Keys, Settings...) the window is only a status strip, so it never covers what the user came to see; Expand opens it full screen.
@@ -90,8 +90,6 @@ export function LiveWindow({ compact = false }: { compact?: boolean }) {
           {needsYou ? <IconWarn /> : (s.running || s.page.loading) && <span className="dots" aria-hidden="true"><i /><i /><i /></span>}
           <span className="txt">{needsYou ? t("actionRequired") : statusText}</span>
         </span>
-        {s.running && !s.paused && <button className="round wide takeover" onClick={() => app.takeOver()}>{t("takeOver")}</button>}
-        {s.paused && <button className="round wide" onClick={() => app.resume()}>{t("resume")}</button>}
         {s.running && <button className="round" onClick={app.stop} aria-label={t("stop")} title={t("stop")}><IconStop /></button>}
         <button className="round" onClick={app.toggleWindowExpanded} aria-label={expanded ? t("collapse") : t("expand")} title={expanded ? t("collapse") : t("expand")}>
           {expanded ? <IconShrink /> : <IconExpand />}

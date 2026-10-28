@@ -121,16 +121,6 @@ describe("ProviderRouter fallback", () => {
     expect(await router.usageToday("a")).toBe(1);
   });
 
-  it("skips providers not allowed on sensitive pages", async () => {
-    const { router, calls } = await setup(
-      { "a.test": () => openaiReply(DONE), "b.test": () => openaiReply(DONE) },
-      [provider("a"), provider("b", { allowSensitive: true })],
-    );
-    const r = await router.run(msgs, parseAction, { sensitive: true });
-    expect(r.providerId).toBe("b");
-    expect(calls.some((c) => c.url.includes("a.test"))).toBe(false);
-  });
-
   it("throws when every provider fails or none can be used", async () => {
     const { router } = await setup({ "a.test": () => json({}, 500), "b.test": () => json({}, 429) });
     await expect(router.run(msgs, parseAction)).rejects.toBeInstanceOf(AllProvidersFailedError);

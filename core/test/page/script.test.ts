@@ -148,6 +148,18 @@ describe("page script", () => {
     expect(cont.submits).toBe(true); // no type attribute, still submits
   });
 
+  it("numbers the form a control belongs to, so the app can pick the Log in button of the form it filled", () => {
+    document.body.innerHTML =
+      '<form id="a"><input name="q"><button>Search</button></form>' +
+      '<form id="b"><input type="email" name="email"><input type="password" name="pw"><button>Log in</button></form><button>Outside</button>';
+    const els = obs().elements;
+    const form = (t: string) => els.find((e) => e.text === t || e.name === t)!.form;
+    expect(form("Search")).toBe(form("q"));
+    expect(form("Log in")).toBe(form("pw"));
+    expect(form("Log in")).not.toBe(form("Search"));
+    expect(form("Outside")).toBeUndefined();
+  });
+
   it("refuses an element the page swapped into the registry after observation", () => {
     const o = obs();
     const q = o.elements.find((e) => e.name === "q")!;

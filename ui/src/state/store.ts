@@ -1,7 +1,7 @@
 import {
   AgentController, DEFAULTS, autoFetchOnce, cleanLabel, friendlyReason, DEFAULT_BRIEF, History, Memory, newId, Panels, ProviderRouter, Projects, refreshModels, probeModels, withAutoModels,
   runAgent, Scheduler, nextRun, nextBriefAt, briefCommand, Vault,
-  type AgentEvent, type AgentUI, type BriefSettings, type ChipState, type ConfirmRequest, type PageDriver, type ProviderConfig,
+  type AgentEvent, type AgentUI, type BriefSettings, type ChipState, type PageDriver, type ProviderConfig,
   type LoginAnswer, type LoginRequest, type MemoryPort, type SecureKind, type SelectedFile, type Sandbox, setLocalEngine, type ModelInfo,
   BUILTIN_PROVIDERS, DEFAULT_BUILTIN_ID, rankModels,
 } from "@krish/core";
@@ -14,7 +14,7 @@ import type { ThemePref } from "../theme";
 export const MAX_ATTACHMENTS = 10;
 
 /** Bump when a default changes and old saved values must be migrated (see `migrateSettings`). */
-export const SETTINGS_VERSION = 4;
+export const SETTINGS_VERSION = 5;
 
 export interface Settings {
   version: number;
@@ -32,10 +32,6 @@ export interface Settings {
   localModel: boolean;
   /** When your own providers all fail (or none is added), use the built-in free service as the last resort. */
   freeFallback: boolean;
-  /** The AI may read the text of sign-in and payment pages (passwords, codes and card numbers are always hidden from it). */
-  aiSeesLogin: boolean;
-  /** Ask before a saved login is filled into a page. */
-  confirmFill: boolean;
   /** The first-run tour was shown (or skipped). */
   tourDone: boolean;
   /** Set after the user accepted the download notice. */
@@ -55,8 +51,6 @@ export const DEFAULT_SETTINGS: Settings = {
   brief: DEFAULT_BRIEF,
   linuxSandbox: false,
   freeFallback: true,
-  aiSeesLogin: true,
-  confirmFill: false,
   tourDone: false,
   localModel: false,
   localModelConsent: false,
@@ -81,17 +75,18 @@ export function migrateSettings(saved: Partial<Settings>): Partial<Settings> {
   if (v >= SETTINGS_VERSION) return saved;
   const old = v === 1 ? saved.theme === undefined || saved.theme === "light" : saved.theme === undefined || saved.theme === "system";
   const theme = v < 3 ? (old ? "auto" : saved.theme) : saved.theme;
-  return { ...saved, version: SETTINGS_VERSION, theme, ...(v < 4 && { desktopLayout: true }) };
+  const rest: Record<string, unknown> = { ...saved, version: SETTINGS_VERSION, theme, ...(v < 4 && { desktopLayout: true }) };
+  for (const gone of ["aiSeesLogin", "confirmFill"]) delete rest[gone]; // the confirmation and sign-in-page switches no longer exist
+  return rest as Partial<Settings>;
 }
 
 export type Screen = "home" | "chat" | "menu" | "vault" | "panels" | "projects" | "tasks" | "history" | "providers" | "settings" | "security";
 
 export type Prompt =
-  | { id: number; type: "confirm"; req: ConfirmRequest; resolve: (ok: boolean) => void }
   | { id: number; type: "ask"; question: string; resolve: (v: string | undefined) => void }
   | { id: number; type: "secure"; kind: SecureKind; title: string; site: string; field: string; resolve: (v: string | undefined) => void }
   | { id: number; type: "login"; req: LoginRequest; resolve: (v: LoginAnswer | undefined) => void }
-  | { id: number; type: "takeover"; reason: string; resolve: () => void };
+  | { id: number; type: "captcha"; reason: string; resolve: () => void };
 
 export interface ChatItem {
   id: number;
@@ -117,7 +112,6 @@ export interface State {
   attachments: SelectedFile[];
   prompts: Prompt[];
   running: boolean;
-  paused: boolean;
   /** The browser card is shown (in the layout, never floating). */
   /** Provider ids whose connection is being tested right now. */
   checking: string[];
@@ -125,7 +119,7 @@ export interface State {
   /** The card fills the screen. */
   windowExpanded: boolean;
   page: { url: string; title: string; loading: boolean };
-  status: "idle" | "running" | "action_required" | "paused";
+  status: "idle" | "running" | "action_required";
   deviceLowRam: boolean;
   linuxAvailable: boolean;
   notice?: string;
@@ -151,7 +145,7 @@ const LIST_REFRESH_MS = 6 * 36e5;
 export class AppStore {
   state: State = {
     ready: false, screen: "home", settings: DEFAULT_SETTINGS, providers: [], freeProviders: BUILTIN_PROVIDERS, items: [], attachments: [], prompts: [],
-    running: false, paused: false, checking: [], windowOpen: false, windowExpanded: false,
+    running: false, checking: [], windowOpen: false, windowExpanded: false,
     page: { url: "", title: "", loading: false }, status: "idle", deviceLowRam: false, linuxAvailable: false,
     localModels: [], localStatus: "",
   };
@@ -183,7 +177,7 @@ export class AppStore {
   readonly panels: Panels;
   readonly scheduler: Scheduler;
   readonly router: ProviderRouter;
-  /** KrishVault: saved logins, encrypted with the user's master passphrase, stored through the platform key store. */
+  /** KrishVault: saved logins, kept for good in the platform key store (Android Keystore / OS keychain). */
   readonly vault: Vault;
 
   constructor(readonly platform: Platform) {
@@ -204,14 +198,12 @@ export class AppStore {
   /** The on-device model goes first when enabled; then the free OpenCode Zen; then the user's own providers; the other built-in free services are the last resort. */
   private routerProviders(): ProviderConfig[] {
     const { localModel, localModelConsent, localModelId } = this.state.settings;
-    // One switch for all of the user's own providers; the per-provider flag can still allow it on its own. Passwords and codes are redacted either way.
-    const seeLogin = this.state.settings.aiSeesLogin;
-    const mine = seeLogin ? this.state.providers.map((p) => (p.allowSensitive ? p : { ...p, allowSensitive: true })) : this.state.providers;
+    const mine = this.state.providers;
     const free = this.state.settings.freeFallback ? this.state.freeProviders : [];
     const all = [...free.filter((p) => p.id === DEFAULT_BUILTIN_ID), ...mine, ...free.filter((p) => p.id !== DEFAULT_BUILTIN_ID)];
     if (!localModel || !localModelConsent || !localModelId || !webgpuAvailable()) return all;
     const local: ProviderConfig = {
-      id: "local", name: "On-device", kind: "webgpu-local", baseUrl: "local:", enabled: true, allowSensitive: true, defaultModel: localModelId,
+      id: "local", name: "On-device", kind: "webgpu-local", baseUrl: "local:", enabled: true, defaultModel: localModelId,
     };
     return [local, ...all];
   }
@@ -271,7 +263,6 @@ export class AppStore {
 
   dispose() {
     clearInterval(this.listTimer);
-    this.vault.lock();
     this.unPage?.();
   }
 
@@ -299,10 +290,10 @@ export class AppStore {
     await this.platform.kv.set(PROVIDERS_KEY, JSON.stringify(providers));
   }
 
-  async addProvider(cfg: Omit<ProviderConfig, "id" | "enabled" | "allowSensitive">, apiKey: string) {
+  async addProvider(cfg: Omit<ProviderConfig, "id" | "enabled">, apiKey: string) {
     const id = newId();
     await this.platform.keys.set(id, apiKey);
-    const base: ProviderConfig = { ...cfg, id, enabled: true, allowSensitive: false };
+    const base: ProviderConfig = { ...cfg, id, enabled: true };
     await this.saveProviders(insertByPreset(this.state.providers, base));
     // One automatic model fetch, only when the key is first added, then a real test of the best models.
     await this.check(id, async (p) => autoFetchOnce(p, apiKey, { fetch: this.platform.fetch }));
@@ -425,17 +416,17 @@ export class AppStore {
   toggleWindowExpanded = () => this.set({ windowExpanded: !this.state.windowExpanded });
 
   // ---- prompts ----
-  /** Only a step the user must do themselves (a login wall, a code, a CAPTCHA) is "action required". A question or an approval is part of the conversation. */
+  /** Only a step the user must do themselves (a login, a code, a CAPTCHA) is "action required". A question is part of the conversation. */
   private prompt<T extends Prompt["type"]>(build: (id: number) => Extract<Prompt, { type: T }>) {
     const p = build(++this.seq);
-    const critical = p.type === "takeover" || p.type === "secure" || p.type === "login";
+    const critical = p.type === "captcha" || p.type === "secure" || p.type === "login";
     this.set({ prompts: [...this.state.prompts, p], ...(critical ? { status: "action_required" as const } : {}) });
     return p.id;
   }
   private settle(id: number) {
     const prompts = this.state.prompts.filter((p) => p.id !== id);
-    const critical = prompts.some((p) => p.type === "takeover" || p.type === "secure" || p.type === "login");
-    this.set({ prompts, status: critical ? "action_required" : this.state.running ? (this.state.paused ? "paused" : "running") : "idle" });
+    const critical = prompts.some((p) => p.type === "captcha" || p.type === "secure" || p.type === "login");
+    this.set({ prompts, status: critical ? "action_required" : this.state.running ? "running" : "idle" });
   }
   answer(id: number, value: unknown) {
     const p = this.state.prompts.find((x) => x.id === id);
@@ -451,18 +442,16 @@ export class AppStore {
         signal.addEventListener("abort", () => (this.settle(id), resolve(fallback)), { once: true });
       });
     return {
-      confirm: (req, signal) =>
-        wait<boolean>((resolve) => this.prompt((id) => ({ id, type: "confirm", req, resolve })), signal, false),
       ask: (question, signal) =>
         wait<string | undefined>((resolve) => this.prompt((id) => ({ id, type: "ask", question, resolve })), signal, undefined),
       askSecure: ({ kind, title, site, field }, signal) =>
         wait<string | undefined>((resolve) => this.prompt((id) => ({ id, type: "secure", kind, title, site, field, resolve })), signal, undefined),
       askLogin: (req, signal) =>
         wait<LoginAnswer | undefined>((resolve) => this.prompt((id) => ({ id, type: "login", req, resolve })), signal, undefined),
-      takeOver: (reason, signal) => {
+      solveCaptcha: (reason, signal) => {
         this.openWindow();
         void this.platform.browser.setMode("live");
-        return wait<void>((resolve) => this.prompt((id) => ({ id, type: "takeover", reason, resolve })), signal, undefined);
+        return wait<void>((resolve) => this.prompt((id) => ({ id, type: "captcha", reason, resolve })), signal, undefined);
       },
       pickFile: async () => this.platform.files.pick(),
       emit: (e) => this.onAgentEvent(runId, e),
@@ -564,7 +553,7 @@ export class AppStore {
     // Only the composer passes files; saved tasks, panels and the brief never pick up the composer's tray.
     const files = opts.files ?? [];
     if (opts.files) this.draftEpoch++;
-    this.set({ running: true, paused: false, status: "running", screen: "chat", ...(opts.files ? { attachments: [] } : {}) });
+    this.set({ running: true, status: "running", screen: "chat", ...(opts.files ? { attachments: [] } : {}) });
     if (opts.startUrl) this.openWindow();
     else this.closeWindow(); // a plain chat starts without the card (and without the tab left open before)
     this.push({ role: "user", text: command, files: files.length ? files.map(({ name, size }) => ({ name, size })) : undefined });
@@ -576,27 +565,17 @@ export class AppStore {
       const { url, title } = this.state.page;
       const openTab = url && url !== "about:blank" ? `${title ? `${title} — ` : ""}${url}` : undefined;
       await runAgent(
-        { task, files, screenshots: this.state.settings.screenshots, startOnPage: Boolean(opts.startUrl), openTab, askBeforeFill: this.state.settings.confirmFill },
+        { task, files, screenshots: this.state.settings.screenshots, startOnPage: Boolean(opts.startUrl), openTab },
         { driver: this.driver(), router: this.router, ui: this.buildUI(runId), controller, sandbox: this.sandbox, memory: this.memoryPort(), vault: this.vault },
       );
     } finally {
       this.controller = undefined;
-      this.set({ running: false, paused: false, status: "idle", prompts: [] });
+      this.set({ running: false, status: "idle", prompts: [] });
       await this.platform.browser.setMode(this.state.windowOpen ? "live" : "hidden").catch(() => undefined);
     }
   }
 
   stop = () => this.controller?.stop();
-  takeOver() {
-    this.controller?.pause();
-    this.set({ paused: true, status: "paused" });
-    this.openWindow();
-    void this.platform.browser.setMode("live");
-  }
-  resume() {
-    this.controller?.resume();
-    this.set({ paused: false, status: "running" });
-  }
   clearChat = () => this.set({ items: [] });
   dismissItem = (id: number) => this.set({ items: this.state.items.filter((i) => i.id !== id) });
   /** Opens the system picker (any file type). Throws if the platform cannot read the file; the UI shows the message. */
