@@ -175,7 +175,8 @@ function registerIpc() {
 
   handle("fetch", async ({ url, init }) => {
     const v = lib.validateFetch(url, init);
-    const res = await fetch(url, { ...v, redirect: "error", credentials: "omit", signal: AbortSignal.timeout(60000) });
+    // net.fetch: the Chromium network stack, so system proxies and certificates apply and no WebAssembly is needed.
+    const res = await net.fetch(url, { ...v, redirect: "error", credentials: "omit", bypassCustomProtocolHandlers: true, signal: AbortSignal.timeout(60000) });
     return { status: res.status, statusText: res.statusText, headers: Object.fromEntries(res.headers), body: await res.text() };
   });
   handle("key:get", ({ key }) => secrets.get(String(key)));

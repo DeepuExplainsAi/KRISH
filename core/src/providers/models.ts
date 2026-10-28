@@ -25,10 +25,22 @@ export async function refreshModels(config: ProviderConfig, apiKey: string, deps
       fetch: deps.fetch,
       timeoutMs: deps.timeoutMs ?? DEFAULTS.router.requestTimeoutMs,
     });
-    return { ...config, models: { fetchedAt: (deps.now ?? Date.now)(), items }, modelsError: undefined };
+    const at = (deps.now ?? Date.now)();
+    return { ...config, models: { fetchedAt: at, items }, modelsError: undefined, modelsChanged: diffModels(config, items, at) };
   } catch (e) {
     return { ...config, modelsError: e instanceof Error ? e.message : "refresh failed" };
   }
+}
+
+/** Models that appeared or vanished since the last list. A first list is not a change; an unchanged list keeps the last report. */
+function diffModels(config: ProviderConfig, items: ModelInfo[], at: number): ProviderConfig["modelsChanged"] {
+  const before = config.models?.items;
+  if (!before?.length) return config.modelsChanged;
+  const was = new Set(before.map((m) => m.id));
+  const now = new Set(items.map((m) => m.id));
+  const added = [...now].filter((id) => !was.has(id));
+  const removed = [...was].filter((id) => !now.has(id));
+  return added.length || removed.length ? { at, added, removed } : config.modelsChanged;
 }
 
 /** Automatic fetch happens exactly once, right after the key is first added. */

@@ -25,6 +25,8 @@ export interface ProviderConfig {
   enabled: boolean;
   /** Needs no API key (the built-in free service). Always tried last. */
   keyless?: boolean;
+  /** Sent as the key by a keyless service that expects one (OpenCode Zen's public free access). */
+  anonymousKey?: string;
   /** Per-provider privacy flag. Default false. */
   allowSensitive: boolean;
   defaultModel?: string;
@@ -35,6 +37,8 @@ export interface ProviderConfig {
   dailyLimit?: number;
   models?: ModelCache;
   modelsError?: string;
+  /** What the last list refresh changed: models that appeared and models that are gone. */
+  modelsChanged?: { at: number; added: string[]; removed: string[] };
   /** Result of the last real call (a connection test or an agent step). Drives the green tick in the UI. */
   health?: { ok: boolean; at: number; note?: string };
   /** Set after the single automatic fetch on first key add. */

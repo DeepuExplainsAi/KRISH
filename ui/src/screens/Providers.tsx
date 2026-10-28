@@ -30,6 +30,21 @@ function ModelPicker({ p }: { p: ProviderConfig }) {
   );
 }
 
+/** Models that appeared or were retired at the last list refresh (at most a few names each). */
+function Changes({ p }: { p: ProviderConfig }) {
+  const { t } = useT();
+  const c = p.modelsChanged;
+  if (!c || (!c.added.length && !c.removed.length)) return null;
+  const list = (ids: string[]) => ids.slice(0, 4).join(", ") + (ids.length > 4 ? ` +${ids.length - 4}` : "");
+  return (
+    <p className="muted small">
+      {c.added.length > 0 && t("modelsNew", { list: list(c.added) })}
+      {c.added.length > 0 && c.removed.length > 0 && " · "}
+      {c.removed.length > 0 && t("modelsGone", { list: list(c.removed) })}
+    </p>
+  );
+}
+
 /** A colored dot and one short line: checking, ready, or the reason it is not working. */
 function Health({ p }: { p: ProviderConfig }) {
   const s = useAppState();
@@ -65,6 +80,7 @@ function ProviderCard({ p, index, rank, last }: { p: ProviderConfig; index: numb
         {p.models && ` · ${t("listFrom", { time: new Date(p.models.fetchedAt).toLocaleDateString() })}`}
         {" · "}{p.modelsChosen ? t("modelsManual") : t("modelsAuto")}
       </p>
+      <Changes p={p} />
       {p.modelsError && <p className="error small">{p.modelsError}</p>}
       <div className="row">
         <button onClick={() => void app.testProvider(p.id)} disabled={busy}>{t("testConnection")}</button>
@@ -103,6 +119,7 @@ function ProviderCard({ p, index, rank, last }: { p: ProviderConfig; index: numb
 function FreeAiCard() {
   const app = useApp();
   const on = useAppState().settings.freeFallback;
+  const zen = useAppState().freeProviders.find((p) => p.id === "builtin-zen");
   const { t } = useT();
   return (
     <div className="card pcard builtin">
@@ -110,6 +127,7 @@ function FreeAiCard() {
         <span className="row"><span className="letter">∞</span><span className="stack"><strong>{t("freeAiTitle")}</strong><span className="muted">{t("freeAiNote")}</span></span></span>
         <label className="switch" title={t("enabled")}><input type="checkbox" checked={on} onChange={(e) => void app.saveSettings({ freeFallback: e.target.checked })} aria-label={t("freeAiTitle")} /><i /></label>
       </div>
+      {zen && <Changes p={zen} />}
     </div>
   );
 }

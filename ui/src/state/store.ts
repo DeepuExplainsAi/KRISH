@@ -3,7 +3,7 @@ import {
   runAgent, Scheduler, nextRun, nextBriefAt, briefCommand, Vault,
   type AgentEvent, type AgentUI, type BriefSettings, type ChipState, type ConfirmRequest, type PageDriver, type ProviderConfig,
   type LoginAnswer, type LoginRequest, type MemoryPort, type SecureKind, type SelectedFile, type Sandbox, setLocalEngine, type ModelInfo,
-  BUILTIN_PROVIDERS,
+  BUILTIN_PROVIDERS, DEFAULT_BUILTIN_ID, rankModels,
 } from "@krish/core";
 import type { Platform } from "../platform";
 import { Tier0Sandbox } from "../sandbox/tier0";
@@ -69,7 +69,7 @@ export const DEFAULT_SETTINGS: Settings = {
  * Settings saved by an older build. v1 saved the then-default theme "light" and v2 the then-default "system" for everybody, so
  * neither can be told apart from a real choice: they move to Auto once. Anything saved later is a real choice and is kept.
  */
-/** A new key goes where the preset list puts it (OpenRouter, OpenCode Zen, Gemini first); custom providers stay behind the known ones. */
+/** A new key goes where the preset list puts it (OpenCode Zen, OpenRouter, Gemini first); custom providers stay behind the known ones. */
 export function insertByPreset(list: ProviderConfig[], added: ProviderConfig): ProviderConfig[] {
   const rank = (p: ProviderConfig) => {
     const i = DEFAULTS.presets.findIndex((x) => x.name === p.name);
@@ -113,6 +113,8 @@ export interface State {
   screen: Screen;
   settings: Settings;
   providers: ProviderConfig[];
+  /** The built-in free services with their live model lists (OpenCode Zen first). Not the user's keys. */
+  freeProviders: ProviderConfig[];
   items: ChatItem[];
   /** Files picked for the next message. They go to the agent with it; the model sees names and sizes only. */
   attachments: SelectedFile[];
@@ -145,10 +147,13 @@ export const WIDE = 900;
 
 const SETTINGS_KEY = "settings";
 const PROVIDERS_KEY = "providers";
+const FREE_KEY = "freeProviders";
+/** Model lists are fetched again this often while the app is open (and at every start), so new and retired models show up by themselves. */
+const LIST_REFRESH_MS = 6 * 36e5;
 
 export class AppStore {
   state: State = {
-    ready: false, screen: "home", settings: DEFAULT_SETTINGS, providers: [], items: [], attachments: [], prompts: [],
+    ready: false, screen: "home", settings: DEFAULT_SETTINGS, providers: [], freeProviders: BUILTIN_PROVIDERS, items: [], attachments: [], prompts: [],
     running: false, paused: false, checking: [], windowOpen: false, windowExpanded: false,
     page: { url: "", title: "", loading: false }, status: "idle", deviceLowRam: false, linuxAvailable: false,
     localModels: [], localStatus: "",
@@ -199,13 +204,14 @@ export class AppStore {
     });
   }
 
-  /** The on-device model, when enabled and usable, goes first; the user's API providers follow, and the built-in free service is the last resort. */
+  /** The on-device model goes first when enabled; then the free OpenCode Zen; then the user's own providers; the other built-in free services are the last resort. */
   private routerProviders(): ProviderConfig[] {
     const { localModel, localModelConsent, localModelId } = this.state.settings;
     // One switch for all of the user's own providers; the per-provider flag can still allow it on its own. Passwords and codes are redacted either way.
     const seeLogin = this.state.settings.aiSeesLogin;
     const mine = seeLogin ? this.state.providers.map((p) => (p.allowSensitive ? p : { ...p, allowSensitive: true })) : this.state.providers;
-    const all = [...mine, ...(this.state.settings.freeFallback ? BUILTIN_PROVIDERS : [])];
+    const free = this.state.settings.freeFallback ? this.state.freeProviders : [];
+    const all = [...free.filter((p) => p.id === DEFAULT_BUILTIN_ID), ...mine, ...free.filter((p) => p.id !== DEFAULT_BUILTIN_ID)];
     if (!localModel || !localModelConsent || !localModelId || !webgpuAvailable()) return all;
     const local: ProviderConfig = {
       id: "local", name: "On-device", kind: "webgpu-local", baseUrl: "local:", enabled: true, allowSensitive: true, defaultModel: localModelId,
@@ -233,8 +239,8 @@ export class AppStore {
   }
 
   async init() {
-    const [s, p, info] = await Promise.all([
-      this.platform.kv.get(SETTINGS_KEY), this.platform.kv.get(PROVIDERS_KEY), this.platform.system.deviceInfo(),
+    const [s, p, f, info] = await Promise.all([
+      this.platform.kv.get(SETTINGS_KEY), this.platform.kv.get(PROVIDERS_KEY), this.platform.kv.get(FREE_KEY), this.platform.system.deviceInfo(),
     ]);
     // First run on a low-RAM device starts in Lite mode; once the user has saved settings their choice wins.
     const settings = { ...DEFAULT_SETTINGS, liteMode: info.lowRam, ...(s ? migrateSettings(JSON.parse(s)) : {}) } as Settings;
@@ -245,8 +251,14 @@ export class AppStore {
       const old = this.state.page;
       if (old.url !== page.url || old.title !== page.title || old.loading !== page.loading) this.set({ page });
     });
+    // Code decides which free services exist; only what was learned about their models is taken from the saved copy.
+    const saved: ProviderConfig[] = f ? JSON.parse(f) : [];
+    const freeProviders = BUILTIN_PROVIDERS.map((b) => {
+      const o = saved.find((x) => x.id === b.id);
+      return o?.models ? { ...b, models: o.models, defaultModel: o.defaultModel, fallbackModel: o.fallbackModel, modelsChanged: o.modelsChanged } : b;
+    });
     this.set({
-      ready: true, settings, providers: p ? JSON.parse(p) : [], deviceLowRam: info.lowRam,
+      ready: true, settings, providers: p ? JSON.parse(p) : [], freeProviders, deviceLowRam: info.lowRam,
       linuxAvailable: info.linuxSandbox && !info.lowRam,
     });
     this.platform.browser.use?.(settings.myBrowser ? "mine" : "app");
@@ -259,11 +271,16 @@ export class AppStore {
     void this.platform.browser.setDesktopLayout(settings.desktopLayout).catch(() => undefined); // the saved choice reaches the native view at start, not only when changed
     await this.vault.load();
     void this.checkUntested();
+    void this.syncLists();
+    this.listTimer = setInterval(() => void this.syncLists(), LIST_REFRESH_MS);
     await this.applyLocalModel();
     await this.rearmSchedules();
   }
 
+  private listTimer?: ReturnType<typeof setInterval>;
+
   dispose() {
+    clearInterval(this.listTimer);
     this.vault.lock();
     this.unPage?.();
     this.unMine?.();
@@ -336,6 +353,35 @@ export class AppStore {
     const key = (await this.platform.keys.get(id)) ?? "";
     return refreshModels(p, key, { fetch: this.platform.fetch });
   });
+
+  /**
+   * Live model lists: the built-in free services and every enabled provider with a key and an old list fetch their current list. New models
+   * appear, retired ones disappear (`modelsChanged` says which), and a default that is gone is replaced. Runs at start and every few hours.
+   */
+  async syncLists() {
+    const mine = this.state.providers; // a provider added while the free lists load is checked by its own add flow
+    await this.syncFree();
+    const old = (x: ProviderConfig) => Date.now() - (x.models?.fetchedAt ?? 0) >= LIST_REFRESH_MS;
+    for (const p of mine.filter((x) => x.enabled && old(x))) {
+      if (await this.platform.keys.get(p.id)) await this.refreshProviderModels(p.id).catch(() => undefined);
+    }
+  }
+
+  private async syncFree() {
+    const next: ProviderConfig[] = [];
+    for (const p of this.state.freeProviders) {
+      const r = await refreshModels(p, p.anonymousKey ?? "", { fetch: this.platform.fetch });
+      const items = r.models?.items ?? [];
+      if (r.modelsError || !items.length) { next.push(p); continue; } // the service is down: keep what worked
+      // The seeded names stay first while the service still lists them; otherwise the best free models of the live list.
+      const listed = (id: string) => items.some((m) => m.id === id);
+      const seeds = (BUILTIN_PROVIDERS.find((b) => b.id === p.id)?.models?.items ?? []).map((m) => m.id).filter(listed);
+      const [defaultModel, fallbackModel] = [...new Set([...seeds, ...rankModels(items).map((m) => m.id)])];
+      next.push({ ...r, defaultModel, fallbackModel, modelsAutoFetched: true });
+    }
+    this.set({ freeProviders: next });
+    await this.platform.kv.set(FREE_KEY, JSON.stringify(next));
+  }
 
   /** Every real agent call updates the tick; written only when the state changes. */
   private recordHealth(id: string, ok: boolean, note?: string) {

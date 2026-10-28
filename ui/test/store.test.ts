@@ -342,11 +342,11 @@ describe("attachments", () => {
     expect(setup([]).store.getState().settings).toMatchObject({ confirmFill: false, aiSeesLogin: true, freeFallback: true, tourDone: false });
   });
 
-  it("a new key is placed by the preset order: OpenRouter, OpenCode Zen, Gemini, then the others, custom last", () => {
+  it("a new key is placed by the preset order: OpenCode Zen, OpenRouter, Gemini, then the others, custom last", () => {
     const p = (name: string) => ({ id: name, name, kind: "openai-compat" as const, baseUrl: "https://x.test", enabled: true, allowSensitive: false });
     let list: ProviderConfig[] = [p("Groq"), p("My own")];
     for (const n of ["Google Gemini", "OpenRouter", "OpenCode Zen"]) list = insertByPreset(list, p(n));
-    expect(list.map((x) => x.name)).toEqual(["OpenRouter", "OpenCode Zen", "Google Gemini", "Groq", "My own"]);
+    expect(list.map((x) => x.name)).toEqual(["OpenCode Zen", "OpenRouter", "Google Gemini", "Groq", "My own"]);
   });
 
   it("the free fallback is more than one service, tried after the user's own keys", async () => {
@@ -439,5 +439,43 @@ describe("attachments", () => {
     await run;
     expect(filled.map(([, v]) => v)).toContain("Sup3r-Secret");
     expect(prompts.join("\n")).not.toContain("Sup3r-Secret");
+  });
+});
+
+describe("free services and live model lists", () => {
+  const zenList = (ids: string[]) => new Response(JSON.stringify({ data: ids.map((id) => ({ id })) }), { status: 200 });
+
+  it("OpenCode Zen's free models are asked first, with the public key, before the user's own keys", async () => {
+    const { store, hooks } = setup([{ type: "done", summary: "Hello" }]);
+    const calls: { host: string; auth: string }[] = [];
+    hooks.fetch = (url, init) => (url.endsWith("/chat/completions") && calls.push({ host: new URL(url).host, auth: String((init?.headers as Record<string, string>).authorization) }), undefined);
+    await store.init();
+    await store.addProvider({ name: "P", kind: "openai-compat", baseUrl: "https://p.test/v1" }, "mine");
+    calls.length = 0;
+    await store.send("hi");
+    expect(calls[0]).toEqual({ host: "opencode.ai", auth: "Bearer public" });
+  });
+
+  it("the live list replaces the seeded models, and what appeared or vanished is reported", async () => {
+    const { store, hooks } = setup([]);
+    let ids = ["big-pickle", "zen-a-free", "zen-b-free"];
+    hooks.fetch = (url) => (url === "https://opencode.ai/zen/v1/models" ? zenList(ids) : undefined);
+    await store.init();
+    await store.syncLists();
+    const zen = () => store.getState().freeProviders.find((p) => p.id === "builtin-zen")!;
+    expect(zen().models?.items.map((m) => m.id)).toEqual(ids);
+    expect(zen().defaultModel).toBe("big-pickle");
+    ids = ["zen-b-free", "zen-c-free"];
+    await store.syncLists();
+    expect(zen().modelsChanged).toMatchObject({ added: ["zen-c-free"], removed: ["big-pickle", "zen-a-free"] });
+    expect(zen().defaultModel).not.toMatch(/big-pickle|zen-a-free/); // a retired default is never kept
+  });
+
+  it("a free service that is down keeps its last working models", async () => {
+    const { store, hooks } = setup([]);
+    hooks.fetch = (url) => (url === "https://opencode.ai/zen/v1/models" ? new Response("{}", { status: 503 }) : undefined);
+    await store.init();
+    await store.syncLists();
+    expect(store.getState().freeProviders.find((p) => p.id === "builtin-zen")?.defaultModel).toBe("big-pickle");
   });
 });

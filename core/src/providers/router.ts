@@ -145,7 +145,7 @@ export class ProviderRouter {
       const p = withAutoModels(configured);
       if (opts.signal?.aborted) throw new AbortedError();
       const needsKey = p.kind !== "webgpu-local" && !p.keyless;
-      const apiKey = needsKey ? await this.deps.keys.get(p.id) : "";
+      const apiKey = needsKey ? await this.deps.keys.get(p.id) : (p.anonymousKey ?? "");
       const blocked = await this.blockedReason(p, opts, !needsKey || Boolean(apiKey));
       if (blocked || (needsKey && !apiKey)) {
         attempts.push({ providerId: p.id, providerName: p.name, outcome: "skipped", detail: blocked });

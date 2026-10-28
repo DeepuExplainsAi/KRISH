@@ -3,6 +3,21 @@
 Project: KRISH, source-only personal agent (Android + desktop). Spec: `docs/SPEC.md`.
 Rule: update this file at the end of every work session (status table + "Next").
 
+## ROUND 4 (2026-10-28): OpenCode Zen first, live model lists, desktop fetch fix
+
+- **Order of use:** OpenCode Zen (free, public key, no account) is tried first (`BUILTIN_PROVIDERS[0]`, `DEFAULT_BUILTIN_ID`), then the user's own
+  keys (preset order now OpenCode Zen, OpenRouter, Gemini, ...), then the other free services (pollinations, llm7). `ProviderConfig.anonymousKey`
+  is the key a keyless service expects (`public`).
+- **Live lists:** `store.syncLists()` runs at start and every 6 h: it fetches the free services' lists and every enabled provider's list when it is
+  older than 6 h. `modelsChanged {added, removed}` is stored on the provider and shown in API Keys ("New: ...", "Gone: ..."). A retired default is
+  replaced. A free service that is down keeps its last working models. Saved free lists live under kv key `freeProviders`.
+- **Desktop:** `fetch` IPC now uses `net.fetch` (Chromium stack; Node `fetch` failed under `--jitless`).
+- **Verified (run):** tests core 214, ui 48, desktop 8; typecheck, lint, UI build clean; real Electron under Xvfb: UI loads, a chat task
+  "open example.com and tell me the page title" ran end to end with the free AI and answered "Example Domain".
+- **Seen in the sandbox:** opencode.ai `/zen/v1/chat/completions` answered `FreeUsageLimitError` (HTTP 429) from this IP, so Zen was skipped and the
+  next service answered. The fallback chain is what made the run work. Whether Zen answers from a phone/PC is untested.
+- **NOT verified:** APK on a phone, Windows build, Kotlin (no JDK here; CI compiles). The browser card renders black under Xvfb (no GPU); the page itself loaded.
+
 ## ROUND 3b (2026-10-27, later): why the owner still saw the old app
 
 Owner's phone screenshot (12:32) still showed "Google Gemini · gemma-4…" under the answer. v0.1.4 had removed that line. Cause: **every CI build

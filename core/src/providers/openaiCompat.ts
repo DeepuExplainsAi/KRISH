@@ -45,8 +45,8 @@ export const openaiCompatAdapter: Adapter = {
     for (const r of rows as Record<string, unknown>[]) {
       if (typeof r?.id !== "string") continue;
       const pricing = r.pricing as { prompt?: unknown; completion?: unknown } | undefined;
-      // Free when the provider's pricing says so, or its own naming does (OpenRouter ":free", OpenCode Zen "-free").
-      const free = (pricing ? isZero(pricing.prompt) && isZero(pricing.completion) : false) || /(?::|-)free$/i.test(r.id);
+      // Free when the provider's pricing says so, or its own naming or tier does (OpenRouter ":free", OpenCode Zen "-free", a keyless "anonymous"/"turbo" tier).
+      const free = (pricing ? isZero(pricing.prompt) && isZero(pricing.completion) : false) || /(?::|-)free$/i.test(r.id) || /^(anonymous|free|turbo)$/i.test(String(r.tier ?? ""));
       items.push({
         id: r.id,
         displayName: typeof r.name === "string" ? r.name : undefined,
