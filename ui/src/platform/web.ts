@@ -1,10 +1,14 @@
 import { MemoryKeyStore, type PageObservation } from "@krish/core";
-import type { BrowserHost, PageEvent, Platform } from "./types";
+import { MAX_TABS, type BrowserHost, type PageEvent, type Platform } from "./types";
 
 /** Browser-only dev/demo platform: fake page, no real navigation. Not a product mode. */
 export function createWebPlatform(): Platform {
   const listeners = new Set<(e: PageEvent) => void>();
   let url = "https://example.com/";
+  // Fake tabs: each keeps its own url; the demo page is the same in all of them.
+  let tabs = [{ id: 1, url }];
+  let active = 1;
+  let nextId = 2;
   const page = (): PageObservation => ({
     url,
     title: "Demo page",
@@ -14,9 +18,10 @@ export function createWebPlatform(): Platform {
       { id: 1, tag: "button", text: "Go" },
     ],
   });
-  const emit = () => listeners.forEach((l) => l({ url, title: "Demo page", loading: false }));
+  const emit = () => listeners.forEach((l) => l({ url, title: "Demo page", loading: false, tabId: active }));
+  const show = (id: number) => { active = id; url = tabs.find((t) => t.id === id)!.url; emit(); };
   const browser: BrowserHost = {
-    open: async (u) => void ((url = u), emit()),
+    open: async (u) => void ((url = u), (tabs = tabs.map((t) => (t.id === active ? { ...t, url: u } : t))), emit()),
     observe: async () => page(),
     read: async () => page().text,
     click: async () => {},
@@ -32,6 +37,25 @@ export function createWebPlatform(): Platform {
     stopLoading: async () => {},
     clearSiteData: async () => {},
     onPage: (cb) => (listeners.add(cb), () => void listeners.delete(cb)),
+    tabs: async () => tabs.map((t) => ({ id: t.id, title: "Demo page", url: t.url, active: t.id === active })),
+    openTab: async (u) => {
+      if (tabs.length >= MAX_TABS) throw new Error(`at most ${MAX_TABS} tabs`);
+      const id = nextId++;
+      tabs = [...tabs, { id, url: u }];
+      show(id);
+      return id;
+    },
+    switchTab: async (id) => {
+      if (!tabs.some((t) => t.id === id)) throw new Error(`no tab ${id}`);
+      show(id);
+    },
+    closeTab: async (id) => {
+      if (!tabs.some((t) => t.id === id)) throw new Error(`no tab ${id}`);
+      if (tabs.length === 1) throw new Error("the last tab cannot be closed");
+      tabs = tabs.filter((t) => t.id !== id);
+      if (active === id) show(tabs[tabs.length - 1]!.id);
+    },
+    findCode: async () => ({}),
   };
   return {
     kind: "web",

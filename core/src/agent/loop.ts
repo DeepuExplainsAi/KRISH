@@ -1,15 +1,16 @@
 import { DEFAULTS, type AgentLimits } from "../config/defaults";
 import { formatObservation } from "../page/format";
 import type { PageElement, PageObservation } from "../page/types";
-import { redactChat, redactText, secretKind, type SecretKind } from "../privacy/redact";
+import { maskCodes, redactChat, redactText, secretKind, type SecretKind } from "../privacy/redact";
 import { AbortedError } from "../providers/types";
 import { AllProvidersFailedError, type ProviderRouter } from "../providers/router";
-import { parseReply, type Action } from "../schema/actions";
+import { isHttpsUrl, parseReply, type Action } from "../schema/actions";
 import { AgentController, raceStop, StoppedError } from "./controller";
 import { findLoginFields, findLoginWall, findSignInButton } from "../vault/vault";
 import { gate, sandboxWrites, siteOf } from "./policy";
-import type { AgentStatus, AgentUI, ChipState, MemoryPort, PageDriver, Sandbox, SelectedFile, VaultPort } from "./ports";
+import type { AgentStatus, AgentUI, ChipState, MemoryPort, PageDriver, Sandbox, SelectedFile, TabInfo, VaultPort } from "./ports";
 import { SYSTEM_PROMPT } from "./prompt";
+import { emailOnForm, generatePassword, looksLikeEmailField, passwordRules, rejectionText } from "./signup";
 
 export interface AgentOptions {
   task: string;
@@ -65,7 +66,11 @@ const NAMES_GOOGLE = /\b(google|gmail)\b/i;
 const NO_PAGE: PageObservation = { url: "", title: "", text: "", elements: [] };
 const noPageText = (openTab?: string) =>
   `No page is open for this task. Answer directly if you can. If the task needs a website, navigate to it.${openTab ? ` The user has this tab open (not read yet): ${openTab}. Use read only if the task is about that tab.` : ""}`;
-const BROWSER_ACTIONS = new Set<Action["type"]>(["navigate", "read", "click", "type", "paste", "scroll", "upload_selected_file", "sign_in"]);
+const BROWSER_ACTIONS = new Set<Action["type"]>(["navigate", "read", "click", "type", "paste", "scroll", "upload_selected_file", "sign_in", "sign_up", "open_tab", "switch_tab", "close_tab", "read_code", "fill_code"]);
+/** Browser tabs the agent may have open at once (the native hosts enforce the same number). */
+export const MAX_TABS = 4;
+/** read_code looks at an inbox this many times per run; then the user is asked (a mail that never comes must not loop). */
+const MAX_CODE_READS = 8;
 /** Values the model may keep for later steps (an address copied from one site, typed on another). */
 const MAX_NOTES = 20;
 const PROVIDER_WAITS = [4000, 12000, 30000];
@@ -75,7 +80,7 @@ const MAX_PROVIDER_WAIT_MS = 120_000;
 
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n)}…` : s);
 /** Stops data from closing its own delimiter block. */
-const fence = (tag: string, body: string) => `<${tag}>\n${body.replace(/<\/?(PAGE_DATA|RESULT_DATA|MEMORY|USER_TASK|USER_REPLY|USER_FILES|CHAT|NOTES|DEVICE)>/gi, "")}\n</${tag}>`;
+const fence = (tag: string, body: string) => `<${tag}>\n${body.replace(/<\/?(PAGE_DATA|RESULT_DATA|MEMORY|USER_TASK|USER_REPLY|USER_FILES|CHAT|NOTES|DEVICE|TABS)>/gi, "")}\n</${tag}>`;
 
 /**
  * A normal question must never collect a secret: it goes to the AI and into history. The agent answers in the user's
@@ -117,6 +122,27 @@ function nameFiles(files: SelectedFile[] = []): { id: string; name: string; file
     name: clip(redactText(cleanLabel(file.name).replace(/[<>]/g, "")) || "file", 120),
     file,
   }));
+}
+
+/**
+ * Mail pages: webmail and temporary-inbox sites (any host with "mail" or "inbox" in it, plus a few known short names). Their page text
+ * has every 4-8 digit number masked from the first look, before read_code is ever used, so an OTP in a mail never reaches a model.
+ */
+const INBOX_HOST = /mail|inbox|^22\.do$|\.22\.do$|smailpro|emailnator|yopmail|mohmal|dropmail|tempm|10minute|guerrilla|maildrop|getnada|mailinator|^outlook\.(?:live|office|office365)\.com$|(?:^|\.)proton\.me$/i;
+export function isInboxUrl(url: string): boolean {
+  try { return INBOX_HOST.test(new URL(url).hostname); } catch { return false; }
+}
+
+/** Page data with one-time codes masked (see `maskCodes`). `inbox`: the page is a mailbox the app reads codes from. */
+function maskObservation(obs: PageObservation, inbox: boolean): PageObservation {
+  const m = (v: string | undefined) => (v === undefined ? v : maskCodes(v, inbox));
+  return {
+    ...obs,
+    title: m(obs.title)!,
+    text: m(obs.text)!,
+    elements: obs.elements.map((e) => ({ ...e, text: m(e.text), label: m(e.label), value: m(e.value), title: m(e.title) })),
+    screenshotDataUrl: undefined, // a screenshot of an inbox or code field would show the code
+  };
 }
 
 const kindOfSecret = (k: SecretKind | undefined): "password" | "otp" | undefined =>
@@ -167,6 +193,21 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
   /** Values shorter than 3 characters are not scrubbed: replacing every "a" in a page would destroy it. */
   const remember = (...values: string[]) => values.forEach((v) => v.length >= 3 && typed.add(v));
   let memoryShown: { id: string; text: string }[] = [];
+  /** The open tabs as of this step (for the TABS block and for checking a tab id the model names). */
+  let tabsShown: TabInfo[] = [];
+  /** Tabs the app has read a verification code from: their page text is masked harder before a model sees it. */
+  const inboxTabs = new Set<number>();
+  /** The code the app last found in an inbox. Never put in a prompt, a result, history or a log; only fill_code uses it. */
+  let foundCode: string | undefined;
+  let codeReads = 0;
+  /** One account per site per user command: a site the app already signed up on in this run is not signed up on again. */
+  const signedUp = new Set<string>();
+  /** The agent stops and asks when a site turns the email down; it never tries another address by itself. */
+  let emailRejected = false;
+  /** Sites where an email went into a form in this run (typed by the model or by sign_up): only there is a rejection message acted on. */
+  const touchedEmail = new Set<string>();
+  /** A site that refused the email while the model was working: no other address may be typed there until the user has answered. */
+  let blockedEmailSite: string | undefined;
 
   const chip = (label: string, state: ChipState, id = ++chipId) => {
     ui.emit({ type: "chip", id, label, state });
@@ -194,6 +235,12 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
       case "memory_remove": return "Removing from memory";
       case "wait": return "Waiting";
       case "sign_in": return "Signing in";
+      case "sign_up": return "Creating an account";
+      case "open_tab": return `Opening ${siteOf(a.url) ?? "a page"} in a new tab`;
+      case "switch_tab": return `Switching to tab ${a.tabId}`;
+      case "close_tab": return `Closing tab ${a.tabId}`;
+      case "read_code": return "Looking for the code in the inbox";
+      case "fill_code": return "Filling in the code";
       case "note": return "Noting a value";
       case "scroll": return a.direction === "down" ? "Scrolling down" : "Scrolling up";
       case "ask_user": return a.secure ? "Waiting for you" : "Asking you";
@@ -215,14 +262,26 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
       case "navigate":
         await driver.navigate(a.url);
         return `navigated to ${redactText(a.url)}`;
-      case "read":
-        return clip(scrub(redactText(await driver.read(a.elementId))), lim.readMaxChars);
+      case "read": {
+        const text = scrub(redactText(await driver.read(a.elementId)));
+        const active = tabsShown.find((t) => t.active);
+        const onInbox = (active !== undefined && inboxTabs.has(active.id)) || isInboxUrl(obs.url);
+        const codeFlow = tabsShown.length > 1 || inboxTabs.size > 0;
+        return clip(codeFlow || onInbox ? maskCodes(text, onInbox) : text, lim.readMaxChars);
+      }
       case "click":
         await withHighlight(a.elementId, () => driver.click(a.elementId));
         return "clicked";
-      case "type":
+      case "type": {
+        const target = obs.elements.find((e) => e.id === a.elementId);
+        const site = siteOf(obs.url) ?? "";
+        if (target && looksLikeEmailField(target)) {
+          if (blockedEmailSite === site) return `blocked: ${site} did not accept the email address. Do not try another address by yourself; use ask_user and let the user decide.`;
+          touchedEmail.add(site);
+        }
         await withHighlight(a.elementId, () => driver.type(a.elementId, a.text, a.submit));
         return "typed";
+      }
       case "paste":
         await withHighlight(a.elementId, () => driver.paste(a.elementId, a.text));
         return "pasted";
@@ -269,6 +328,36 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
         return `waited ${a.ms} ms`;
       case "sign_in":
         return signIn(obs);
+      case "sign_up":
+        return signUp(a, obs);
+      case "open_tab": {
+        const open = await driver.tabs();
+        if (open.length >= MAX_TABS) return `already ${open.length} tabs open (limit ${MAX_TABS}); close one with close_tab first`;
+        const id = await driver.openTab(a.url);
+        return `opened tab ${id} at ${redactText(a.url)}; it is now the active tab`;
+      }
+      case "switch_tab":
+        if (!tabsShown.some((t) => t.id === a.tabId)) return `no tab ${a.tabId}; use an id from TABS`;
+        await driver.switchTab(a.tabId);
+        return `tab ${a.tabId} is now the active tab; read it before acting on it`;
+      case "close_tab":
+        if (!tabsShown.some((t) => t.id === a.tabId)) return `no tab ${a.tabId}; use an id from TABS`;
+        await driver.closeTab(a.tabId);
+        inboxTabs.delete(a.tabId);
+        return `closed tab ${a.tabId}`;
+      case "read_code":
+        return readCode(a);
+      case "fill_code": {
+        if (!foundCode) return "no code has been found yet; use read_code on the inbox tab first";
+        try {
+          remember(foundCode);
+          await driver.fillSecret(a.elementId, foundCode);
+        } catch {
+          return "could not fill the code field; the page may have changed. Read the page again";
+        }
+        foundCode = undefined;
+        return "the code was filled into the field (not visible to you). Send the form next";
+      }
       case "note": {
         const text = clip(safe(a.text), 300);
         if (notes.length >= MAX_NOTES) notes.shift();
@@ -288,6 +377,7 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
       const reply = await raceStop(ui.ask(a.question, signal), signal);
       if (reply === undefined) return "user cancelled the question";
       userReply = redactText(reply);
+      blockedEmailSite = undefined; // the user has decided what happens with the refused email
       return "user replied (see USER_REPLY)";
     }
     if (a.secure.kind === "captcha") {
@@ -364,6 +454,7 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
     const answer = await raceStop(ui.askLogin({ site: host, google: Boolean(googleButton) }, signal), signal);
     alive();
     if (!answer) return "the user closed the sign-in card without signing in; ask what to do, or finish";
+    if ("signUp" in answer) return "the sign-in card was answered as a sign-up; use sign_up on the sign-up form instead";
     const id = chip("Signing in", "running");
     try {
       if ("google" in answer) {
@@ -438,11 +529,111 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
     return filledResult("saved", form !== undefined, sent);
   }
 
+  /**
+   * Reads a verification code or link out of an inbox page. The code itself stays in the app: the model is only told that one was
+   * found, and `fill_code` puts it into the page. A verification LINK may be opened, because following it is the whole point of it.
+   */
+  async function readCode(a: Extract<Action, { type: "read_code" }>): Promise<string> {
+    if (!tabsShown.some((t) => t.id === a.tabId)) return `no tab ${a.tabId}; use an id from TABS`;
+    if (codeReads++ >= MAX_CODE_READS) return `read_code was used ${MAX_CODE_READS} times in this task; ask the user what to do`;
+    inboxTabs.add(a.tabId);
+    let found;
+    try {
+      found = await driver.readCode(a.tabId, { from: a.from, subject: a.subject });
+    } catch (e) {
+      return `could not read the inbox: ${e instanceof Error ? safe(e.message) : "page error"}`;
+    }
+    if (found.code) {
+      foundCode = found.code;
+      remember(found.code);
+      return "a verification code was found in the inbox (not visible to you). Switch to the tab with the code field and use fill_code on it.";
+    }
+    if (found.link && isHttpsUrl(found.link)) {
+      // The link carries a one-time token: the app opens it in the inbox tab itself and the model never sees the address.
+      remember(found.link);
+      await driver.switchTab(a.tabId);
+      await driver.navigate(found.link);
+      return `a verification link was found and opened in tab ${a.tabId} (the link is not shown to you); tab ${a.tabId} is now the active tab. Look at the page.`;
+    }
+    if (found.link) return "a verification link was found but it is not https, so it was not opened; tell the user";
+    return "no verification mail with a code or link yet; wait a few seconds, refresh the inbox and read_code again";
+  }
+
+  /**
+   * Sign-up on the page: the APP makes the password (from the form's own visible rules), fills it, and saves site + email + password
+   * to KrishVault after the user confirms on the sign-in card. The model never sees the password.
+   * One account per site per user command, and a site that refuses the email ends the attempt: the agent asks the user instead of
+   * trying another address.
+   */
+  async function signUp(a: Extract<Action, { type: "sign_up" }>, obs: PageObservation): Promise<string> {
+    if (!obs.url) return "no page is open; navigate to the sign-up page first";
+    const host = new URL(obs.url).hostname;
+    const site = siteOf(obs.url) ?? host;
+    if (signedUp.has(site)) return `an account was already created on ${site} in this task. One account per site: do not make another. If the user wants another one, they must say so.`;
+    const rejection = rejectionText(redactText(obs.text));
+    if (rejection) {
+      emailRejected = true;
+      blockedEmailSite = site;
+      return `the site does not accept this email address ("${rejection}"). Do NOT try another address by yourself: use ask_user to ask what the user wants to do.`;
+    }
+    const field = obs.elements.find((e) => e.id === a.passwordElementId);
+    if (!field || secretKind(field) !== "password") return "that element is not a password field; read the page again and give the id of the password box";
+    const email = (a.email ?? emailOnForm(obs) ?? "").trim();
+    const confirm = a.confirmElementId !== undefined ? obs.elements.find((e) => e.id === a.confirmElementId) : undefined;
+    if (a.confirmElementId !== undefined && (!confirm || secretKind(confirm) !== "password")) return "the confirm field is not a password field; read the page again";
+    const answer = await raceStop(ui.askLogin({ site: host, google: false, signUp: true, email: email || undefined }, signal), signal);
+    alive();
+    if (!answer || !("signUp" in answer)) return "the user did not confirm the sign-up; ask what to do, or finish";
+    const password = generatePassword(passwordRules(obs.text));
+    const username = (answer.username || email).trim();
+    const id = chip("Creating the account", "running");
+    try {
+      remember(password);
+      const emailField = username && obs.elements.find((e) => looksLikeEmailField(e) && !e.value);
+      if (emailField && username) await driver.fillSecret(emailField.id, username);
+      alive();
+      await driver.fillSecret(field.id, password);
+      alive();
+      if (confirm) await driver.fillSecret(confirm.id, password);
+    } catch (e) {
+      if (e instanceof StoppedError) throw e;
+      chip("Creating the account", "error", id);
+      return "could not fill the sign-up form; the page may have changed";
+    }
+    signedUp.add(site);
+    touchedEmail.add(site);
+    try {
+      await deps.vault?.put({ site: host, username, password, label: host });
+    } catch {
+      chip("Could not save the login", "error");
+    }
+    chip("Creating the account", "done", id);
+    return `a password was made by the app, filled into the form${confirm ? " (and the confirm field)" : ""} and saved with ${username ? "the email" : "this site"} in the vault (not visible to you). Send the form next; then open the inbox tab and use read_code for the verification mail.`;
+  }
+
   try {
     for (; step < lim.maxSteps; ) {
       if (signal.aborted) throw new StoppedError();
 
-      const obs = pageLive ? await driver.observe() : NO_PAGE;
+      const seen = pageLive ? await driver.observe() : NO_PAGE;
+      tabsShown = pageLive ? await driver.tabs().catch(() => []) : [];
+      const activeTab = tabsShown.find((t) => t.active)?.id;
+      // Once a second tab or an inbox is in play, numbers next to code words are masked on every page, and every 4-8 digit number on an inbox tab.
+      const codeFlow = tabsShown.length > 1 || inboxTabs.size > 0;
+      const onInbox = (activeTab !== undefined && inboxTabs.has(activeTab)) || isInboxUrl(seen.url);
+      const obs = codeFlow || onInbox ? maskObservation(seen, onInbox) : seen;
+      // A site that turns the email down stops the sign-up: the user decides, the agent never cycles through new addresses.
+      if (pageLive && !emailRejected && touchedEmail.has(siteOf(obs.url) ?? "")) {
+        const why = rejectionText(redactText(obs.text));
+        if (why) {
+          emailRejected = true;
+          const id = chip("The site refused the email", "action_required");
+          const answer = await raceStop(ui.ask(`${siteOf(obs.url)} did not accept the email address: "${safe(why)}". I will not try other addresses by myself. What should I do? Leave empty to stop.`, signal), signal);
+          chip("The site refused the email", "done", id);
+          if (!answer?.trim()) return finish("failed", `stopped: ${siteOf(obs.url)} did not accept the email address ("${why}")`);
+          userReply = redactText(answer);
+        }
+      }
       // Saved logins of this site are scrubbed from everything the model sees (and stop screenshots) from the first look, even before sign_in.
       if (pageLive) for (const l of deps.vault?.logins(obs.url) ?? []) remember(l.username, l.password);
       // The numbers the model sees are fixed for this step, so "m2" always means the line it read.
@@ -467,6 +658,7 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
           reply ? fence("USER_REPLY", reply) : "",
           note ? `App note: ${note}` : "",
           turns.length ? `Previous steps:\n${turns.join("\n")}` : "",
+          tabsShown.length > 1 ? fence("TABS", tabsShown.map((t) => `[${t.id}] ${clip(redactText(cleanLabel(t.title)), 80)} — ${clip(redactText(t.url), 160)}${t.active ? " (active)" : ""}`).join("\n")) : "",
           fence("PAGE_DATA", text),
         ].filter(Boolean).join("\n\n"));
       };
@@ -548,7 +740,7 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
           failed = true;
         } else {
           if (BROWSER_ACTIONS.has(action.type)) ui.emit({ type: "browser" });
-          const openUrl = !pageLive && action.type === "navigate" ? action.url : undefined;
+          const openUrl = !pageLive && (action.type === "navigate" || action.type === "open_tab") ? action.url : undefined;
           result = await execute(action, obs);
           // Only a page that really opened becomes the page the agent reads; a failed navigation leaves the old tab alone.
           if (openUrl) pageLive = true;

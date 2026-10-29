@@ -1,5 +1,5 @@
 import { registerPlugin } from "@capacitor/core";
-import type { KeyStore, KVStore, PageObservation } from "@krish/core";
+import type { CodeFound, KeyStore, KVStore, PageObservation, TabInfo } from "@krish/core";
 import type { Bounds, BrowserHost, DeviceInfo, PageEvent, Platform } from "./types";
 
 type Listener = { remove(): Promise<void> };
@@ -20,6 +20,11 @@ interface Browser {
   snapshot(a: { maxWidth: number; quality: number }): Promise<{ value: string }>;
   stopLoading(): Promise<void>;
   clearSiteData(): Promise<void>;
+  tabs(): Promise<{ value: string }>;
+  openTab(a: { url: string }): Promise<{ tabId: number }>;
+  switchTab(a: { tabId: number }): Promise<void>;
+  closeTab(a: { tabId: number }): Promise<void>;
+  findCode(a: { tabId: number; from?: string; subject?: string }): Promise<{ value: string }>;
 }
 interface Files {
   pickFile(): Promise<{ name?: string; size?: number; token?: string }>;
@@ -87,6 +92,11 @@ export function createCapacitorPlatform(): Platform {
       const h = B.addListener("page", cb);
       return () => void h.then((l) => l.remove());
     },
+    tabs: async () => JSON.parse((await B.tabs()).value) as TabInfo[],
+    openTab: async (url) => (await B.openTab({ url })).tabId,
+    switchTab: (tabId) => B.switchTab({ tabId }),
+    closeTab: (tabId) => B.closeTab({ tabId }),
+    findCode: async (tabId, from, subject) => JSON.parse((await B.findCode({ tabId, from, subject })).value) as CodeFound,
   };
 
   return {

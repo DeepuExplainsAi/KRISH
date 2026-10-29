@@ -41,6 +41,25 @@ function LoginCard({ p, done }: { p: LoginPrompt; done: (v: unknown) => void }) 
   );
 }
 
+/**
+ * Sign-up confirmation: ONE account on this site with this email. The app makes the password itself and never shows it here or to
+ * the AI; confirming saves site, email and password to KrishVault.
+ */
+function SignUpCard({ p, done }: { p: LoginPrompt; done: (v: unknown) => void }) {
+  const { t } = useT();
+  const [email, setEmail] = useState(p.req.email ?? "");
+  const ready = email.trim() !== "";
+  return (
+    <form className="glass card login" onSubmit={(e) => { e.preventDefault(); if (ready) done({ signUp: true, username: email.trim() }); }}>
+      <Head icon={<IconLock />} title={t("signUpTo", { site: p.req.site })} closeLabel={t("close")} onClose={() => done(undefined)} />
+      <p className="muted">{t("signUpBody")}</p>
+      <input autoFocus={!p.req.email} type="text" inputMode="email" autoComplete="username" autoCapitalize="off" autoCorrect="off" spellCheck={false} value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t("emailOrUser")} aria-label={t("emailOrUser")} />
+      <div className="row end"><button className="dark" type="submit" disabled={!ready}>{t("signUpCreate")}</button></div>
+      <p className="secured"><IconLock />{t("securedBy")}</p>
+    </form>
+  );
+}
+
 /** Native cards in the chat. Secure values go straight to the page via the app; never to a model. */
 export function PromptCard({ p }: { p: Prompt }) {
   const app = useApp();
@@ -57,7 +76,7 @@ export function PromptCard({ p }: { p: Prompt }) {
       </div>
     );
   }
-  if (p.type === "login") return <LoginCard p={p} done={done} />;
+  if (p.type === "login") return p.req.signUp ? <SignUpCard p={p} done={done} /> : <LoginCard p={p} done={done} />;
   const secure = p.type === "secure";
   const cancellable = !(secure && p.kind === "captcha");
   return (

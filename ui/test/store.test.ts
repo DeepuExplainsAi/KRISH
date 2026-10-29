@@ -31,6 +31,8 @@ function setup(script: object[]) {
       fill: async (id, v) => void filled.push([id, v]), upload: async () => {}, highlight: async () => {}, scroll: async () => {}, setBounds: async () => {},
       setMode: async () => {}, setDesktopLayout: async () => {}, snapshot: async () => "", stopLoading: async () => {}, clearSiteData: async () => {},
       onPage: (cb) => (pageListeners.add(cb), () => void pageListeners.delete(cb)),
+      tabs: async () => [{ id: 1, title: "Login", url: page.url, active: true }], openTab: async () => 2, switchTab: async () => {}, closeTab: async () => {},
+      findCode: async () => ({}),
     },
     files: { pick: async () => undefined, read: async () => new Uint8Array(), save: async () => false },
     system: { deviceInfo: async () => ({ lowRam: false, totalMemMb: 4096, linuxSandbox: false }), requestNotifications: async () => true, scheduleDue: async () => {}, cancelDue: async () => {}, openExternal: async () => {} },
@@ -375,6 +377,40 @@ describe("attachments", () => {
     expect(store.getState().status).toBe("running");
     store.answer(store.getState().prompts[0]!.id, "the first");
     await run;
+  });
+
+  it("round 10: open_tab updates the tab chips, sign_up shows the sign-up card, the app's password goes to the page and the vault, never to the AI", async () => {
+    const { store, filled, prompts, platform } = setup([
+      { type: "navigate", url: "https://site.test/signup" },
+      { type: "open_tab", url: "https://inbox.test/" },
+      { type: "switch_tab", tabId: 1 },
+      { type: "sign_up", passwordElementId: 1 },
+      { type: "done", summary: "ok" },
+    ]);
+    let tabs = [{ id: 1, title: "Sign up", url: "https://site.test/signup", active: true }];
+    platform.browser.tabs = async () => tabs;
+    platform.browser.openTab = async (url) => { tabs = [{ ...tabs[0]!, active: false }, { id: 2, title: "Inbox", url, active: true }]; return 2; };
+    platform.browser.switchTab = async (id) => { tabs = tabs.map((t) => ({ ...t, active: t.id === id })); };
+    platform.browser.observe = async () => ({
+      url: "https://site.test/signup", title: "Sign up", text: "Create account",
+      elements: [{ id: 0, tag: "input", type: "email", label: "Email", value: "me@inbox.test" }, { id: 1, tag: "input", type: "password", label: "Password" }],
+    });
+    await store.init();
+    await store.addProvider({ name: "P", kind: "openai-compat", baseUrl: "https://p.test/v1" }, "k");
+    await store.updateProvider({ ...store.getState().providers[0]!, defaultModel: "m1" });
+    const run = store.send("signup karo");
+    for (let i = 0; i < 400 && !store.getState().prompts.length; i++) await tick(); // the fake openTab sends no load events: the store waits its 1.5 s load timeout
+    expect(store.getState().tabs.map((t) => t.id)).toEqual([1, 2]);
+    const card = store.getState().prompts[0]!;
+    expect(card.type === "login" && card.req).toMatchObject({ signUp: true, email: "me@inbox.test", site: "site.test" });
+    store.answer(card.id, { signUp: true, username: "me@inbox.test" });
+    await run;
+    expect(filled).toHaveLength(1);
+    const [id, pw] = filled[0]!;
+    expect(id).toBe(1);
+    expect(pw).toMatch(/^[A-Za-z\d!]{14}$/);
+    expect(prompts.join("\n")).not.toContain(pw);
+    expect(store.vault.list().find((e) => e.site === "site.test")).toMatchObject({ username: "me@inbox.test" });
   });
 
   it("a login page with no saved login opens the sign-in card in the chat; its values go to the page, not the AI", async () => {

@@ -265,3 +265,11 @@ button.danger { color: var(--err); }
 .card.login .google span { font-weight: 800; color: #4285f4; }
 .card.login .or { text-align: center; color: var(--mute); font-size: .85rem; margin: 0; }
 .card.login .save { display: flex; gap: .5rem; align-items: center; font-size: .9rem; }
+
+/* Tab chips on the browser card (round 10): one per open agent tab, shown only when there is more than one. */
+.tab-chips { display: flex; gap: 6px; padding: 6px 10px 0; overflow-x: auto; scrollbar-width: none; }
+.tab-chips::-webkit-scrollbar { display: none; }
+.tab-chip { display: inline-flex; align-items: center; gap: 6px; max-width: 180px; flex: 0 0 auto; padding: 4px 10px 4px 4px; border-radius: 999px; border: 1px solid var(--glass-line); background: var(--glass); color: var(--ink); font-size: 12px; cursor: pointer; }
+.tab-chip .n { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: var(--field); font-size: 11px; }
+.tab-chip .txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tab-chip.on { background: var(--strong); color: var(--on-strong); border-color: transparent; }

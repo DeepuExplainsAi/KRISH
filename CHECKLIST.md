@@ -22,6 +22,7 @@ Legend: **RUN** = executed in the build environment with the result observed. **
 | **UI layout in real Chrome at 467x922**: nav at the bottom, live window drag writes storage once per drag (0 during, 1 on release or on `pointercancel`; a second pointer and stray moves after cancel are ignored) | agent-browser | pass |
 | **Restyled UI in headless Chrome at 467x922 (2026-10-26)**: chat, secure card, confirm-to-pill collapse, browser card sizes S/M/L/XL/expand (stays on screen, restores position after full), real touch drag + corner resize, Menu, Hindi switch, Lite mode, New chat | CDP script (harness not committed) | pass; found and fixed a UI crash and a dead resize handle |
 | **KrishVault, memory by chat, Auto theme, PC layout, API Keys catalog (2026-10-27)** | `npm test` (core 167, ui 32) + headless-Chrome flow harness `ui/harness` on phone 467x922 and PC 1280x800, light + dark | pass; vault autofill never put the password in a prompt; memory add/update/forget works; every memory change needs a confirm card |
+| **Round 10 (2026-10-29): tabs, read_code/fill_code, sign_up, refused-email stop** | `npm test` (core 277, ui 51, desktop 10): schema, tab routing, code/password never in a prompt or event, one account per site, stop on refused email, `findCode` on sample inbox HTML in jsdom | pass |
 | TypeScript strict type-check, ESLint | `npm run typecheck`, `npm run lint` | clean |
 | UI production build (default and with `KRISH_LOCAL_MODEL=1`) | `npm run build:ui` | builds; local model code absent from default bundle |
 | Kotlin sources compile for both flavors (Gradle 8.14.3, AGP 8.13.0, Kotlin 2.4.21, JDK 21, SDK 36); re-run 2026-10-25 | `./gradlew compileLiteDebugKotlin compileFullDebugKotlin` | BUILD SUCCESSFUL |
@@ -31,6 +32,7 @@ Legend: **RUN** = executed in the build environment with the result observed. **
 | Merged manifest permissions | inspected merged manifests | INTERNET, POST_NOTIFICATIONS (WorkManager ACCESS_NETWORK_STATE / RECEIVE_BOOT_COMPLETED removed). v0.1.12 adds FOREGROUND_SERVICE, FOREGROUND_SERVICE_DATA_SYNC, WAKE_LOCK for `KeepAliveService`: NOT re-inspected in a merged manifest, check after the first CI build |
 
 ## NOT RUN: needs a real device or display (please test)
+- **(new 2026-10-29, Round 10)** Kotlin `KrishBrowserPlugin` with a map of tabs not compiled (CI only). Not run anywhere real: 2-4 WebViews / WebContentsViews at once (memory, touches reach the active one, chips switch the view), `findCode` on real inbox sites (smailpro, emailnator, 22.do, Gmail), generated password accepted by real sign-up forms, sign-up card on a phone.
 - **(new 2026-10-27)** Kotlin `KrishSystemPlugin.openExternal` not compiled; vault on real Android Keystore / Electron safeStorage; "Get key" opening the real browser; vault autofill on a real login page.
 
 1. **Everything on an Android device.** The APK was not installed or launched.

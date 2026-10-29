@@ -37,6 +37,13 @@ hostile files, a curious provider, and bugs of ours**. Not in scope: a rooted/co
 - The only things the app asks the user for are a password (sign-in card or secure card), a one-time code or bank detail (secure card), a CAPTCHA, and details the agent is missing.
 - Values the app typed for the user are scrubbed from model input; a page that transforms a value before showing it (encoding, splitting) is not caught (gap: native fill is not bound to a document token).
 
+### Tabs, email codes and sign-up (round 10, 2026-10-29)
+- Up to 4 agent tabs, each the same hardened view (Android `AgentWebView`, Electron `WebContentsView` in the same session). Only the agent opens tabs (`open_tab`); page popups still load in the same tab. Only the active tab reports page events and receives a file-chooser answer.
+- **One-time codes never reach a model.** `read_code` runs the page script in the inbox tab; the code stays in the agent loop, is scrubbed from every prompt and event, and only `fill_code` puts it into a field (native fill). The model is told "found / not found". A verification link is opened by the app and its URL is scrubbed. On mail/inbox hosts and on tabs used with `read_code`, every free-standing 4-8 digit number is masked in page text and `read` results; screenshots are not sent while masking is on.
+- **Generated passwords never reach a model.** `sign_up` makes the password in the app (crypto RNG; the form's visible rules, default 14 chars with upper/lower/digit and one "!"), fills it natively, and saves site + email + password in KrishVault only after the user confirms the sign-up card.
+- **Limits enforced in code:** one account per site per user command; a site that refuses the email stops the run for the user (no automatic retry with another address: typing another address on that site is blocked until the user answers); CAPTCHA / bot checks are only ever done by the user (Done card); no payment step is part of this flow. Temporary inboxes are used only when the user names one.
+- Known limit: code extraction is a heuristic on page text; a cross-origin message frame cannot be read (then "not found"). Masking is pattern based like the rest of redaction.
+
 ## Sandbox tiers
 
 - **Tier 0 (always on):** a fresh Web Worker per task. Bundled JS/WASM only: fflate (zip/unzip) and QuickJS compiled to WebAssembly for scripts.

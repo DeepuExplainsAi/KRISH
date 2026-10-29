@@ -1,4 +1,4 @@
-import { type KeyStore, type PageObservation } from "@krish/core";
+import { type CodeFound, type KeyStore, type PageObservation, type TabInfo } from "@krish/core";
 import type { BrowserHost, DeviceInfo, PageEvent, Platform } from "./types";
 
 interface Bridge {
@@ -33,6 +33,11 @@ export function createDesktopPlatform(bridge: Bridge): Platform {
     stopLoading: () => inv("browser:stopLoading"),
     clearSiteData: () => inv("browser:clearSiteData"),
     onPage: (cb) => bridge.onPage(cb),
+    tabs: () => inv<TabInfo[]>("browser:tabs"),
+    openTab: (url) => inv<number>("browser:openTab", { url }),
+    switchTab: (tabId) => inv("browser:switchTab", { tabId }),
+    closeTab: (tabId) => inv("browser:closeTab", { tabId }),
+    findCode: async (tabId, from, subject) => JSON.parse(await inv<string>("browser:findCode", { tabId, from, subject })) as CodeFound,
   };
 
   return {

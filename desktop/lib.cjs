@@ -41,6 +41,14 @@ const expr = {
   fill: (id, value, fp) => `K.fill(${int(id)},${quote(value)},${fpArg(fp)})`,
   scroll: (dir) => `K.scroll(${quote(dir === "up" ? "up" : "down")})`,
   highlight: (id) => `K.highlight(${id == null ? "null" : int(id)})`,
+  findCode: (from, subject) => `K.findCode(${quote(String(from ?? "").slice(0, 120))},${quote(String(subject ?? "").slice(0, 120))})`,
+};
+
+/** A tab id from the UI: a small positive integer. */
+const tabId = (v) => {
+  const n = Number(v);
+  if (!Number.isInteger(n) || n < 1 || n > 1e6) throw new Error("bad tab id");
+  return n;
 };
 
 /**
@@ -143,4 +151,4 @@ function dockerArgs({ image, workDir, name }) {
   ];
 }
 
-module.exports = { isHttps, layoutWidth, tapPoint, wrapCall, parseCallResult, expr, validateFetch, FileTokens, createSecretStore, dockerArgs };
+module.exports = { isHttps, layoutWidth, tapPoint, wrapCall, parseCallResult, expr, tabId, validateFetch, FileTokens, createSecretStore, dockerArgs };

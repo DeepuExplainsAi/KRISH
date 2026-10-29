@@ -21,6 +21,11 @@ function fakeDriver(pages: Record<string, Partial<PageObservation>>, start: stri
     fillSecret: async (id, value) => void secrets.push({ id, value }),
     scroll: async (d) => void log.push(`scroll ${d}`),
     highlight: async () => {},
+    tabs: async () => [{ id: 1, title: "t", url, active: true }],
+    openTab: async (u) => (log.push(`open_tab ${u}`), 2),
+    switchTab: async (id) => void log.push(`switch_tab ${id}`),
+    closeTab: async (id) => void log.push(`close_tab ${id}`),
+    readCode: async () => ({}),
   };
   return { driver, log, secrets };
 }

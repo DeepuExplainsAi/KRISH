@@ -31,7 +31,12 @@ function serveUi() {
 }
 
 let win;
+/** The ACTIVE tab's view. Every page call goes to it; `views` holds all tabs (max MAX_TABS). */
 let view;
+const MAX_TABS = 4;
+const views = new Map();
+let activeId = 0;
+let nextTabId = 1;
 let desktopLayout = false;
 /** The agent view is shown to the user. A hidden view may drop real input events, so only a shown one gets real clicks. */
 let live = false;
@@ -48,12 +53,14 @@ function hardenAgentSession() {
   return ses;
 }
 
-function createView() {
-  view = new WebContentsView({
+/** A new agent tab (same hardened session and rules as the first one). Not shown until it is made active. */
+function createTab() {
+  const id = nextTabId++;
+  const v = new WebContentsView({
     webPreferences: { partition: AGENT_PARTITION, backgroundThrottling: false, sandbox: true, contextIsolation: true, nodeIntegration: false, webSecurity: true, allowRunningInsecureContent: false, spellcheck: false },
   });
-  const wc = view.webContents;
-  // A link or script that wants a new tab opens in this one: there is only one agent tab, and a silently refused popup looks like a dead click.
+  const wc = v.webContents;
+  // A link or script that wants a new tab opens in this one: new tabs are opened by the agent only (open_tab), and a silently refused popup looks like a dead click.
   wc.setWindowOpenHandler(({ url, postBody }) => {
     if (lib.isHttps(url) && !postBody) wc.loadURL(url); // a popup form submission (POST) cannot be replayed as a plain load, so it stays refused
     return { action: "deny" };
@@ -62,28 +69,53 @@ function createView() {
   wc.on("will-navigate", blockNonHttps);
   wc.on("will-redirect", blockNonHttps);
   wc.on("will-attach-webview", (e) => e.preventDefault());
-  const emit = (loading) => win?.webContents.send("page", { url: wc.getURL(), title: wc.getTitle(), loading });
+  // Only the active tab reports page events (the UI shows one page at a time); the tab id lets the UI update that tab's chip.
+  const emit = (loading) => { if (activeId === id) win?.webContents.send("page", { url: wc.getURL(), title: wc.getTitle(), loading, tabId: id }); };
   wc.on("did-start-loading", () => emit(true));
   wc.on("did-stop-loading", () => emit(false));
   wc.on("page-title-updated", () => emit(false));
-  wc.on("did-finish-load", applyEmulation);
-  win.contentView.addChildView(view);
-  view.setVisible(false);
-  applyBounds();
+  wc.on("did-finish-load", () => applyEmulation(v));
+  win.contentView.addChildView(v);
+  v.setVisible(false);
+  v.setBounds(bounds);
+  views.set(id, v);
+  return id;
+}
+
+/** Makes a tab the active one: only it is visible (while the card is live) and it gets every page call. */
+function activate(id) {
+  const v = views.get(id);
+  if (!v) throw new Error(`no tab ${id}`);
+  for (const [other, ov] of views) if (other !== id) ov.setVisible(false);
+  activeId = id;
+  view = v;
+  v.setVisible(live);
+  applyEmulation(v);
+  const wc = v.webContents;
+  win?.webContents.send("page", { url: wc.getURL(), title: wc.getTitle(), loading: wc.isLoading(), tabId: id });
+}
+
+function tabList() {
+  return [...views].map(([id, v]) => ({ id, title: v.webContents.getTitle(), url: v.webContents.getURL(), active: id === activeId }));
+}
+
+function createView() {
+  activate(createTab());
 }
 
 function applyBounds() {
-  if (!view) return;
-  view.setBounds(bounds);
-  applyEmulation();
+  for (const v of views.values()) {
+    v.setBounds(bounds);
+    applyEmulation(v);
+  }
 }
 
 /**
  * Device emulation needs a live render widget. On a view that has not loaded a page yet, Electron 45 crashes the whole
  * app (segfault), so it is applied only once a page exists and again after every load.
  */
-function applyEmulation() {
-  const wc = view?.webContents;
+function applyEmulation(v = view) {
+  const wc = v?.webContents;
   if (!wc || wc.isDestroyed() || !wc.getURL()) return;
   if (desktopLayout) {
     wc.setUserAgent(DESKTOP_UA);
@@ -99,8 +131,8 @@ function applyEmulation() {
 // All automation runs in an ISOLATED WORLD: it shares the DOM with the page but not its JavaScript globals, prototypes or
 // setters, so a hostile page cannot hook our code, read our state or spoof the registry.
 const WORLD = 1004;
-async function call(expression) {
-  const raw = await view.webContents.executeJavaScriptInIsolatedWorld(WORLD, [{ code: lib.wrapCall(PAGE_SCRIPT, expression) }]);
+async function call(expression, wc = view.webContents) {
+  const raw = await wc.executeJavaScriptInIsolatedWorld(WORLD, [{ code: lib.wrapCall(PAGE_SCRIPT, expression) }]);
   if (typeof raw !== "string") throw new Error("page did not answer");
   return lib.parseCallResult(raw);
 }
@@ -218,16 +250,43 @@ function registerIpc() {
   handle("browser:scroll", ({ direction }) => call(lib.expr.scroll(direction)).then(() => undefined));
   handle("browser:highlight", ({ elementId }) => call(lib.expr.highlight(elementId)).then(() => undefined));
   handle("browser:upload", ({ elementId, fp, token }) => uploadFile(elementId, fp, tokens.get(token)));
-  handle("browser:setBounds", (b) => { bounds = { x: Math.round(b.x), y: Math.round(b.y), width: Math.max(1, Math.round(b.width)), height: Math.max(1, Math.round(b.height)) }; applyBounds(); view.setBorderRadius?.(Math.round(b.radius ?? 0)); });
+  handle("browser:setBounds", (b) => { bounds = { x: Math.round(b.x), y: Math.round(b.y), width: Math.max(1, Math.round(b.width)), height: Math.max(1, Math.round(b.height)) }; applyBounds(); for (const v of views.values()) v.setBorderRadius?.(Math.round(b.radius ?? 0)); });
   handle("browser:setMode", ({ mode }) => { live = mode === "live"; view.setVisible(live); });
-  handle("browser:setDesktopLayout", ({ enabled }) => { desktopLayout = Boolean(enabled); applyBounds(); if (view.webContents.getURL()) view.webContents.reload(); });
+  handle("browser:setDesktopLayout", ({ enabled }) => { desktopLayout = Boolean(enabled); applyBounds(); for (const v of views.values()) if (v.webContents.getURL()) v.webContents.reload(); });
+  // Tabs (round 10): at most MAX_TABS views; the last one cannot be closed.
+  handle("browser:tabs", () => tabList());
+  handle("browser:openTab", async ({ url }) => {
+    if (!lib.isHttps(url)) throw new Error("only https URLs are allowed");
+    if (views.size >= MAX_TABS) throw new Error(`at most ${MAX_TABS} tabs`);
+    const id = createTab();
+    activate(id);
+    view.webContents.loadURL(url).catch(() => undefined); // load events tell the UI when it is done; a failed load leaves an empty tab
+    return id;
+  });
+  handle("browser:switchTab", ({ tabId }) => activate(lib.tabId(tabId)));
+  handle("browser:closeTab", ({ tabId }) => {
+    const id = lib.tabId(tabId);
+    const v = views.get(id);
+    if (!v) throw new Error(`no tab ${id}`);
+    if (views.size === 1) throw new Error("the last tab cannot be closed");
+    views.delete(id);
+    win.contentView.removeChildView(v);
+    v.webContents.close();
+    if (activeId === id) activate([...views.keys()].pop());
+  });
+  // The code or link found in an inbox tab goes back to the UI process only (the agent loop keeps it from every model).
+  handle("browser:findCode", ({ tabId, from, subject }) => {
+    const v = views.get(lib.tabId(tabId));
+    if (!v) throw new Error(`no tab ${tabId}`);
+    return call(lib.expr.findCode(from, subject), v.webContents);
+  });
   handle("browser:snapshot", async ({ maxWidth, quality }) => {
     const img = await capture();
     const size = img.getSize();
     const scaled = size.width > maxWidth ? img.resize({ width: maxWidth }) : img;
     return `data:image/jpeg;base64,${scaled.toJPEG(quality).toString("base64")}`;
   });
-  handle("browser:stopLoading", () => view.webContents.stop());
+  handle("browser:stopLoading", () => { for (const v of views.values()) v.webContents.stop(); });
   handle("browser:clearSiteData", async () => {
     const ses = session.fromPartition(AGENT_PARTITION);
     await ses.clearStorageData();

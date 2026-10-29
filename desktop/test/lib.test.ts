@@ -31,6 +31,10 @@ describe("desktop lib", () => {
     expect(() => lib.expr.click("1);evil(")).toThrow();
     expect(() => lib.expr.click(-1)).toThrow();
     expect(lib.expr.read(undefined)).toBe("K.read(null)");
+    expect(lib.expr.findCode('Shop"),evil(', undefined)).toBe('K.findCode("Shop\\"),evil(","")');
+    expect(lib.tabId(2)).toBe(2);
+    expect(() => lib.tabId("1);evil(")).toThrow();
+    expect(() => lib.tabId(0)).toThrow();
   });
 
   it("call wrapper + result parsing round-trip", () => {

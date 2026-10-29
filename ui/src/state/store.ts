@@ -2,7 +2,7 @@ import {
   AgentController, DEFAULTS, redactChat, autoFetchOnce, cleanLabel, friendlyReason, DEFAULT_BRIEF, History, Memory, newId, Panels, ProviderRouter, Projects, refreshModels, probeModels, withAutoModels,
   runAgent, Scheduler, nextRun, nextBriefAt, briefCommand, Vault,
   type AgentEvent, type AgentUI, type BriefSettings, type ChipState, type PageDriver, type ProviderConfig,
-  type LoginAnswer, type LoginRequest, type MemoryPort, type SecureKind, type SelectedFile, type Sandbox, setLocalEngine, type ModelInfo,
+  type LoginAnswer, type LoginRequest, type MemoryPort, type SecureKind, type SelectedFile, type TabInfo, type Sandbox, setLocalEngine, type ModelInfo,
   BUILTIN_PROVIDERS, rankModels,
 } from "@krish/core";
 import type { Platform } from "../platform";
@@ -130,6 +130,8 @@ export interface State {
   /** The card fills the screen. */
   windowExpanded: boolean;
   page: { url: string; title: string; loading: boolean };
+  /** The agent's open tabs (chips on the browser card when there is more than one). */
+  tabs: TabInfo[];
   status: "idle" | "running" | "action_required";
   deviceLowRam: boolean;
   linuxAvailable: boolean;
@@ -161,7 +163,7 @@ export class AppStore {
   state: State = {
     ready: false, screen: "home", settings: DEFAULT_SETTINGS, providers: [], freeProviders: BUILTIN_PROVIDERS, items: [], attachments: [], prompts: [],
     running: false, queue: [], checking: [], windowOpen: false, windowExpanded: false,
-    page: { url: "", title: "", loading: false }, status: "idle", deviceLowRam: false, linuxAvailable: false,
+    page: { url: "", title: "", loading: false }, tabs: [], status: "idle", deviceLowRam: false, linuxAvailable: false,
     localModels: [], localStatus: "",
   };
   private listeners = new Set<() => void>();
@@ -267,9 +269,14 @@ export class AppStore {
     // Tier 1 is disabled on low-RAM devices regardless of the saved flag.
     if (info.lowRam) settings.linuxSandbox = false;
     // The native view reports every load step; only a real change re-renders the app.
-    this.unPage = this.platform.browser.onPage((page) => {
+    this.unPage = this.platform.browser.onPage((e) => {
       const old = this.state.page;
+      const page = { url: e.url, title: e.title, loading: e.loading };
       if (old.url !== page.url || old.title !== page.title || old.loading !== page.loading) this.set({ page });
+      // The chip of the active tab follows its page; the list itself is re-read when tabs open, close or switch.
+      if (e.tabId !== undefined && this.state.tabs.some((t) => t.id === e.tabId && (t.url !== e.url || t.title !== e.title))) {
+        this.set({ tabs: this.state.tabs.map((t) => (t.id === e.tabId ? { ...t, url: e.url, title: e.title } : t)) });
+      }
     });
     // Code decides which free services exist; only what was learned about their models is taken from the saved copy.
     const saved: ProviderConfig[] = f ? JSON.parse(f) : [];
@@ -551,6 +558,41 @@ export class AppStore {
     }
   }
 
+  /** Re-reads the open tabs for the chips on the browser card. */
+  private async refreshTabs() {
+    const tabs = await this.platform.browser.tabs().catch(() => this.state.tabs);
+    this.set({ tabs });
+    return tabs;
+  }
+
+  /** The user tapped a tab chip: that tab is shown (and becomes the agent's active tab, which the next step reads). */
+  switchTab = async (tabId: number) => {
+    await this.platform.browser.switchTab(tabId).catch(() => undefined);
+    await this.refreshTabs();
+  };
+
+  /** Like openAndWait, for a new tab: it becomes the active tab, so its page events are the ones reported. */
+  private async openTabAndWait(url: string): Promise<number> {
+    let id = 0;
+    let started = false;
+    let finish: () => void = () => {};
+    const done = new Promise<void>((r) => (finish = r));
+    const off = this.platform.browser.onPage((p) => {
+      if (p.loading) started = true;
+      else if (started) finish();
+    });
+    const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+    try {
+      id = await this.platform.browser.openTab(url);
+      await Promise.race([done, wait(1500)]);
+      if (started) await Promise.race([done, wait(20_000)]);
+    } finally {
+      off();
+    }
+    await this.refreshTabs();
+    return id;
+  }
+
   private driver(): PageDriver {
     const b = this.platform.browser;
     let fps = new Map<number, string | undefined>();
@@ -570,6 +612,12 @@ export class AppStore {
       fillSecret: (id, value) => b.fill(id, value, fps.get(id)),
       scroll: (d) => b.scroll(d),
       highlight: (id) => b.highlight(id),
+      tabs: () => this.refreshTabs(),
+      openTab: (url) => this.openTabAndWait(url),
+      switchTab: async (id) => { await b.switchTab(id); await this.refreshTabs(); },
+      closeTab: async (id) => { await b.closeTab(id); await this.refreshTabs(); },
+      // The code or link goes from the native page straight to the agent loop; the store keeps no copy and logs nothing.
+      readCode: (id, hint) => b.findCode(id, hint?.from, hint?.subject),
     };
   }
 

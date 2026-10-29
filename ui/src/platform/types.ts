@@ -1,9 +1,11 @@
-import type { FetchLike, KeyStore, KVStore, PageObservation, SelectedFile } from "@krish/core";
+import type { CodeFound, FetchLike, KeyStore, KVStore, PageObservation, SelectedFile, TabInfo } from "@krish/core";
 
 export interface PageEvent {
   url: string;
   title: string;
   loading: boolean;
+  /** The tab this event is about. Hosts send page events for the active tab only. */
+  tabId?: number;
 }
 
 export interface Bounds {
@@ -15,7 +17,10 @@ export interface Bounds {
   radius?: number;
 }
 
-/** The agent's embedded browser. Implemented natively on each platform. */
+/** Most tabs a host keeps open (Android map of AgentWebViews, Electron map of WebContentsViews). */
+export const MAX_TABS = 4;
+
+/** The agent's embedded browser. Implemented natively on each platform. Every page method works on the ACTIVE tab. */
 export interface BrowserHost {
   open(url: string): Promise<void>;
   observe(): Promise<PageObservation>;
@@ -35,6 +40,15 @@ export interface BrowserHost {
   stopLoading(): Promise<void>;
   clearSiteData(): Promise<void>;
   onPage(cb: (e: PageEvent) => void): () => void;
+  /** Open tabs, oldest first, with the active one marked. The first tab exists as soon as the browser does. */
+  tabs(): Promise<TabInfo[]>;
+  /** New tab (max MAX_TABS), made active, loading `url`. Resolves with its id. */
+  openTab(url: string): Promise<number>;
+  switchTab(tabId: number): Promise<void>;
+  /** Closing the active tab makes the newest remaining tab active; the last tab cannot be closed. */
+  closeTab(tabId: number): Promise<void>;
+  /** Runs the page script's `findCode` in that tab. The result stays in the app (see the agent loop): never logged, never sent to a model. */
+  findCode(tabId: number, from?: string, subject?: string): Promise<CodeFound>;
 }
 
 export interface DeviceInfo {

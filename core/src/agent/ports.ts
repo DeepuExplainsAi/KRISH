@@ -8,7 +8,22 @@ export interface SelectedFile {
   token: string;
 }
 
-/** Native page control. Implemented by the Android plugin and the desktop shell. */
+/** One open browser tab of the agent. Ids are small numbers the model can name. */
+export interface TabInfo {
+  id: number;
+  title: string;
+  url: string;
+  /** True for the tab every other action works on. */
+  active?: boolean;
+}
+
+/** What the app found in an inbox page. Both values stay in the app: a model is only told that something was found. */
+export interface CodeFound {
+  code?: string;
+  link?: string;
+}
+
+/** Native page control. Every page action works on the ACTIVE tab; the tab actions change which one that is. */
 export interface PageDriver {
   observe(): Promise<PageObservation>;
   navigate(url: string): Promise<void>;
@@ -22,6 +37,17 @@ export interface PageDriver {
   /** Scrolls the page by about one screen. */
   scroll(direction: "down" | "up"): Promise<void>;
   highlight(elementId: number | undefined): Promise<void>;
+  /** The open tabs, oldest first. */
+  tabs(): Promise<TabInfo[]>;
+  /** Opens a new tab and makes it the active one. Returns its id. */
+  openTab(url: string): Promise<number>;
+  switchTab(tabId: number): Promise<void>;
+  closeTab(tabId: number): Promise<void>;
+  /**
+   * Looks at the inbox page in `tabId` for the newest message matching the hint and extracts a verification code or link.
+   * The value is returned to the app only; it never goes into a prompt, a result, history or a log.
+   */
+  readCode(tabId: number, hint?: { from?: string; subject?: string }): Promise<CodeFound>;
 }
 
 export interface SandboxTask {
@@ -69,10 +95,17 @@ export interface LoginRequest {
   site: string;
   /** The page has a "Continue with Google" button. */
   google: boolean;
+  /**
+   * A sign-up: the card asks the user to confirm creating ONE account on this site with this email. The app makes the password
+   * itself; the card never shows it. Confirming saves site, email and password to KrishVault.
+   */
+  signUp?: boolean;
+  /** The email already on the sign-up form (not secret). */
+  email?: string;
 }
 
 /** What the user did on the card: typed a login, chose Google, or nothing (undefined = closed the card). */
-export type LoginAnswer = { google: true } | { username: string; password: string };
+export type LoginAnswer = { google: true } | { username: string; password: string } | { signUp: true; username: string };
 
 export interface AgentUI {
   /** Plain question to the user. undefined = cancelled. */

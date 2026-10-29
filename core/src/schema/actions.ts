@@ -14,6 +14,12 @@ export const ACTION_TYPES = [
   "scroll",
   "ask_user",
   "sign_in",
+  "sign_up",
+  "open_tab",
+  "switch_tab",
+  "close_tab",
+  "read_code",
+  "fill_code",
   "note",
   "done",
 ] as const;
@@ -69,6 +75,28 @@ export const ActionSchema = z.discriminatedUnion("type", [
     plan,
   }),
   z.strictObject({ type: z.literal("sign_in"), thought, plan }),
+  // The app generates the password, fills it and saves the login. The model never sees the value.
+  z.strictObject({
+    type: z.literal("sign_up"),
+    passwordElementId: elementId,
+    confirmElementId: elementId.optional(),
+    email: z.string().max(200).optional(),
+    thought,
+    plan,
+  }),
+  z.strictObject({ type: z.literal("open_tab"), url: httpsUrl, thought, plan }),
+  z.strictObject({ type: z.literal("switch_tab"), tabId: z.number().int().nonnegative(), thought, plan }),
+  z.strictObject({ type: z.literal("close_tab"), tabId: z.number().int().nonnegative(), thought, plan }),
+  // Reads a verification code or link out of an inbox page. The value stays in the app; the model is only told whether one was found.
+  z.strictObject({
+    type: z.literal("read_code"),
+    tabId: z.number().int().nonnegative(),
+    from: z.string().max(120).optional(),
+    subject: z.string().max(120).optional(),
+    thought,
+    plan,
+  }),
+  z.strictObject({ type: z.literal("fill_code"), elementId, thought, plan }),
   z.strictObject({ type: z.literal("note"), text: z.string().min(1).max(300), thought, plan }),
   z.strictObject({ type: z.literal("done"), summary: z.string().max(6000), thought, plan }),
 ]);

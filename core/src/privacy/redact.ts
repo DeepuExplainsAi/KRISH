@@ -87,3 +87,20 @@ export function redactElement(el: PageElement): PageElement {
   if (out.href) out.href = redactText(out.href);
   return out;
 }
+
+/** Words that sit next to a one-time code in a mail or on a page. */
+const CODE_CUE = /(code|otp|one[- ]?time|verif|confirm|passcode|\bpin\b|कोड|ओटीपी|código|codigo|bestätigung)/i;
+
+/**
+ * Masks one-time codes before page text reaches a model. `inbox` (a tab the app read a code from) masks every 4-8 digit number;
+ * otherwise only numbers within 120 characters of a code word are masked (wider than `redactText`, which needs the word right before).
+ */
+export function maskCodes(text: string, inbox = false): string {
+  // A number joined to letters, "@", "_" or "-" is part of a name or an email address (abc123456@inbox.test): it is left alone, so the
+  // agent can still copy the address an inbox shows.
+  return text.replace(/(?<![\w@.-])\d{4,8}(?![\w@-]|\.\w)/g, (m, at: number) => {
+    if (inbox) return mark("otp");
+    const near = text.slice(Math.max(0, at - 120), at + m.length + 120);
+    return CODE_CUE.test(near) ? mark("otp") : m;
+  });
+}

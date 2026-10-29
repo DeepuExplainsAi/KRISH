@@ -12,6 +12,7 @@ export * from "./agent/ports";
 export * from "./agent/policy";
 export * from "./agent/controller";
 export * from "./agent/loop";
+export * from "./agent/signup";
 export * from "./memory/stores";
 export * from "./memory/schedule";
 export * from "./providers/local";

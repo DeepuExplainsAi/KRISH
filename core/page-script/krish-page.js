@@ -298,6 +298,105 @@
     return "ok";
   }
 
+  // ---- Inbox: verification code or link of the newest matching message (read_code). The value goes back to native code only. ----
+  var MESSAGE_SEL = 'tr,li,article,[role="row"],[role="listitem"],[role="article"],[class*="message" i],[class*="mail" i],[class*="inbox" i],[class*="letter" i],[data-message-id],[data-id]';
+  var CODE_CUE = /(code|otp|one[- ]?time|verif|confirm|passcode|pin\b|कोड|ओटीपी|código|codigo|bestätigung)/i;
+  var LINK_CUE = /(verif|confirm|activat|validat|magic|sign[- ]?in|log[- ]?in|complete|finish)/i;
+
+  function norm(s) {
+    return clean(s).toLowerCase();
+  }
+  function textOf(e) {
+    return clean(e.innerText != null ? e.innerText : e.textContent);
+  }
+  // Same-origin frames (many inbox sites show the open message in an iframe). Cross-origin frames cannot be read and are skipped.
+  function docs() {
+    var out = [document];
+    var frames = document.querySelectorAll("iframe");
+    for (var i = 0; i < frames.length && i < 10; i++) {
+      try {
+        var d = frames[i].contentDocument;
+        if (d && d.body) out.push(d);
+      } catch {}
+    }
+    return out;
+  }
+  function matches(text, hint) {
+    if (hint.from && text.indexOf(norm(hint.from)) < 0) return false;
+    if (hint.subject && text.indexOf(norm(hint.subject)) < 0) return false;
+    return true;
+  }
+  // 4-8 digits next to a code word ("Your code is 482913", "482913 is your verification code"). Years and times are not codes.
+  function codeIn(text) {
+    var re = /(?:^|[^\d])(\d{4,8})(?![\d])/g;
+    var m;
+    var first;
+    while ((m = re.exec(text))) {
+      var d = m[1];
+      var at = m.index + m[0].indexOf(d);
+      var before = text.slice(Math.max(0, at - 40), at);
+      if (/^(19|20)\d\d$/.test(d) && !CODE_CUE.test(before)) continue; // a year
+      var prev = text.charAt(at - 1);
+      var prev2 = text.charAt(at - 2);
+      var next = text.charAt(at + d.length);
+      var next2 = text.charAt(at + d.length + 1);
+      // A time (10:45), a date (12/2025, 01.12.2025) or a decimal: a separator with a digit on its other side. "code:7391" is still a code.
+      if (/[:/.,]/.test(prev) && /\d/.test(prev2)) continue;
+      if (/[:/.,]/.test(next) && /\d/.test(next2)) continue;
+      if (CODE_CUE.test(text.slice(Math.max(0, at - 80), at + d.length + 80))) return d;
+      if (first === undefined) first = d;
+    }
+    return CODE_CUE.test(text) ? first : undefined;
+  }
+  function linkIn(root) {
+    var links = root.querySelectorAll ? root.querySelectorAll("a[href]") : [];
+    for (var i = 0; i < links.length; i++) {
+      var a = links[i];
+      var href = a.href || "";
+      if (!/^https:\/\//i.test(href)) continue;
+      if (LINK_CUE.test(textOf(a)) || /verif|confirm|activat|validat|token=|magic/i.test(href)) return href;
+    }
+    return undefined;
+  }
+  // Message blocks in document order (inboxes list the newest first), innermost only, so one row is one message.
+  function blocks(d, hint) {
+    var all = d.querySelectorAll(MESSAGE_SEL);
+    var picked = [];
+    for (var i = 0; i < all.length && i < MAX_SCAN; i++) {
+      var t = norm(all[i].innerText != null ? all[i].innerText : all[i].textContent);
+      if (t.length < 4 || t.length > 20000 || !matches(t, hint)) continue;
+      picked.push(all[i]);
+    }
+    return picked.filter(function (e) {
+      for (var j = 0; j < picked.length; j++) if (picked[j] !== e && e.contains(picked[j])) return false;
+      return true;
+    });
+  }
+  function findCode(from, subject) {
+    var hint = { from: from || "", subject: subject || "" };
+    var ds = docs();
+    // An opened message (a frame or the page body after the user/agent opened it) is checked first, then the list rows.
+    for (var k = ds.length - 1; k >= 0; k--) {
+      var d = ds[k];
+      var bs = blocks(d, hint);
+      if (k > 0 && !bs.length && matches(norm(textOf(d.body)), hint)) bs = [d.body];
+      for (var i = 0; i < bs.length; i++) {
+        var text = textOf(bs[i]);
+        var code = codeIn(text);
+        var link = linkIn(bs[i]);
+        if (code || link) return JSON.stringify({ code: code, link: link });
+      }
+    }
+    // No row structure at all: the whole page, but only when it reads like a verification mail.
+    var body = document.body ? textOf(document.body) : "";
+    if (matches(norm(body), hint) && CODE_CUE.test(body)) {
+      var c = codeIn(body);
+      var l = linkIn(document);
+      if (c || l) return JSON.stringify({ code: c, link: l });
+    }
+    return JSON.stringify({});
+  }
+
   return Object.freeze({
     version: 1,
     observe: observe,
@@ -346,6 +445,7 @@
       return "ok";
     },
     highlight: highlight,
+    findCode: findCode,
     // Center of the element in CSS px (for native trusted taps, e.g. file choosers that need a user gesture).
     rect: function (id, fp) {
       var e = get(id, fp);

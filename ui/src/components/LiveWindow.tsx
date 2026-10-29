@@ -85,6 +85,16 @@ export function LiveWindow({ compact = false }: { compact?: boolean }) {
           )}
         </div>
       )}
+      {s.tabs.length > 1 && (
+        <div className="tab-chips" role="tablist" aria-label={t("tabs")}>
+          {s.tabs.map((tab) => (
+            <button key={tab.id} type="button" role="tab" aria-selected={Boolean(tab.active)} className={`tab-chip${tab.active ? " on" : ""}`} title={tab.url} onClick={() => void app.switchTab(tab.id)}>
+              <span className="n">{tab.id}</span>
+              <span className="txt">{tab.title || hostOf(tab.url) || "…"}</span>
+            </button>
+          ))}
+        </div>
+      )}
       <div className="live-foot">
         <span className={`status${needsYou ? " need" : ""}`}>
           {needsYou ? <IconWarn /> : (s.running || s.page.loading) && <span className="dots" aria-hidden="true"><i /><i /><i /></span>}
