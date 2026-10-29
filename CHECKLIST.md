@@ -32,7 +32,7 @@ Legend: **RUN** = executed in the build environment with the result observed. **
 | Merged manifest permissions | inspected merged manifests | INTERNET, POST_NOTIFICATIONS (WorkManager ACCESS_NETWORK_STATE / RECEIVE_BOOT_COMPLETED removed). v0.1.12 adds FOREGROUND_SERVICE, FOREGROUND_SERVICE_DATA_SYNC, WAKE_LOCK for `KeepAliveService`: NOT re-inspected in a merged manifest, check after the first CI build |
 
 ## NOT RUN: needs a real device or display (please test)
-- **(new 2026-10-29, Round 10)** Kotlin `KrishBrowserPlugin` with a map of tabs not compiled (CI only). Not run anywhere real: 2-4 WebViews / WebContentsViews at once (memory, touches reach the active one, chips switch the view), `findCode` on real inbox sites (smailpro, emailnator, 22.do, Gmail), generated password accepted by real sign-up forms, sign-up card on a phone.
+- **(new 2026-10-29, Round 10)** Kotlin `KrishBrowserPlugin` with a map of tabs compiles (CI `android-compile` green on a80e616), never run. Not run anywhere real: 2-4 WebViews / WebContentsViews at once (memory, touches reach the active one, chips switch the view), `findCode` on real inbox sites (smailpro, emailnator, 22.do, Gmail), generated password accepted by real sign-up forms, sign-up card on a phone.
 - **(new 2026-10-27)** Kotlin `KrishSystemPlugin.openExternal` not compiled; vault on real Android Keystore / Electron safeStorage; "Get key" opening the real browser; vault autofill on a real login page.
 
 1. **Everything on an Android device.** The APK was not installed or launched.
