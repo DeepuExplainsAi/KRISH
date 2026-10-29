@@ -10,8 +10,10 @@ export const DEFAULTS = {
     readMaxChars: 20000,
     sandboxOutputMaxChars: 4000,
     historyWindow: 16,
+    /** Results of earlier steps are cut to this (a page that was read 20000 characters long must not be sent again at every later step); the newest result is kept up to `readMaxChars`. */
+    olderResultChars: 500,
     /** The on-screen pointer is given this long to reach a control before the click, so the user sees it arrive. */
-    pointerMs: 200,
+    pointerMs: 340,
   },
   router: {
     requestTimeoutMs: 30_000,

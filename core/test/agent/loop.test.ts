@@ -809,3 +809,53 @@ describe("runAgent without a page (plain chat)", () => {
   });
 });
 
+describe("big prompts", () => {
+  it("a request the AI refuses as too big is sent again shorter, at once, without waiting", async () => {
+    const sizes: number[] = [];
+    const { fn } = mockFetch({
+      "a.test": (_u, init) => {
+        const content = JSON.parse(String(init?.body)).messages[1].content as string;
+        sizes.push(content.length);
+        return content.length > 6000 ? json({ error: { message: "Request too large for model" } }, 413) : openaiReply('{"type":"done","summary":"ok"}');
+      },
+    });
+    const s = await stores(["a"]);
+    const router = new ProviderRouter({ ...s, fetch: fn, providers: () => [provider("a")] });
+    const { driver } = fakeDriver({ "https://x.test/": { text: "word ".repeat(3000), elements: [el(1, { tag: "button", text: "Go" })] } }, "https://x.test/");
+    const { ui } = fakeUI();
+    const r = await runAgentRaw({ task: "look", startOnPage: true, providerWaits: [] }, { driver, router, ui, controller: new AgentController() });
+    expect(r.status).toBe("done");
+    expect(sizes.length).toBeGreaterThan(1);
+    expect(sizes.at(-1)!).toBeLessThan(sizes[0]!);
+  });
+
+  it("once shortened the prompt stays short for the next steps: the AI is not refused again at every step", async () => {
+    const seen: number[] = [];
+    const { fn } = mockFetch({
+      "a.test": (_u, init) => {
+        const content = JSON.parse(String(init?.body)).messages[1].content as string;
+        seen.push(content.length);
+        if (content.length > 6000) return json({ error: { message: "Request too large for model" } }, 413);
+        return openaiReply(seen.length < 4 ? '{"type":"scroll","direction":"down"}' : '{"type":"done","summary":"ok"}');
+      },
+    });
+    const s = await stores(["a"]);
+    const router = new ProviderRouter({ ...s, fetch: fn, providers: () => [provider("a")] });
+    const { driver } = fakeDriver({ "https://x.test/": { text: "word ".repeat(3000), elements: [el(1, { tag: "button", text: "Go" })] } }, "https://x.test/");
+    const { ui } = fakeUI();
+    await runAgentRaw({ task: "look", startOnPage: true, providerWaits: [], pointerMs: 0 }, { driver, router, ui, controller: new AgentController() });
+    const refused = seen.filter((n) => n > 6000).length;
+    expect(refused).toBe(1); // one refusal in the first step, none in the steps after it
+  });
+
+  it("an old long read result is cut in later prompts; the newest one stays whole", async () => {
+    const long = "L".repeat(15000);
+    const { driver } = fakeDriver({ "https://x.test/": { elements: [el(1, { tag: "button", text: "Go" })] } }, "https://x.test/");
+    driver.read = async () => long;
+    const { router, prompts } = await harness(['{"type":"read"}', '{"type":"click","elementId":1}', '{"type":"done","summary":"ok"}']);
+    const { ui } = fakeUI();
+    await runAgentRaw({ task: "t", startOnPage: true }, { driver, router, ui, controller: new AgentController() });
+    expect(prompts[1]!.includes("L".repeat(15000))).toBe(true); // the step right after the read sees all of it
+    expect(prompts[2]!.includes("L".repeat(600))).toBe(false); // one step later it is cut
+  });
+});

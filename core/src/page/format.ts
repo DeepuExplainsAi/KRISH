@@ -6,8 +6,8 @@ const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n)}…` : s
 const oneLine = (s: string) => s.replace(/\s+/g, " ").trim();
 
 /** Simplified, redacted text view of a page for the model. */
-export function formatObservation(obs: PageObservation, maxChars: number = DEFAULTS.agent.observationMaxChars): string {
-  const lines = obs.elements.slice(0, DEFAULTS.agent.observationMaxElements).map((raw) => {
+export function formatObservation(obs: PageObservation, maxChars: number = DEFAULTS.agent.observationMaxChars, maxElements: number = DEFAULTS.agent.observationMaxElements): string {
+  const lines = obs.elements.slice(0, maxElements).map((raw) => {
     const e = redactElement(raw);
     const name = oneLine(e.label ?? e.text ?? e.placeholder ?? e.name ?? "");
     const parts = [`[${e.id}] ${e.tag}${e.type ? `(${e.type})` : ""}`, `"${clip(name, 80)}"`];

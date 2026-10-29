@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ProviderRouter, AllProvidersFailedError } from "../../src/providers/router";
+import { classifyStatus, limitInfo } from "../../src/providers/http";
 import { AbortedError } from "../../src/providers/types";
 import { parseAction } from "../../src/schema/actions";
 import { json, mockFetch, openaiReply, provider, stores } from "../helpers";
@@ -100,8 +101,9 @@ describe("ProviderRouter fallback", () => {
       "b.test": () => openaiReply(DONE),
     });
     const r = await second.router.run(msgs, parseAction);
-    expect(r.attempts[0]?.outcome).toBe("bad_json");
+    expect(r.attempts[0]?.outcome).toBe("bad_output");
     expect(r.providerId).toBe("b");
+    expect(second.calls.filter((c) => c.url.includes("a.test"))).toHaveLength(1); // same prompt, same answer: not asked again
   });
 
   it("a hiccup is retried once on the same provider with the same model, never with another model", async () => {
@@ -329,5 +331,99 @@ describe("error classification while reading the body", () => {
     });
     const r = await router.run(msgs, parseAction);
     expect(r.attempts[0]?.outcome).toBe("network");
+  });
+});
+
+describe("limits that look like a daily quota but are not", () => {
+  const gemini = (quotaId: string, retry: string) => ({
+    error: {
+      code: 429,
+      status: "RESOURCE_EXHAUSTED",
+      message: "You exceeded your current quota. Quota metric: GenerateRequestsPerDayPerProjectPerModel-FreeTier. Please retry in 27.3s.",
+      details: [{ "@type": "type.googleapis.com/google.rpc.QuotaFailure", violations: [{ quotaId }] }, { "@type": "type.googleapis.com/google.rpc.RetryInfo", retryDelay: retry }],
+    },
+  });
+
+  it("Gemini: a per-minute violation is a short wait even though the text lists the per-day quota; a per-day one is spent", () => {
+    const minute = JSON.stringify(gemini("GenerateRequestsPerMinutePerProjectPerModel-FreeTier", "27s"));
+    expect(classifyStatus(429, minute)).toBe("rate_limit");
+    expect(limitInfo(minute).retryMs).toBe(27_000);
+    expect(classifyStatus(429, JSON.stringify(gemini("GenerateRequestsPerDayPerProjectPerModel-FreeTier", "43200s")))).toBe("quota");
+  });
+
+  it("Groq: a tokens-per-minute 429 that says when it lifts is a wait; a tokens-per-day one is spent", () => {
+    const tpm = JSON.stringify({ error: { message: "Rate limit reached for model x in organization y on tokens per minute (TPM): Limit 6000. Please try again in 7.5s.", type: "tokens" } });
+    expect(classifyStatus(429, tpm)).toBe("rate_limit");
+    expect(limitInfo(tpm).retryMs).toBe(7500);
+    const tpd = JSON.stringify({ error: { message: "Rate limit reached ... on tokens per day (TPD): Limit 100000, Used 99000. Please try again in 14m6.5s.", type: "tokens" } });
+    expect(limitInfo(tpd).daily).toBe(true);
+    expect(limitInfo(tpd).retryMs).toBe(846_500);
+    expect(classifyStatus(429, tpd)).toBe("quota");
+  });
+
+  it("OpenRouter: the free-models-per-day limit is spent, and its reset time is read from the headers", () => {
+    const now = 1_000_000;
+    const body = JSON.stringify({ error: { message: "Rate limit exceeded: free-models-per-day.", metadata: { headers: { "X-RateLimit-Reset": String(now + 5 * 3_600_000) } } } });
+    expect(limitInfo(body, now)).toEqual({ daily: true, retryMs: 5 * 3_600_000 });
+  });
+
+  it("413 and 'context too long' are 'too large', not a broken model", () => {
+    expect(classifyStatus(413, "Request too large for model")).toBe("too_large");
+    expect(classifyStatus(400, '{"error":{"message":"This model\'s maximum context length is 8192 tokens"}}')).toBe("too_large");
+    expect(classifyStatus(400, "bad field")).toBe("bad_request");
+  });
+});
+
+describe("a request that is too big", () => {
+  const big = { error: { message: "Request too large for model: Limit 6000, Requested 9000" } };
+  const bigMsgs = [{ role: "user" as const, content: "x".repeat(5000) }];
+
+  it("is not a failure of the provider: no cooldown, no red mark, the next provider answers, and the same size is not sent again", async () => {
+    const { router, calls } = await setup({
+      "a.test": (_u, init) => (String(init?.body).length > 3000 ? json(big, 413) : openaiReply(DONE)),
+      "b.test": () => openaiReply(DONE),
+    });
+    expect((await router.run(bigMsgs, parseAction)).providerId).toBe("b");
+    expect((await router.run(bigMsgs, parseAction)).providerId).toBe("b");
+    expect(calls.filter((c) => c.url.includes("a.test"))).toHaveLength(1);
+    expect((await router.run(msgs, parseAction)).providerId).toBe("a"); // a short request still goes to the first provider
+  });
+
+  it("when every provider refuses the size the error says so and asks for a shorter request, not for waiting", async () => {
+    const { router } = await setup({ "a.test": () => json(big, 413), "b.test": () => json(big, 413) });
+    const err = (await router.run(bigMsgs, parseAction).catch((e) => e)) as AllProvidersFailedError;
+    expect(err.tooLarge).toBe(true);
+    expect(err.transient).toBe(false);
+    const again = (await router.run(bigMsgs, parseAction).catch((e) => e)) as AllProvidersFailedError;
+    expect(again.tooLarge).toBe(true); // also when the providers are skipped for it
+  });
+});
+
+describe("request variants", () => {
+  it("a model that rejects JSON mode is asked without it from then on: one request per step, not two", async () => {
+    const { router, calls } = await setup({
+      "a.test": (_u, init) => (JSON.parse(String(init?.body)).response_format ? json({ error: { message: "response_format unsupported" } }, 400) : openaiReply(DONE)),
+    });
+    await router.run(msgs, parseAction);
+    expect(calls).toHaveLength(2);
+    await router.run(msgs, parseAction);
+    await router.run(msgs, parseAction);
+    expect(calls).toHaveLength(4);
+  });
+});
+
+describe("size and variant memory is per model", () => {
+  it("a bigger-context model chosen later is not skipped for the size the old model refused", async () => {
+    const big = { error: { message: "Request too large" } };
+    const bigMsgs = [{ role: "user" as const, content: "x".repeat(5000) }];
+    const p = provider("a");
+    const cfg = { current: p };
+    const { fn } = mockFetch({ "a.test": (_u, init) => (JSON.parse(String(init?.body)).model === "small" ? json(big, 413) : openaiReply(DONE)) });
+    const s = await stores(["a"]);
+    const router = new ProviderRouter({ ...s, fetch: fn, providers: () => [cfg.current], now: () => 1_000_000, sleep: async () => undefined });
+    cfg.current = { ...p, defaultModel: "small" };
+    await expect(router.run(bigMsgs, parseAction)).rejects.toBeInstanceOf(AllProvidersFailedError);
+    cfg.current = { ...p, defaultModel: "large" };
+    expect((await router.run(bigMsgs, parseAction)).providerId).toBe("a");
   });
 });

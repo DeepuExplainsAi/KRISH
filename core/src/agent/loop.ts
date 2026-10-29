@@ -69,6 +69,8 @@ const BROWSER_ACTIONS = new Set<Action["type"]>(["navigate", "read", "click", "t
 /** Values the model may keep for later steps (an address copied from one site, typed on another). */
 const MAX_NOTES = 20;
 const PROVIDER_WAITS = [4000, 12000, 30000];
+/** Smallest share of the page, history and chat a too-big request is cut to (1 -> 1/2 -> 1/4 -> 1/8). */
+const MIN_PROMPT_SIZE = 0.125;
 const MAX_PROVIDER_WAIT_MS = 120_000;
 
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n)}…` : s);
@@ -142,6 +144,8 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
   const providerWaits = opts.providerWaits ?? PROVIDER_WAITS;
   const pointerMs = opts.pointerMs ?? DEFAULTS.agent.pointerMs;
   const notes: string[] = [];
+  /** Share of the page, history and chat sent to the AI. Halved each time an AI refuses a request as too big and kept for the rest of the run, so it is not refused again at every step. */
+  let size = 1;
   /** False until the task needs a page: the app's page (maybe an old tab) is neither read nor shown to the model before that. */
   let pageLive = Boolean(opts.startOnPage);
   /** Login steps already handled in this run: one try per page and step, so a wrong password is never retried in a loop. */
@@ -441,24 +445,31 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
       const obs = pageLive ? await driver.observe() : NO_PAGE;
       // Saved logins of this site are scrubbed from everything the model sees (and stop screenshots) from the first look, even before sign_in.
       if (pageLive) for (const l of deps.vault?.logins(obs.url) ?? []) remember(l.username, l.password);
-      const text = pageLive ? formatObservation(obs) : noPageText(opts.openTab ? redactText(opts.openTab) : undefined);
       // The numbers the model sees are fixed for this step, so "m2" always means the line it read.
       memoryShown = deps.memory ? await deps.memory.list() : [];
       const memoryText = deps.memory ? memoryShown.map((m, i) => `m${i + 1}: ${m.text}`).join("\n") : opts.memory;
-      const turns = history.slice(-DEFAULTS.agent.historyWindow).map((t, i) => `${i + 1}. ${t.action}\n   -> ${fence("RESULT_DATA", t.result)}`);
       const chatText = (opts.chat ?? []).map((m) => `${m.role === "user" ? "user" : "krish"}: ${clip(m.text.replace(/\s+/g, " ").trim(), 500)}`).join("\n");
-      const prompt = scrub([
-        chatText ? fence("CHAT", redactChat(chatText)) : "",
-        opts.device ? fence("DEVICE", opts.device) : "",
-        fence("USER_TASK", redactText(opts.task)),
-        notes.length ? fence("NOTES", notes.map((n, i) => `${i + 1}. ${n}`).join("\n")) : "",
-        memoryText ? fence("MEMORY", memoryText) : "",
-        attached.length ? fence("USER_FILES", attachedList) : "",
-        userReply ? fence("USER_REPLY", userReply) : "",
-        appNote ? `App note: ${appNote}` : "",
-        turns.length ? `Previous steps:\n${turns.join("\n")}` : "",
-        fence("PAGE_DATA", text),
-      ].filter(Boolean).join("\n\n"));
+      const note = appNote;
+      const reply = userReply;
+      const buildPrompt = () => {
+        const text = pageLive
+          ? formatObservation(obs, Math.round(lim.observationMaxChars * size), Math.max(10, Math.round(lim.observationMaxElements * size)))
+          : noPageText(opts.openTab ? redactText(opts.openTab) : undefined);
+        const recent = history.slice(-Math.max(2, Math.round(lim.historyWindow * size)));
+        const turns = recent.map((t, i) => `${i + 1}. ${t.action}\n   -> ${fence("RESULT_DATA", i === recent.length - 1 ? clip(t.result, lim.readMaxChars * size) : clip(t.result, lim.olderResultChars * size))}`);
+        return scrub([
+          chatText ? fence("CHAT", redactChat(size < 1 ? clip(chatText, 1000) : chatText)) : "",
+          opts.device ? fence("DEVICE", opts.device) : "",
+          fence("USER_TASK", redactText(opts.task)),
+          notes.length ? fence("NOTES", notes.map((n, i) => `${i + 1}. ${n}`).join("\n")) : "",
+          memoryText ? fence("MEMORY", clip(memoryText, 4000)) : "",
+          attached.length ? fence("USER_FILES", attachedList) : "",
+          reply ? fence("USER_REPLY", reply) : "",
+          note ? `App note: ${note}` : "",
+          turns.length ? `Previous steps:\n${turns.join("\n")}` : "",
+          fence("PAGE_DATA", text),
+        ].filter(Boolean).join("\n\n"));
+      };
       userReply = "";
       appNote = "";
 
@@ -468,7 +479,7 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
           const run = await router.run(
             [
               { role: "system", content: SYSTEM_PROMPT },
-              { role: "user", content: prompt, imageDataUrl: opts.screenshots && typed.size === 0 ? obs.screenshotDataUrl : undefined },
+              { role: "user", content: buildPrompt(), imageDataUrl: opts.screenshots && typed.size === 0 && size === 1 ? obs.screenshotDataUrl : undefined },
             ],
             (raw) => parseReply(raw, step === 0),
             { signal },
@@ -478,6 +489,13 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
           break;
         } catch (e) {
           if (e instanceof AbortedError) throw new StoppedError();
+          // The request was bigger than the AI's size or per-minute token limit: send a shorter one at once (waiting would not help).
+          if (e instanceof AllProvidersFailedError && e.tooLarge && size > MIN_PROMPT_SIZE) {
+            size /= 2;
+            waits--;
+            chip("Sending a shorter request", "done");
+            continue;
+          }
           // Every AI was busy for a moment: a long task waits and tries again instead of being lost.
           if (!(e instanceof AllProvidersFailedError) || !e.transient || waits >= providerWaits.length) throw e;
           const id = chip("Waiting for an AI to answer", "running");

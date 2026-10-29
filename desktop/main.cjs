@@ -33,6 +33,8 @@ function serveUi() {
 let win;
 let view;
 let desktopLayout = false;
+/** The agent view is shown to the user. A hidden view may drop real input events, so only a shown one gets real clicks. */
+let live = false;
 let bounds = { x: 0, y: 0, width: 1, height: 1 };
 const tokens = new lib.FileTokens(() => crypto.randomUUID());
 let secrets;
@@ -51,7 +53,11 @@ function createView() {
     webPreferences: { partition: AGENT_PARTITION, backgroundThrottling: false, sandbox: true, contextIsolation: true, nodeIntegration: false, webSecurity: true, allowRunningInsecureContent: false, spellcheck: false },
   });
   const wc = view.webContents;
-  wc.setWindowOpenHandler(() => ({ action: "deny" }));
+  // A link or script that wants a new tab opens in this one: there is only one agent tab, and a silently refused popup looks like a dead click.
+  wc.setWindowOpenHandler(({ url, postBody }) => {
+    if (lib.isHttps(url) && !postBody) wc.loadURL(url); // a popup form submission (POST) cannot be replayed as a plain load, so it stays refused
+    return { action: "deny" };
+  });
   const blockNonHttps = (e, url) => { if (!lib.isHttps(url)) e.preventDefault(); };
   wc.on("will-navigate", blockNonHttps);
   wc.on("will-redirect", blockNonHttps);
@@ -188,7 +194,23 @@ function registerIpc() {
   handle("browser:open", async ({ url }) => { if (!lib.isHttps(url)) throw new Error("only https URLs are allowed"); await view.webContents.loadURL(url); });
   handle("browser:observe", () => call(lib.expr.observe()));
   handle("browser:read", ({ elementId }) => call(lib.expr.read(elementId)));
-  handle("browser:click", ({ elementId, fp }) => call(lib.expr.click(elementId, fp)).then(() => undefined));
+  // A real mouse click on the element (sites that ignore script clicks react to it). If the view is hidden, the page is scaled, or the element cannot
+  // give a position (covered, off-page), the script click is used.
+  handle("browser:click", async ({ elementId, fp }) => {
+    let at;
+    try {
+      if (live) at = lib.tapPoint(await call(lib.expr.rect(elementId, fp)), view.getBounds().width);
+    } catch {
+      at = undefined;
+    }
+    if (!at) return call(lib.expr.click(elementId, fp)).then(() => undefined);
+    const wc = view.webContents;
+    wc.focus();
+    wc.sendInputEvent({ type: "mouseMove", ...at });
+    wc.sendInputEvent({ type: "mouseDown", ...at, button: "left", clickCount: 1 });
+    await new Promise((r) => setTimeout(r, 40));
+    wc.sendInputEvent({ type: "mouseUp", ...at, button: "left", clickCount: 1 });
+  });
   handle("browser:type", ({ elementId, text, submit, fp }) => call(lib.expr.type(elementId, text, submit, fp)).then(() => undefined));
   handle("browser:fill", ({ elementId, value, fp }) =>
     // Page-originated error text is never returned from a fill: it could echo the value.
@@ -197,7 +219,7 @@ function registerIpc() {
   handle("browser:highlight", ({ elementId }) => call(lib.expr.highlight(elementId)).then(() => undefined));
   handle("browser:upload", ({ elementId, fp, token }) => uploadFile(elementId, fp, tokens.get(token)));
   handle("browser:setBounds", (b) => { bounds = { x: Math.round(b.x), y: Math.round(b.y), width: Math.max(1, Math.round(b.width)), height: Math.max(1, Math.round(b.height)) }; applyBounds(); view.setBorderRadius?.(Math.round(b.radius ?? 0)); });
-  handle("browser:setMode", ({ mode }) => view.setVisible(mode === "live"));
+  handle("browser:setMode", ({ mode }) => { live = mode === "live"; view.setVisible(live); });
   handle("browser:setDesktopLayout", ({ enabled }) => { desktopLayout = Boolean(enabled); applyBounds(); if (view.webContents.getURL()) view.webContents.reload(); });
   handle("browser:snapshot", async ({ maxWidth, quality }) => {
     const img = await capture();

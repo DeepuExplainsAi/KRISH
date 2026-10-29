@@ -1,4 +1,4 @@
-import { request } from "./http";
+import { firstWorking, request } from "./http";
 import { ProviderError, type Adapter, type AdapterCall, type CompletionRequest, type ModelInfo } from "./types";
 
 const stripPrefix = (name: string) => name.replace(/^models\//, "");
@@ -30,16 +30,10 @@ function toBody(req: CompletionRequest, inlineSystem = false, plain = false) {
 export const geminiAdapter: Adapter = {
   async complete(call, model, req) {
     const url = `${base(call)}/v1beta/models/${encodeURIComponent(stripPrefix(model))}:generateContent`;
-    const send = (inline: boolean, plain = false) => request(call, url, { method: "POST", headers: headers(call.apiKey), body: toBody(req, inline, plain) });
-    // A model that rejects systemInstruction or JSON mode answers 400: ask again with the rules inline, then without JSON mode.
-    const bad = (e: unknown) => e instanceof ProviderError && e.status === 400;
-    const data = (await send(false).catch((e: unknown) => {
-      if (!bad(e)) throw e;
-      return send(true).catch((e2: unknown) => {
-        if (!bad(e2)) throw e2;
-        return send(true, true);
-      });
-    })) as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
+    // A model that rejects systemInstruction or JSON mode answers 400: the rules go inline, then JSON mode is dropped. The variant that works is remembered.
+    const data = (await firstWorking(call, model, 3, (v) =>
+      request(call, url, { method: "POST", headers: headers(call.apiKey), body: toBody(req, v > 0, v > 1) }),
+    )) as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
     const text = data.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("");
     if (!text) throw new ProviderError("bad_json", "empty completion");
     return text;

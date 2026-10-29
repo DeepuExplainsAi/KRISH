@@ -52,6 +52,7 @@ function summarize(attempts: Attempt[]): string {
   const reasons = new Set<string>();
   for (const a of attempts) if (a.outcome !== "skipped" && a.reason) reasons.add(a.reason);
   if (attempts.some((a) => a.outcome === "skipped" && a.detail === SPENT)) reasons.add(friendlyReason("quota"));
+  if (attempts.some((a) => a.outcome === "skipped" && a.detail === TOO_LARGE)) reasons.add(friendlyReason("too_large"));
   if (reasons.size) return [...reasons].join(" · ");
   return attempts.some((a) => a.detail === "cooldown" || a.detail === "circuit open") ? "the AI services are busy, trying again shortly" : "Nothing is set up to answer yet.";
 }
@@ -60,9 +61,13 @@ export class AllProvidersFailedError extends Error {
   constructor(readonly attempts: Attempt[]) {
     super(`${NO_PROVIDER_PREFIX} ${summarize(attempts)}`);
   }
-  /** Trying again in a moment can help: something answered badly or was busy (not a missing key, a refused key, no credit or a spent daily quota). */
+  /** Trying again in a moment can help: something was busy or down (not a missing key, a refused key, no credit, a spent daily quota or a request that is simply too big). */
   get transient() {
-    return this.attempts.some((a) => (a.outcome === "skipped" ? a.detail === "cooldown" || a.detail === "circuit open" : a.outcome !== "auth" && a.outcome !== "payment" && a.outcome !== "quota"));
+    return this.attempts.some((a) => (a.outcome === "skipped" ? a.detail === "cooldown" || a.detail === "circuit open" : a.outcome !== "auth" && a.outcome !== "payment" && a.outcome !== "quota" && a.outcome !== "too_large"));
+  }
+  /** A provider refused the request for its size (now, or earlier at this size): a shorter prompt can work where waiting cannot. */
+  get tooLarge() {
+    return this.attempts.some((a) => a.outcome === "too_large" || a.detail === TOO_LARGE);
   }
 }
 
@@ -85,9 +90,14 @@ interface Health {
 
 /** `Attempt.detail` of a provider that is skipped because its daily quota is spent. */
 const SPENT = "daily quota used up";
+/** `Attempt.detail` of a provider that is skipped because this request is as big as one it already refused for size. */
+const TOO_LARGE = "request too large";
 /** Providers reset their daily quota at different times (UTC midnight, Pacific midnight, rolling 24 h), so a spent provider is asked again after this long, not at a guessed time. */
 const QUOTA_RECHECK_MS = 3 * 3_600_000;
-const spentKey = (id: string) => `spent:${id}`;
+/** A provider that names its own reset time is asked again then, but never sooner than this (a daily quota that reports "retry in 30 s" is not back in 30 s). */
+const MIN_RECHECK_MS = 60_000;
+/** "spent2": marks written by the first, looser classifier (any 429 that mentioned a day) are ignored. */
+const spentKey = (id: string) => `spent2:${id}`;
 /** Worth one more try on the same provider. A timeout is not: it already cost the whole wait. */
 const TRANSIENT = new Set<ProviderErrorKind>(["rate_limit", "server", "network", "bad_json"]);
 
@@ -99,6 +109,10 @@ const dayKey = (id: string, ms: number) => {
 
 export class ProviderRouter {
   private health = new Map<string, Health>();
+  /** Request variant (JSON mode or not, system prompt inline or not) that last worked per provider, so a rejected option is not asked for again at every step. */
+  private variants = new Map<string, number>();
+  /** Request size (characters) that a provider's model refused as too big; a request at least that big is not sent to it again. */
+  private tooBigAt = new Map<string, number>();
   private readonly cfg: RouterConfig;
   private readonly now: () => number;
   private readonly sleep: (ms: number, signal?: AbortSignal) => Promise<void>;
@@ -118,6 +132,7 @@ export class ProviderRouter {
   /** The user fixed the cause (a new key, a Test): the provider is tried again at once. */
   async clearSpent(id: string): Promise<void> {
     await this.deps.kv.delete(spentKey(id));
+    for (const key of this.tooBigAt.keys()) if (key.startsWith(`${id}|`)) this.tooBigAt.delete(key);
     const h = this.h(id);
     h.failures = 0;
     h.cooldownUntil = 0;
@@ -153,7 +168,7 @@ export class ProviderRouter {
   }
 
   /** Why a provider is unavailable right now, or undefined if usable. */
-  private async blockedReason(p: ProviderConfig, opts: RunOptions, hasKey: boolean): Promise<string | undefined> {
+  private async blockedReason(p: ProviderConfig, model: string | undefined, size: number, hasKey: boolean): Promise<string | undefined> {
     const h = this.h(p.id);
     const t = this.now();
     if (!p.enabled) return "disabled";
@@ -162,6 +177,7 @@ export class ProviderRouter {
     if (t < h.cooldownUntil) return "cooldown";
     if (t < h.circuitOpenUntil) return "circuit open";
     if (await this.spentUntil(p.id)) return SPENT;
+    if (size >= (this.tooBigAt.get(`${p.id}|${model}`) ?? Infinity)) return TOO_LARGE;
     if (p.dailyLimit !== undefined && (await this.usageToday(p.id)) >= p.dailyLimit) return "daily limit";
     return undefined;
   }
@@ -194,12 +210,13 @@ export class ProviderRouter {
    */
   async run<T>(messages: ChatMessage[], parse: (text: string) => T, opts: RunOptions = {}): Promise<RunResult<T>> {
     const attempts: Attempt[] = [];
+    const size = messages.reduce((n, m) => n + m.content.length + (m.imageDataUrl?.length ?? 0), 0);
     for (const configured of this.deps.providers()) {
       const p = withAutoModels(configured);
       if (opts.signal?.aborted) throw new AbortedError();
       const needsKey = p.kind !== "webgpu-local" && !p.keyless;
       const apiKey = needsKey ? await this.deps.keys.get(p.id) : (p.anonymousKey ?? "");
-      const blocked = await this.blockedReason(p, opts, !needsKey || Boolean(apiKey));
+      const blocked = await this.blockedReason(p, p.defaultModel, size, !needsKey || Boolean(apiKey));
       if (blocked || (needsKey && !apiKey)) {
         attempts.push({ providerId: p.id, providerName: p.name, outcome: "skipped", detail: blocked });
         continue;
@@ -212,7 +229,7 @@ export class ProviderRouter {
         await this.bump(p.id);
         try {
           const text = await adapters[p.kind].complete(
-            { config: p, apiKey: apiKey ?? "", fetch: this.deps.fetch, timeoutMs: this.cfg.requestTimeoutMs, signal: opts.signal },
+            { config: p, apiKey: apiKey ?? "", fetch: this.deps.fetch, timeoutMs: this.cfg.requestTimeoutMs, signal: opts.signal, memo: this.variants },
             model,
             { messages },
           );
@@ -220,7 +237,7 @@ export class ProviderRouter {
           try {
             value = parse(text);
           } catch {
-            throw new ProviderError("bad_json", "model output rejected by schema");
+            throw new ProviderError("bad_output", "model output rejected by schema");
           }
           this.onSuccess(p.id);
           this.deps.onResult?.(p.id, true);
@@ -232,6 +249,13 @@ export class ProviderRouter {
           // A keyless free service has one limit shared by every user of the app: that is not the user's own usage.
           const reason = p.keyless && (lastError.kind === "rate_limit" || lastError.kind === "quota") ? "shared free limit is full right now (not your usage)" : friendlyReason(lastError.kind, lastError.status);
           attempts.push({ providerId: p.id, providerName: p.name, model, outcome: lastError.kind, detail: lastError.message, reason });
+          if (lastError.kind === "too_large") {
+            // The provider is fine, this request is too big for it: no cooldown, no red mark; a request this big is not sent to it again.
+            const key = `${p.id}|${model}`;
+            this.tooBigAt.set(key, Math.min(size, this.tooBigAt.get(key) ?? Infinity));
+            lastError = undefined;
+            break;
+          }
           this.deps.onResult?.(p.id, false, reason);
           // The same provider is tried once more only for a hiccup (busy for a moment, 5xx, dropped connection, unreadable reply) that is about to pass.
           const wait = lastError.retryAfterMs ?? this.cfg.sameProviderWaitMs;
@@ -240,7 +264,8 @@ export class ProviderRouter {
         }
       }
       if (lastError) {
-        if (lastError.kind === "quota" || lastError.kind === "payment") await this.deps.kv.set(spentKey(p.id), String(this.now() + QUOTA_RECHECK_MS));
+        // The provider often says when its quota returns ("try again in 14m"): asked again then, else after a few hours.
+        if (lastError.kind === "quota" || lastError.kind === "payment") await this.deps.kv.set(spentKey(p.id), String(this.now() + (lastError.kind === "quota" && lastError.retryAfterMs ? Math.min(QUOTA_RECHECK_MS, Math.max(MIN_RECHECK_MS, lastError.retryAfterMs + 5000)) : QUOTA_RECHECK_MS)));
         this.onFailure(p.id, lastError);
       }
     }

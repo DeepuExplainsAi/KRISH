@@ -6,6 +6,7 @@
 (function () {
   var MAX_ELEMENTS = 200;
   var MAX_SCAN = 1500;
+  var MAX_POINTER = 60;
   var MAX_TEXT = 60000;
   var MAX_HIDDEN_FILE_INPUTS = 5;
   // State survives re-injection so element ids stay valid between observe() and click().
@@ -25,7 +26,9 @@
     var aria = e.getAttribute("aria-label");
     if (aria) return clean(aria);
     if (e.id) {
-      var l = document.querySelector('label[for="' + String(e.id).replace(/"/g, '\\"') + '"]');
+      // The label sits in the same tree as the control: a control inside a shadow root is labelled by a label of that root.
+      var root = e.getRootNode && e.getRootNode();
+      var l = (root && root.querySelector ? root : document).querySelector('label[for="' + String(e.id).replace(/"/g, '\\"') + '"]');
       if (l) return clean(l.textContent);
     }
     var wrap = e.closest && e.closest("label");
@@ -69,7 +72,7 @@
     return d;
   }
 
-  var SELECTOR = 'a[href],button,input,textarea,select,summary,[role="button"],[role="link"],[role="checkbox"],[role="tab"],[role="textbox"],[role="searchbox"],[role="combobox"],[role="menuitem"],[role="option"],[role="switch"],[role="radio"],[contenteditable=""],[contenteditable="true"],[contenteditable="plaintext-only"]';
+  var SELECTOR = 'a[href],button,input,textarea,select,summary,[role="button"],[role="link"],[role="checkbox"],[role="tab"],[role="textbox"],[role="searchbox"],[role="combobox"],[role="menuitem"],[role="option"],[role="switch"],[role="radio"],[onclick],[tabindex]:not([tabindex="-1"]),[contenteditable=""],[contenteditable="true"],[contenteditable="plaintext-only"]';
 
   // Typing targets: fields whose text is the user's input, not a label. Their identity must not depend on what was typed.
   function isRich(e) {
@@ -96,14 +99,42 @@
     return r.width > 0 && r.height > 0 && r.bottom > 0 && r.right > 0 && r.top < window.innerHeight && r.left < window.innerWidth;
   }
 
+  // Open shadow roots are searched too (web-component buttons are invisible to a plain querySelectorAll).
+  function collect(root, out, depth) {
+    var found = root.querySelectorAll(SELECTOR);
+    for (var i = 0; i < found.length && out.length < MAX_SCAN; i++) out.push(found[i]);
+    if (depth >= 4) return;
+    var all = root.querySelectorAll("*");
+    for (var j = 0; j < all.length && j < MAX_SCAN * 3; j++) if (all[j].shadowRoot) collect(all[j].shadowRoot, out, depth + 1);
+  }
+
+  // Many sites build buttons from a div or span that only has a pointer cursor and a script listener. The outermost such element is
+  // listed (its children inherit the cursor), unless it already holds a real control.
+  function pointerTargets(skip) {
+    var out = [];
+    var nodes = document.querySelectorAll("div,span,li,img,svg,i,p");
+    for (var i = 0; i < nodes.length && i < MAX_SCAN * 2 && out.length < MAX_POINTER; i++) {
+      var e = nodes[i];
+      if (skip.indexOf(e) >= 0 || !e.parentElement) continue;
+      if (window.getComputedStyle(e).cursor !== "pointer" || window.getComputedStyle(e.parentElement).cursor === "pointer") continue;
+      if (e.querySelector(SELECTOR)) continue;
+      var r = e.getBoundingClientRect();
+      if (r.width < 8 || r.height < 8 || !clean(e.innerText != null ? e.innerText : e.textContent) && !e.getAttribute("aria-label") && !e.getAttribute("title") && !e.getAttribute("alt")) continue;
+      out.push(e);
+    }
+    return out;
+  }
+
   // Elements on screen come first: on a heavy page (feeds, chat apps) the 200-element budget would otherwise be used up by
   // menus far above or below, and the box the user means could be cut off.
   function observe() {
-    var nodes = document.querySelectorAll(SELECTOR);
+    var nodes = [];
+    collect(document, nodes, 0);
+    nodes = nodes.concat(pointerTargets(nodes));
     var shown = [];
     var rest = [];
     var hiddenFiles = 0; // capped so a page cannot fill the element budget with them and push real fields out of view
-    for (var i = 0; i < nodes.length && i < MAX_SCAN; i++) {
+    for (var i = 0; i < nodes.length; i++) {
       var e = nodes[i];
       if (e.tagName === "INPUT" && e.type === "hidden") continue;
       if (!visible(e)) {
@@ -196,7 +227,7 @@
     c.setAttribute("data-krish-cursor", "1");
     c.style.cssText =
       "position:fixed;left:0;top:0;width:28px;height:28px;pointer-events:none;z-index:2147483647;opacity:0;will-change:transform;" +
-      "transition:transform .45s cubic-bezier(.22,.8,.25,1),opacity .25s;filter:drop-shadow(0 2px 3px rgba(0,0,0,.35));" +
+      "transition:transform .32s cubic-bezier(.22,.8,.25,1),opacity .2s;filter:drop-shadow(0 2px 3px rgba(0,0,0,.35));" +
       "transform:translate(" + Math.round(window.innerWidth / 2) + "px," + window.innerHeight + "px)";
     try {
       c.innerHTML = '<svg viewBox="0 0 24 24" width="28" height="28"><path d="M4 2l16 9-7 2-3 7z" fill="#ff7a1a" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/></svg>';
@@ -231,6 +262,23 @@
     d.style.transform = "scale(5)";
     d.style.opacity = "0";
     setTimeout(function () { d.remove(); }, 700);
+  }
+
+  // The element that really receives a tap at x,y (through open shadow roots). Unknown (null) where the engine cannot say.
+  function topAt(x, y) {
+    if (typeof document.elementFromPoint !== "function") return null;
+    var t = document.elementFromPoint(x, y);
+    while (t && t.shadowRoot && t.shadowRoot.elementFromPoint) {
+      var inner = t.shadowRoot.elementFromPoint(x, y);
+      if (!inner || inner === t) break;
+      t = inner;
+    }
+    return t;
+  }
+  // True when `node` is `ancestor` or sits inside it (through shadow roots): the tap reaches the element or something it contains.
+  function inside(node, ancestor) {
+    for (var n = node, i = 0; n && i < 200; i++, n = n.parentNode || n.host) if (n === ancestor) return true;
+    return false;
   }
 
   function highlight(id) {
@@ -307,6 +355,9 @@
         if (!e) throw new Error("hidden file input has no label to tap; ask the user");
       }
       var r = point(e, true); // the native tap that follows lands exactly here: the pointer and ripple show it
+      var top = topAt(r.left + r.width / 2, r.top + r.height / 2);
+      // Something else (a cookie banner, a modal, an overlay) would receive the tap: the caller falls back to a script click on the element itself.
+      if (top && !inside(top, e)) throw new Error("element " + id + " is covered by another element");
       return JSON.stringify({ x: r.left + r.width / 2, y: r.top + r.height / 2, innerWidth: window.innerWidth });
     },
     // Clicking a file input opens the native chooser; native code answers it with the user-picked file.

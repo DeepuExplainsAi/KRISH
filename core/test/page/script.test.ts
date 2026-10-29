@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 const script = readFileSync(resolve(process.cwd(), "page-script/krish-page.js"), "utf8");
 type K = {
@@ -229,5 +229,62 @@ describe("page script", () => {
     const o = obs();
     expect(o.elements.map((e) => e.text)).toEqual(["Near", "Far"]);
     expect(k().read(o.elements[0]!.id as number)).toBe("Near");
+  });
+});
+
+describe("page script reach", () => {
+  const named = (label: string) => obs().elements.find((e) => (e.text ?? e.label) === label);
+  // jsdom lays nothing out (every box is 0x0); the script skips boxes too small to tap, so give every element a real one.
+  const realRect = Element.prototype.getBoundingClientRect;
+  afterEach(() => void (Element.prototype.getBoundingClientRect = realRect));
+  beforeEach(() => {
+    Element.prototype.getBoundingClientRect = () => ({ x: 0, y: 0, left: 0, top: 0, right: 100, bottom: 30, width: 100, height: 30, toJSON: () => ({}) });
+  });
+
+  it("lists a div that only has an onclick handler or a pointer cursor, and a button inside an open shadow root", () => {
+    document.body.innerHTML = `
+      <div onclick="window.hit='attr'">Attr button</div>
+      <div style="cursor:pointer"><span>Cursor button</span></div>
+      <div id="host"></div>`;
+    document.getElementById("host")!.attachShadow({ mode: "open" }).innerHTML = "<button>Shadow button</button>";
+    expect(named("Attr button")).toBeDefined();
+    expect(named("Cursor button")).toBeDefined();
+    expect(named("Shadow button")).toBeDefined();
+  });
+
+  it("clicks a shadow-root button and a div button", () => {
+    let hits = "";
+    document.body.innerHTML = `<div id="d" onclick="void 0">Div button</div><div id="host"></div>`;
+    document.getElementById("d")!.addEventListener("click", () => (hits += "div "));
+    const root = document.getElementById("host")!.attachShadow({ mode: "open" });
+    root.innerHTML = "<button>Shadow button</button>";
+    root.querySelector("button")!.addEventListener("click", () => (hits += "shadow"));
+    k().click(named("Div button")!.id as number);
+    k().click(named("Shadow button")!.id as number);
+    expect(hits).toBe("div shadow");
+  });
+
+  it("a cursor:pointer container that already holds a real button is not listed twice", () => {
+    document.body.innerHTML = `<div style="cursor:pointer"><button>Real</button></div>`;
+    expect(obs().elements.filter((e) => (e.text ?? e.label) === "Real")).toHaveLength(1);
+    expect(obs().elements).toHaveLength(1);
+  });
+
+  it("rect refuses an element that another element covers, so the caller falls back to a script click", () => {
+    document.body.innerHTML = `<button id="b">Pay</button><div id="cover">Cookie banner</div>`;
+    const doc = document as unknown as { elementFromPoint: (x: number, y: number) => Element | null };
+    const id = named("Pay")!.id as number;
+    doc.elementFromPoint = () => document.getElementById("b");
+    expect(() => k().rect(id)).not.toThrow();
+    doc.elementFromPoint = () => document.getElementById("cover");
+    expect(() => k().rect(id)).toThrow(/covered/);
+    doc.elementFromPoint = () => document.body; // a container that would take the tap instead (the button ignores pointer events)
+    expect(() => k().rect(id)).toThrow(/covered/);
+  });
+
+  it("a control inside a shadow root is labelled by a label of that root, so a password field there is still recognised as secret", () => {
+    document.body.innerHTML = `<div id="host"></div>`;
+    document.getElementById("host")!.attachShadow({ mode: "open" }).innerHTML = `<label for="p">Password</label><input id="p" type="text">`;
+    expect(obs().elements.find((e) => e.tag === "input")?.label).toBe("Password");
   });
 });

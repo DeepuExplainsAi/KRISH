@@ -3,6 +3,32 @@
 Project: KRISH, source-only personal agent (Android + desktop). Spec: `docs/SPEC.md`.
 Rule: update this file at the end of every work session (status table + "Next"). Layout backup and restore: `LAYOUT-RESTORE.md`.
 
+## ROUND 9 (2026-10-29): providers shown red for no reason, Groq 413, one message = many requests, clicks that did nothing (v0.1.13)
+
+Owner (Hinglish): "providers all red, 'daily limit used up' / 'model not usable (HTTP 413)'; it keeps writing 'waiting for AI' and sends too many requests; buttons cannot be clicked; make it work on any device like Hark (screen recording); never run into limits or errors; find every problem that can come up later; handoff and upload." READ THIS BEFORE TOUCHING `providers/http.ts`, `router.ts`, `loop.ts` prompt building or `krish-page.js`.
+
+### 1. Root causes found in the owner's screenshots, and the fix
+- **"daily limit used up" on Gemini, OpenCode Zen and OpenRouter was a false alarm.** `classifyStatus` called any 429 whose text had "daily / per day / RPD / TPD" a spent quota. Gemini's 429 text lists EVERY quota of the project ("...PerDay...") even when only the per-minute one was hit. The mark was saved to disk for 3 h, so all three stayed red after restarts. Now `limitInfo(body)` (http.ts) reads the structure first: Gemini `details[].violations[].quotaId` (`...PerDay...` = day, `...PerMinute...` = minute) and `retryDelay`; Groq/others "try again in 7m12.5s"; OpenRouter `metadata.headers["X-RateLimit-Reset"]`. A real daily quota is skipped only until the provider's own reset time (min 60 s, max 3 h). The old marks are ignored: kv key renamed `spent:` -> `spent2:`.
+- **Groq "HTTP 413" = the request was bigger than the free tokens-per-minute limit** (page text 8000 chars + 120 elements + 16 history turns, where an old `read` result could be 20 000 chars). New `ProviderErrorKind` `too_large` (413, or 400/422 "context length / request too large"). It is NOT a provider failure: no cooldown, no red mark, `tooBigAt[provider|model]` remembers the size, the next provider answers, and the loop halves page, history and chat (`size` 1 -> 1/2 -> 1/4 -> 1/8, kept for the rest of the run) and sends again at once ("Sending a shorter request"). Older step results are cut to `olderResultChars` (500); only the newest keeps `readMaxChars`.
+- **One message cost 2-3 requests.** (a) JSON mode was tried first at EVERY step and a 400 cost a second request: `firstWorking()` remembers per provider+model which variant works (openaiCompat 2 variants, Gemini 3). (b) A schema-invalid reply was retried on the same model with the same prompt at temperature 0 (same answer): new kind `bad_output`, not retried on the same model. (c) `probeModels` sent 3 parallel requests per batch, up to 9: now one at a time, stops at the first that works; a rejected key / dead connection stops at once, a quota or outage after two models in a row (a per-model quota must not hide the model that works).
+- **Old "Gone: ..." lines** (OpenCode Zen "test", OpenRouter "o4-mini ...") are the model-list diff (`modelsChanged`), not an error. They stay until the list changes again.
+
+### 2. Clicks (core/page-script/krish-page.js, desktop/main.cjs, desktop/lib.cjs)
+- `observe()` now also lists: elements with `onclick` / `tabindex`, `div|span|li|img|svg|i|p` with `cursor:pointer` (outermost only, not when it holds a real control, max 60), and controls inside OPEN shadow roots (depth 4). `labelFor` looks in the control's own root (a shadow-root password field keeps its "Password" label, so it stays redacted).
+- `rect()` throws "covered by another element" when `elementFromPoint` at the centre is not the element or inside it; the Android plugin then falls back to the script click (it already did on any `rect` failure). Cookie banners and overlays no longer swallow a tap silently.
+- Desktop `browser:click` now sends a REAL mouse event (`sendInputEvent`) when the view is live and the page is shown 1:1; hidden view or scaled PC layout -> script click as before (the mapping through Electron device emulation is NOT verified, so it is not guessed). `window.open` / `target=_blank` GET links open in the same view (one tab); popup POSTs stay refused.
+- Pointer arrives in 340 ms (`pointerMs`, glide .32 s): smoother, still visible.
+
+### 3. Asked for, NOT built (same reasons as Round 8)
+- Hark's temp-mail + OTP sign-up loop on third-party sites (many accounts for free quotas, bypassing bot checks): not built. Use the sign-in card with the owner's own account.
+- "Install Playwright or Node": not needed. The agent drives the real WebView (Android) / WebContentsView (Electron) through the page script; Playwright would be a second browser the app does not ship. Windows runs the same Electron build.
+- Groq "two kinds" (transcribe vs chat): the picker already hides whisper/tts etc. from chat (`NOT_CHAT`); there is no speech-to-text feature in the app yet. If one is added, give it its own model slot, never the agent's.
+
+### 4. Verified / not verified
+- Verified: `npm run typecheck`, `npm run lint`, `npm test` (core 244, ui 50, desktop 10). New tests: Gemini PerMinute vs PerDay, Groq TPM vs TPD, OpenRouter reset header, 413, too-large size memory per model, shorter prompt sent at once and kept, old read result cut, JSON-mode variant memory, probe stop rules, shadow DOM / div buttons / covered check / label in jsdom.
+- NOT verified: anything in a real browser. The sandbox this round had 482 MB RAM and Electron and Chromium both crashed at start, so real mouse clicks, shadow DOM on real sites, Gemini/Groq/OpenRouter real 429 bodies (formats taken from their docs) and Android are untested. Test on the phone first.
+- Next AI: do not widen the daily-limit regex again; add a body sample to `router.test.ts` first. Do not retry a `bad_output` on the same model. Do not send a prompt bigger than `tooBigAt` allows.
+
 ## ROUND 8 (2026-10-28/29): one provider at a time, task queue, background run, PC layout fix, retry-then-another-way (v0.1.12)
 
 Owner (Hinglish, frustrated): "multiple models in one provider make no sense: use my provider/model until its WHOLE daily quota is spent, then the next provider, built-in free last; OpenCode first, then OpenRouter, Groq, Gemini...";

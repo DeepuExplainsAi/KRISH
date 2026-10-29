@@ -90,38 +90,40 @@ export function pickModels(items: ModelInfo[]): Pick<ProviderConfig, "defaultMod
 
 const PROBE = [{ role: "user" as const, content: 'Reply with exactly this JSON and nothing else: {"ok":true}' }];
 const PROBE_OK = /\{\s*"ok"\s*:\s*true\s*\}/;
-const PROBE_BATCH = 3;
+/** These say something about the whole provider, not about one model: asking the next model would only spend more of the same quota. */
+const PROVIDER_WIDE = new Set<ProviderError["kind"]>(["auth", "network", "timeout"]);
+/** A quota or an outage can belong to one model (Gemini: a daily quota per model, most "pro" ones none on a free key), so it stops the search only when two models in a row fail with it. */
+const MODEL_OR_PROVIDER = new Set<ProviderError["kind"]>(["quota", "server"]);
 
 /**
- * Finds a model that really answers: sends one tiny request to the best-ranked models (at most `tries`, three at a time) and
- * keeps the first, in rank order, that replies with the JSON asked for. Models that are gone, rate-limited, unpaid or that
- * cannot follow the format are skipped; a rejected key stops the search. `health.ok` is true when a model answered.
+ * Finds a model that really answers: sends one tiny request at a time to the best-ranked models (at most `tries`) and keeps the
+ * first, in rank order, that replies with the JSON asked for. Models that are gone, rate-limited, unpaid or that cannot follow the
+ * format are skipped. A rejected key or a dead connection stops the search at once, a spent quota or an outage after two models in a row:
+ * the rest would fail the same way and each try costs quota. `health.ok` is true when a model answered.
  * A model the user chose by hand stays while the provider still lists it.
  */
 export async function probeModels(config: ProviderConfig, apiKey: string, deps: RefreshDeps & { tries?: number }): Promise<ProviderConfig> {
   const items = config.models?.items ?? [];
   const listed = (id?: string) => (config.modelsChosen && id && (items.length === 0 || items.some((m) => m.id === id && !m.expiring)) ? id : undefined);
   const chosen = listed(config.defaultModel);
-  const candidates = chosen ? [{ id: chosen }] : rankModels(items).slice(0, deps.tries ?? 9);
+  const candidates = chosen ? [{ id: chosen }] : rankModels(items).slice(0, deps.tries ?? 5);
   let worked: string | undefined;
   let note = "no chat model found";
-  for (let i = 0; i < candidates.length && !worked; i += PROBE_BATCH) {
-    const batch = candidates.slice(i, i + PROBE_BATCH);
-    const results = await Promise.all(
-      batch.map(async (model) => {
-        try {
-          const text = await adapters[config.kind].complete({ config, apiKey, fetch: deps.fetch, timeoutMs: deps.timeoutMs ?? 20_000 }, model.id, { messages: PROBE });
-          return PROBE_OK.test(text) ? "ok" : new ProviderError("bad_json", "probe reply is not the requested JSON");
-        } catch (e) {
-          return e instanceof ProviderError ? e : new ProviderError("network", "unexpected provider failure");
-        }
-      }),
-    );
-    for (const [j, r] of results.entries()) {
-      if (r === "ok") worked ??= batch[j]!.id;
-      else note = friendlyReason(r.kind, r.status);
+  let last: ProviderError["kind"] | undefined;
+  for (const model of candidates) {
+    try {
+      const text = await adapters[config.kind].complete({ config, apiKey, fetch: deps.fetch, timeoutMs: deps.timeoutMs ?? 20_000 }, model.id, { messages: PROBE });
+      if (PROBE_OK.test(text)) {
+        worked = model.id;
+        break;
+      }
+      note = friendlyReason("bad_json");
+    } catch (e) {
+      const err = e instanceof ProviderError ? e : new ProviderError("network", "unexpected provider failure");
+      note = friendlyReason(err.kind, err.status);
+      if (PROVIDER_WIDE.has(err.kind) || (MODEL_OR_PROVIDER.has(err.kind) && last === err.kind)) break;
+      last = err.kind;
     }
-    if (results.some((r) => r !== "ok" && r.kind === "auth")) break;
   }
   const at = (deps.now ?? Date.now)();
   // A hand-picked model is kept even when the test failed (a spent quota is not a reason to forget the user's choice).

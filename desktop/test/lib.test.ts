@@ -84,3 +84,11 @@ describe("desktop lib", () => {
     for (const f of ["--network none", "--pull never", "--cap-drop ALL", "--read-only", "no-new-privileges", "--user 65534:65534"]) expect(a).toContain(f);
   });
 });
+
+describe("tapPoint", () => {
+  it("gives the position for a page shown 1:1 and nothing for a scaled page (the script click is used then)", () => {
+    expect(lib.tapPoint('{"x":100.4,"y":40,"innerWidth":800}', 800)).toEqual({ x: 100, y: 40 });
+    expect(lib.tapPoint({ x: 512, y: 300, innerWidth: 1024 }, 512)).toBeUndefined();
+    expect(lib.tapPoint({ x: 100, y: 40, innerWidth: 0 }, 800)).toBeUndefined();
+  });
+});

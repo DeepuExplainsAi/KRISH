@@ -1,4 +1,4 @@
-import { request } from "./http";
+import { firstWorking, request } from "./http";
 import { ProviderError, type Adapter, type AdapterCall, type CompletionRequest, type ModelInfo } from "./types";
 
 const base = (call: AdapterCall) => call.config.baseUrl.replace(/\/+$/, "");
@@ -25,12 +25,10 @@ const isZero = (v: unknown) => v !== undefined && v !== null && v !== "" && Numb
 
 export const openaiCompatAdapter: Adapter = {
   async complete(call, model, req) {
-    const send = (jsonMode: boolean) => request(call, `${base(call)}/chat/completions`, { method: "POST", headers: headers(call.apiKey), body: toBody(model, req, jsonMode) });
-    // JSON mode makes most models answer with clean JSON. A model or provider that does not know it answers 400/422: ask again without it.
-    const data = (await send(true).catch((e: unknown) => {
-      if (e instanceof ProviderError && (e.status === 400 || e.status === 422)) return send(false);
-      throw e;
-    })) as { choices?: { message?: { content?: string | null } }[] };
+    // JSON mode makes most models answer with clean JSON. A model that does not know it answers 400/422: the plain request is used, and remembered.
+    const data = (await firstWorking(call, model, 2, (v) =>
+      request(call, `${base(call)}/chat/completions`, { method: "POST", headers: headers(call.apiKey), body: toBody(model, req, v === 0) }),
+    )) as { choices?: { message?: { content?: string | null } }[] };
     const text = data.choices?.[0]?.message?.content;
     if (!text) throw new ProviderError("bad_json", "empty completion");
     return text;

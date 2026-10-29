@@ -67,6 +67,10 @@ export type ProviderErrorKind =
   | "auth"
   | "payment"
   | "bad_request"
+  /** The request is bigger than the model's size or tokens-per-minute limit (HTTP 413): the caller sends a shorter one. */
+  | "too_large"
+  /** The model answered, but not with a valid action. Same input gives the same output, so it is not retried on the same model. */
+  | "bad_output"
   | "bad_json";
 
 export class ProviderError extends Error {
@@ -88,6 +92,8 @@ export class AbortedError extends Error {
 }
 
 export interface AdapterCall {
+  /** Which request variant last worked per provider and model (see `firstWorking`), so a model that rejects JSON mode costs one request per step, not two. */
+  memo?: Map<string, number>;
   config: ProviderConfig;
   apiKey: string;
   fetch: FetchLike;
@@ -110,6 +116,8 @@ export function friendlyReason(kind: ProviderErrorKind, status?: number): string
     case "timeout": return "too slow";
     case "network": return "no connection";
     case "server": return "provider is down";
+    case "too_large": return "request too big for this AI's free limit";
+    case "bad_output":
     case "bad_json": return "gave a reply Krish could not read";
     default: return status === 404 || status === 410 ? "model no longer available" : status ? `model not usable (HTTP ${status})` : "model not usable";
   }

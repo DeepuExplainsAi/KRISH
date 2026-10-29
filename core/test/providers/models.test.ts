@@ -158,11 +158,28 @@ describe("probeModels", () => {
     const dead = deps({ "o.test": chat({ "chat-9": 404, "chat-8": 404, "chat-7": 404 }) }).deps;
     expect((await probeModels({ ...list, defaultModel: "old-1" }, "k", dead)).defaultModel).toBeUndefined();
   });
-  it("a rejected key stops after the first batch", async () => {
-    const { calls, deps: d } = deps({ "o.test": () => json({}, 401) });
-    const out = await probeModels(withList(["a-1", "a-2", "a-3", "a-4", "a-5"]), "bad", d);
-    expect(calls).toHaveLength(3);
-    expect(out.health).toMatchObject({ ok: false, note: "key rejected" });
+  it("a rejected key stops the search after ONE request; a spent quota or an outage after TWO models in a row (the rest would fail the same way and cost quota)", async () => {
+    const one = deps({ "o.test": () => json({}, 401) });
+    expect((await probeModels(withList(["a-1", "a-2", "a-3", "a-4", "a-5"]), "bad", one.deps)).health).toMatchObject({ ok: false, note: "key rejected" });
+    expect(one.calls).toHaveLength(1);
+    for (const [status, body, note] of [[429, { error: { message: "free-models-per-day limit" } }, "daily limit used up"], [503, {}, "provider is down"]] as const) {
+      const { calls, deps: d } = deps({ "o.test": () => json(body, status) });
+      const out = await probeModels(withList(["a-1", "a-2", "a-3", "a-4", "a-5"]), "k", d);
+      expect(calls).toHaveLength(2);
+      expect(out.health).toMatchObject({ ok: false, note });
+    }
+  });
+  it("a quota that belongs to one model (Gemini's pro models on a free key) does not hide the model that works", async () => {
+    const day = { error: { details: [{ violations: [{ quotaId: "GenerateRequestsPerDayPerProjectPerModel-FreeTier" }] }], message: "quota" } };
+    const { deps: d } = deps({ "o.test": chat({}) });
+    const one = deps({ "o.test": (_u: string, init?: RequestInit) => (JSON.parse(String(init?.body)).model === "chat-9" ? json(day, 429) : openaiOk()) }).deps;
+    expect(await probeModels(withList(["chat-9", "chat-8"]), "k", one)).toMatchObject({ defaultModel: "chat-8", health: { ok: true } });
+    expect(d).toBeDefined();
+  });
+  it("tests models one at a time and stops at the first that works", async () => {
+    const { calls, deps: d } = deps({ "o.test": chat({ "chat-9": 404 }) });
+    await probeModels(withList(["chat-9", "chat-8", "chat-7"]), "k", d);
+    expect(calls).toHaveLength(2);
   });
 });
 
