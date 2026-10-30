@@ -34,11 +34,11 @@ Legend: **RUN** = executed in the build environment with the result observed. **
 ## Round 12: Android downloader (2026-10-30, work in progress)
 
 - `npm run typecheck`, `npm run lint`, `npm test` (core 289, UI 54, desktop 10), `npm run build:ui` pass locally. Fake-platform tests simulate progress, pause, hash mismatch, storage error, selection and delete; they do not exercise native hashing, redirects or networking.
-- CI Android Kotlin compile for this commit: pending; local environment has no JDK/Android SDK. Native plugin functionality has not been run. `ACCESS_NETWORK_STATE` added for metered warning; inspect merged manifests.
+- CI Android Kotlin compile passed for both flavors on ae2dd48; later activity-recreation locking change needs CI on the new commit. Local environment has no JDK/Android SDK. Native plugin functionality has not been run. `ACCESS_NETWORK_STATE` added for metered warning; inspect merged manifests.
 - NOT BUILT: native inference, local routing, functional API-backup toggle, hiding the API Keys screen, JNI/grammar and NDK CI. No offline answers yet. Do not advertise Phase 1 as complete or enable backup off before the engine exists.
 - NOT RUN: real APK install, actual Hugging Face redirect hosts, actual model download/pause/resume/cancel/hash failure/storage-low or delete, process death/restart, real inference, speed, RAM kills with a WebView open, battery/heat.
 
-## Round 11: partial local-model work (2026-10-30)
+## Round 11: partial local-model work (2026-10-30; superseded by Round 12)
 
 - Run: `npm run typecheck`, `npm run lint`, `npm test` (core 289, UI 52, desktop 10), `npm run build:ui` all pass. Headless Chromium showed the Settings catalog preview at 390×844 using the web demo; this is not a phone test.
 - NOT BUILT: native download manager, consent and storage/metered checks, checksum verification, model selection/deletion, API backup toggle, native inference, grammar, JNI/NDK or offline routing. Existing API routing is unchanged. This is not a working offline model or a complete Phase 1.

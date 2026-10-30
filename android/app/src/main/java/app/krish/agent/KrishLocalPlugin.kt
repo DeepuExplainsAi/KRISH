@@ -28,11 +28,19 @@ class KrishLocalPlugin : Plugin() {
         @Volatile var command: String? = null
         @Volatile var call: Call? = null
     }
-    private val lock = Any()
+    companion object {
+        // Activity recreation must not allow two plugin instances to write the same partial file.
+        private val lock = Any()
+        private var active: Job? = null
+        private var eventTarget: KrishLocalPlugin? = null
+    }
+    override fun load() {
+        synchronized(lock) { eventTarget = this }
+        super.load()
+    }
     private val worker = Executors.newSingleThreadExecutor()
     private val client = OkHttpClient.Builder().followRedirects(false).followSslRedirects(false)
         .connectTimeout(30, TimeUnit.SECONDS).readTimeout(45, TimeUnit.SECONDS).build() // default NO_COOKIES
-    private var active: Job? = null
     private val dir: File get() = File(context.filesDir, "local-models").also { check(it.isDirectory || it.mkdirs()) }
 
     private fun models(): List<Model> {
@@ -48,7 +56,7 @@ class KrishLocalPlugin : Plugin() {
     private fun emit(m: Model, status: String, bytes: Long, error: String? = null) {
         val data = JSObject().put("modelId", m.id).put("status", status).put("bytes", bytes).put("total", m.size)
         if (error != null) data.put("error", error)
-        notifyListeners("progress", data)
+        synchronized(lock) { eventTarget?.notifyListeners("progress", data) }
     }
 
     @PluginMethod fun deviceInfo(call: PluginCall) {
@@ -136,7 +144,10 @@ class KrishLocalPlugin : Plugin() {
         throw IllegalStateException("Too many download redirects")
     }
     override fun handleOnDestroy() {
-        synchronized(lock) { active?.let { it.command = "pause"; it.call?.cancel() } }
+        synchronized(lock) {
+            if (eventTarget === this) eventTarget = null
+            active?.let { it.command = "pause"; it.call?.cancel() }
+        }
         worker.shutdown()
         super.handleOnDestroy()
     }
