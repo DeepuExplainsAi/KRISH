@@ -31,6 +31,12 @@ Legend: **RUN** = executed in the build environment with the result observed. **
 | Independent review of the safety rules (static) and fixes | 12 findings; 11 fixed in code with tests that fail on the old code (policy, loop, page script, sandbox limits, keyring check, upload binding, layout). #1 is partly open on Android (see SECURITY.md gaps 0, 0b) | fixed as described |
 | Merged manifest permissions | inspected merged manifests | INTERNET, POST_NOTIFICATIONS (WorkManager ACCESS_NETWORK_STATE / RECEIVE_BOOT_COMPLETED removed). v0.1.12 adds FOREGROUND_SERVICE, FOREGROUND_SERVICE_DATA_SYNC, WAKE_LOCK for `KeepAliveService`: NOT re-inspected in a merged manifest, check after the first CI build |
 
+## Round 15: native inference investigation (2026-10-30)
+
+- **NOT BUILT:** step 2 JNI load/complete/stop/unload, schema-equivalent grammar, Qwen template application, isolation/OOM handling, background unload; step 3 engine registration, local-first routing and working backup toggle. The existing native library exposes only a link probe.
+- Zod JSON-schema export loses the custom HTTPS URL refinement; llama.cpp converter may weaken unsupported regex patterns. Model output must still pass `ActionSchema` and policy checks. llama.cpp includes native abort paths, so a language-level exception catch is not sufficient crash isolation.
+- **NOT RUN:** native inference, APK installation, real model download, real-device OOM, speed, RAM with WebView open, battery/heat, background unload, or phone fallback. Existing local-router fallback tests use fake engines only.
+
 ## Round 14: native build probe (2026-10-30)
 
 - Pinned source, CMake, arm64-only Gradle config and JNI link probe added. CI-only dependencies invoke both native build tasks from the existing Android check; **CI passed on 0616dff** (run 41029080188), no local Android JDK/SDK/NDK. Local typecheck, lint, tests (290 core, 54 UI, 10 desktop), and UI build passed. `ci/workflows/check.yml` is a non-active workflow mirror.
