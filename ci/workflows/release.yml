@@ -1,0 +1,128 @@
+name: release
+# Tag push `v*` (or manual run with a tag) builds an unsigned DEBUG Android APK and Windows/Linux desktop packages,
+# then publishes a pre-release for tags containing a dash, or a latest release otherwise. Only GITHUB_TOKEN is used.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag (created on the current commit if it does not exist), e.g. v0.1.0
+        required: true
+        type: string
+permissions:
+  contents: read
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with: { node-version: 24, cache: npm }
+      - uses: actions/setup-java@v6
+        with: { distribution: temurin, java-version: 21 }
+      - name: Android SDK (preinstalled on the runner)
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"
+      - run: npm ci
+      - run: npm run build:ui
+        env:
+          KRISH_VERSION: ${{ env.TAG }}
+      - run: npx cap sync android
+      - name: Fixed signing key (so the APK updates over the previous one)
+        run: echo "$KRISH_KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/krish.p12"
+        env: { KRISH_KEYSTORE_B64: "${{ secrets.KRISH_KEYSTORE_B64 }}" }
+      - run: ./gradlew --no-daemon assembleLiteDebug -PappVersion=${TAG#v} -PappVersionCode=${{ github.run_number }}
+        working-directory: android
+        env:
+          KRISH_KEYSTORE: ${{ runner.temp }}/krish.p12
+          KRISH_KEYSTORE_PASS: ${{ secrets.KRISH_KEYSTORE_PASS }}
+      - name: Name the files
+        run: |
+          mkdir out
+          cp android/app/build/outputs/apk/lite/debug/app-lite-debug.apk out/krish-android.apk
+      - uses: actions/upload-artifact@v7
+        with: { name: android, path: out/*.apk, if-no-files-found: error }
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [win32, linux]
+    runs-on: ${{ matrix.platform == 'win32' && 'windows-latest' || 'ubuntu-latest' }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with: { node-version: 24, cache: npm }
+      - run: npm ci
+      - run: npm run build:ui
+        env:
+          KRISH_VERSION: ${{ env.TAG }}
+      # main.cjs reads ../ui/dist and ../core/page-script, so the staged folder keeps that layout.
+      - name: Stage app files
+        shell: bash
+        run: |
+          mkdir -p stage/desktop stage/ui stage/core
+          cp desktop/main.cjs desktop/lib.cjs desktop/preload.cjs stage/desktop/
+          cp -r ui/dist stage/ui/dist
+          cp -r core/page-script stage/core/page-script
+          echo '{"name":"krish","version":"'"${TAG#v}"'","main":"desktop/main.cjs"}' > stage/package.json
+      - run: npx --yes @electron/packager stage Krish --platform=${{ matrix.platform }} --arch=x64 --electron-version=45.0.0 --out=out --overwrite
+      - name: Archive (keeps the executable bit on Linux)
+        if: matrix.platform == 'linux'
+        run: tar -czf krish-linux-x64.tar.gz -C out Krish-linux-x64
+      - uses: actions/upload-artifact@v7
+        with:
+          name: desktop-${{ matrix.platform }}
+          path: ${{ matrix.platform == 'linux' && 'krish-linux-x64.tar.gz' || 'out/Krish-win32-x64' }}
+          if-no-files-found: error
+  publish:
+    needs: [android, desktop]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with: { fetch-depth: 0 }
+      - uses: actions/download-artifact@v8
+        with: { path: dl }
+      - name: Collect files
+        run: |
+          mkdir release
+          cp dl/android/*.apk release/
+          cp dl/desktop-linux/krish-linux-x64.tar.gz release/
+          mv dl/desktop-win32 Krish-win32-x64
+          zip -qr release/krish-windows-x64.zip Krish-win32-x64
+          (cd release && sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt)
+      - name: Release notes (version and download links of this release)
+        run: |
+          B="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG"
+          {
+            echo "## Krish ${TAG#v}"
+            echo
+            echo "| Download | File |"
+            echo "|---|---|"
+            echo "| Android 8.0+ | [krish-android.apk]($B/krish-android.apk) |"
+            echo "| Windows 10/11 x64 | [krish-windows-x64.zip]($B/krish-windows-x64.zip) |"
+            echo "| Linux x64 | [krish-linux-x64.tar.gz]($B/krish-linux-x64.tar.gz) |"
+            echo "| Checksums | [SHA256SUMS.txt]($B/SHA256SUMS.txt) |"
+            echo
+            if git rev-parse "$(git describe --tags --abbrev=0 "$GITHUB_SHA^" 2>/dev/null)" >/dev/null 2>&1; then
+              PREV=$(git describe --tags --abbrev=0 "$GITHUB_SHA^")
+              echo "### Changes since $PREV"
+              git log --pretty='- %s' "$PREV..$GITHUB_SHA" | grep -v '^- Merge' | head -40
+              echo
+            fi
+            cat .github/release-notes.md
+          } > release-notes.md
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          case "$TAG" in
+            *-*) release_type=--prerelease ;;
+            *) release_type=--latest ;;
+          esac
+          gh release create "$TAG" release/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" "$release_type" --title "Krish $TAG" --notes-file release-notes.md

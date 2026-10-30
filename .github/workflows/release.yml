@@ -1,6 +1,6 @@
 name: release
 # Tag push `v*` (or manual run with a tag) builds an unsigned DEBUG Android APK and Windows/Linux desktop packages,
-# then publishes them as the latest GitHub release (notes list the version, the three download links and the commits since the previous tag). Only GITHUB_TOKEN is used.
+# then publishes a pre-release for tags containing a dash, or a latest release otherwise. Only GITHUB_TOKEN is used.
 on:
   push:
     tags: ['v*']
@@ -117,7 +117,12 @@ jobs:
             fi
             cat .github/release-notes.md
           } > release-notes.md
-      - name: Publish pre-release
+      - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$TAG" release/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --latest --title "Krish $TAG" --notes-file release-notes.md
+        run: |
+          case "$TAG" in
+            *-*) release_type=--prerelease ;;
+            *) release_type=--latest ;;
+          esac
+          gh release create "$TAG" release/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" "$release_type" --title "Krish $TAG" --notes-file release-notes.md
