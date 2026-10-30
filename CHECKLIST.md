@@ -33,7 +33,7 @@ Legend: **RUN** = executed in the build environment with the result observed. **
 
 ## Round 17: local-first integration (2026-10-30)
 
-- Step 2 CI `41032308054`: JS and Android Kotlin/NDK compile passed; not an APK/device test. Local step 3 checks: typecheck, lint, 297 core / 56 UI / 10 desktop tests and UI build passed. Step 3 PR run `41033360016` passed JS and both-flavor Android Kotlin/NDK compile; a later native strict-JSON test is subject to new CI.
+- Step 2 CI `41032308054`: JS and Android Kotlin/NDK compile passed; not an APK/device test. Local step 3 checks: typecheck, lint, 297 core / 56 UI / 10 desktop tests and UI build passed. Step 3 PR run `41033360016` passed JS and both-flavor Android Kotlin/NDK compile; strict-JSON follow-up run `41033973986` also passed JS and both-flavor Android Kotlin/NDK compile. Native log suppression was host-compiled; its Android build is subject to final CI.
 - Added selected-native-first routing, online backup opt-in, API Keys gated by toggle, per-provider compact/redacted prompt, strict native action validation, and stop propagation. Tests use fake engine/network; host parsed schema-derived grammar and rendered a Qwen test template, not actual inference.
 - **NOT RUN on phone:** install, model download, inference, JSON quality, native process crash/restart, stop, background unload, OOM with WebView, speed, battery or heat. `:llm` isolates native crashes but cannot prevent system-wide memory kills.
 

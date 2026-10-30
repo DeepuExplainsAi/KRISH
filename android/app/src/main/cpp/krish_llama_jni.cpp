@@ -6,6 +6,7 @@
 #include <vector>
 #include "llama.h"
 #include "chat.h"
+#include "log.h"
 #include "json-schema-to-grammar.h"
 
 // All methods except stop are serialized by the service worker. This library is loaded only in :llm.
@@ -38,7 +39,8 @@ extern "C" JNIEXPORT void JNICALL Java_app_krish_agent_NativeLlama_unload(JNIEnv
 extern "C" JNIEXPORT void JNICALL Java_app_krish_agent_NativeLlama_load(JNIEnv * env, jobject, jbyteArray path, jint size) {
     try {
         unload();
-        llama_log_set([](ggml_log_level, const char *, void *) {}, nullptr); // never log prompts or model data
+        llama_log_set([](ggml_log_level, const char *, void *) {}, nullptr);
+        common_log_set_verbosity_thold(-1); // common chat/Jinja logs must not expose prompt content
         llama_backend_init();
         auto mp = llama_model_default_params();
         mp.n_gpu_layers = 0;
