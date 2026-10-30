@@ -55,6 +55,6 @@ Deliberately NOT used: analytics/crash SDKs, Firebase, ads, any CDN-hosted scrip
 ## Spec deviation: Playwright
 The brief names Playwright for the desktop browser view. Playwright is a test-automation library and is not meant to ship inside the app, so the desktop drives its `WebContentsView` with Electron's own APIs instead (`executeJavaScriptInIsolatedWorld`, `capturePage`, the in-process debugger for file inputs). Playwright is not a dependency. The real-Electron smoke test (`desktop/smoke.cjs`) talks to the app over the Chrome DevTools Protocol.
 
-## Planned native model files (catalog only; not bundled or downloaded yet)
+## Native model files and downloader (not bundled)
 
-The catalog lists Unsloth's Qwen3.5 Q4_K_M GGUF text weights (0.8B, 2B, 4B, 9B). The model cards declare Apache 2.0; see https://huggingface.co/Qwen/Qwen3.5-2B and the model repositories linked in `core/src/local/catalog.ts`. Their exact file sizes and LFS SHA-256s were checked using the Hugging Face tree API. No model binaries are included. llama.cpp is not yet included or pinned; pin and document its exact release and license before adding the native runtime.
+The catalog lists Unsloth's Qwen3.5 Q4_K_M GGUF text weights (0.8B, 2B, 4B, 9B). The model cards declare Apache 2.0; see https://huggingface.co/Qwen/Qwen3.5-2B and the model repositories linked in `core/src/local/catalog.ts`. Their exact file sizes and LFS SHA-256s were checked using the Hugging Face tree API. No model binaries are included. Android downloads use OkHttp 4.12.0 (Apache 2.0), with a dedicated no-cookie client and automatic redirects disabled. llama.cpp is not yet included or pinned; pin and document its exact release and license before adding the native runtime.

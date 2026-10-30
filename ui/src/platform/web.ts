@@ -1,3 +1,4 @@
+import { unsupportedLocalModel } from "./types";
 import { MemoryKeyStore, type PageObservation } from "@krish/core";
 import { MAX_TABS, type BrowserHost, type PageEvent, type Platform } from "./types";
 
@@ -67,6 +68,7 @@ export function createWebPlatform(): Platform {
     keys: new MemoryKeyStore(), // dev only: keys vanish on reload
     fetch: (i, init) => fetch(i, init),
     browser,
+    local: unsupportedLocalModel(),
     files: { pick: async () => undefined, read: async () => new Uint8Array(), save: async () => false },
     system: {
       deviceInfo: async () => ({ lowRam: false, totalMemMb: 0, linuxSandbox: false }),

@@ -59,6 +59,34 @@ export interface DeviceInfo {
   dockerAvailable?: boolean;
 }
 
+export type LocalDownloadStatus = "downloading" | "verifying" | "paused" | "cancelled" | "installed" | "error";
+export interface LocalProgress {
+  modelId: string;
+  status: LocalDownloadStatus;
+  bytes: number;
+  total: number;
+  error?: string;
+}
+export interface LocalDeviceInfo { totalRamMB: number; freeStorageMB: number; metered: boolean }
+export interface LocalModelHost {
+  supported: boolean;
+  deviceInfo(): Promise<LocalDeviceInfo>;
+  listInstalled(): Promise<{ installed: string[]; partial: { modelId: string; bytes: number }[]; active?: string }>;
+  download(modelId: string): Promise<void>;
+  pause(modelId: string): Promise<void>;
+  resume(modelId: string): Promise<void>;
+  cancel(modelId: string): Promise<void>;
+  delete(modelId: string): Promise<void>;
+  onProgress(cb: (event: LocalProgress) => void): () => void;
+}
+
+/** Web and desktop do not expose Android's private model storage. */
+export function unsupportedLocalModel(): LocalModelHost {
+  const unsupported = async (): Promise<never> => { throw new Error("On-device models are not supported on this platform"); };
+  return { supported: false, deviceInfo: unsupported, listInstalled: unsupported, download: unsupported, pause: unsupported,
+    resume: unsupported, cancel: unsupported, delete: unsupported, onProgress: () => () => {} };
+}
+
 export interface Platform {
   kind: "android" | "desktop" | "web";
   /** Non-secret app data (redacted history, memory, settings). */
@@ -67,6 +95,7 @@ export interface Platform {
   keys: KeyStore;
   fetch: FetchLike;
   browser: BrowserHost;
+  local: LocalModelHost;
   files: {
     pick(): Promise<SelectedFile | undefined>;
     read(token: string, maxBytes?: number): Promise<Uint8Array>;

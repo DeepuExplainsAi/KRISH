@@ -39,3 +39,5 @@ GPL/LGPL source offer: `SOURCE-OFFER.md`.
 
 - Qwen team: Qwen3.5 model weights, Apache 2.0, https://huggingface.co/Qwen .
 - Unsloth: GGUF quantizations, repositories and model cards linked by `core/src/local/catalog.ts`; model cards list Apache 2.0. We include metadata only, not weights.
+
+- Square OkHttp 4.12.0, Apache 2.0: https://github.com/square/okhttp (Android model download client).

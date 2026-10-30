@@ -3,9 +3,10 @@ import {
   runAgent, Scheduler, nextRun, nextBriefAt, briefCommand, Vault,
   type AgentEvent, type AgentUI, type BriefSettings, type ChipState, type PageDriver, type ProviderConfig,
   type LoginAnswer, type LoginRequest, type MemoryPort, type SecureKind, type SelectedFile, type TabInfo, type Sandbox, setLocalEngine, type ModelInfo,
-  BUILTIN_PROVIDERS, rankModels,
+  BUILTIN_PROVIDERS, rankModels, LOCAL_MODEL_CATALOG, recommendedLocalModel,
 } from "@krish/core";
 import type { Platform } from "../platform";
+import type { LocalDeviceInfo, LocalProgress } from "../platform/types";
 import { Tier0Sandbox } from "../sandbox/tier0";
 import { createWebGpuEngine, webgpuAvailable } from "../local/webgpu";
 import type { LangPref } from "../i18n";
@@ -37,6 +38,8 @@ export interface Settings {
   /** Set after the user accepted the download notice. */
   localModelConsent: boolean;
   localModelId?: string;
+  nativeModelConsent?: boolean;
+  nativeSelectedModel?: string;
   activeProjectId?: string;
 }
 
@@ -140,6 +143,10 @@ export interface State {
   notice?: string;
   localModels: ModelInfo[];
   localStatus: string;
+  nativeDevice?: LocalDeviceInfo;
+  nativeInstalled: string[];
+  nativeProgress: Record<string, LocalProgress>;
+  nativeError?: string;
 }
 
 /** Most recent step chip of the chat (old WebViews lack Array.prototype.findLast). */
@@ -166,12 +173,13 @@ export class AppStore {
     ready: false, screen: "home", settings: DEFAULT_SETTINGS, providers: [], freeProviders: BUILTIN_PROVIDERS, items: [], attachments: [], prompts: [],
     running: false, queue: [], checking: [], windowOpen: false, windowExpanded: false,
     page: { url: "", title: "", loading: false }, tabs: [], status: "idle", deviceLowRam: false, deviceTotalRamMB: 0, linuxAvailable: false,
-    localModels: [], localStatus: "",
+    localModels: [], localStatus: "", nativeInstalled: [], nativeProgress: {},
   };
   private listeners = new Set<() => void>();
   private controller?: AgentController;
   private seq = 0;
   private unPage?: () => void;
+  private unLocal?: () => void;
   /** Tier 0 is always on. Tier 1 / Docker replace it per task when enabled (see sandbox/). */
   readonly tier0 = new Tier0Sandbox();
   /** shell -> Tier 1 / Docker (only when enabled and available); everything else -> Tier 0. Files are shared. */
@@ -293,6 +301,7 @@ export class AppStore {
       linuxAvailable: info.linuxSandbox && !info.lowRam,
     });
     void this.platform.browser.setDesktopLayout(settings.desktopLayout).catch(() => undefined); // the saved choice reaches the native view at start, not only when changed
+    await this.initNativeModels();
     await this.vault.load();
     void this.checkUntested();
     void this.syncLists();
@@ -306,6 +315,67 @@ export class AppStore {
   dispose() {
     clearInterval(this.listTimer);
     this.unPage?.();
+    this.unLocal?.();
+  }
+
+  private async initNativeModels() {
+    if (!this.platform.local.supported) return;
+    this.unLocal = this.platform.local.onProgress((event) => {
+      this.set({ nativeProgress: { ...this.state.nativeProgress, [event.modelId]: event }, nativeError: event.error });
+      if (event.status === "installed") void this.refreshNativeModels();
+    });
+    try {
+      const nativeDevice = await this.platform.local.deviceInfo();
+      this.set({ nativeDevice, deviceTotalRamMB: nativeDevice.totalRamMB });
+      await this.refreshNativeModels();
+    } catch {
+      this.set({ nativeError: "On-device model storage is unavailable." });
+    }
+  }
+
+  async refreshNativeModels() {
+    const { installed, partial, active } = await this.platform.local.listInstalled();
+    const nativeProgress = { ...this.state.nativeProgress };
+    for (const p of partial) {
+      const model = LOCAL_MODEL_CATALOG.find((m) => m.id === p.modelId);
+      if (model && !nativeProgress[p.modelId]) nativeProgress[p.modelId] = {
+        modelId: p.modelId, status: p.modelId === active ? "downloading" : "paused", bytes: p.bytes, total: model.sizeBytes,
+      };
+    }
+    this.set({ nativeInstalled: installed, nativeProgress });
+    const selected = this.state.settings.nativeSelectedModel;
+    if (!selected || !installed.includes(selected)) {
+      const recommended = recommendedLocalModel(this.state.deviceTotalRamMB)?.id;
+      const next = recommended && installed.includes(recommended) ? recommended : installed[0];
+      if (selected !== next) await this.saveSettings({ nativeSelectedModel: next });
+    }
+  }
+
+  async startNativeDownload(modelId: string, consentAccepted: boolean) {
+    const model = LOCAL_MODEL_CATALOG.find((m) => m.id === modelId);
+    if (!model || !consentAccepted) return;
+    try {
+      const nativeDevice = await this.platform.local.deviceInfo();
+      this.set({ nativeDevice, nativeError: undefined });
+      if (!this.state.settings.nativeModelConsent) await this.saveSettings({ nativeModelConsent: true });
+      await this.platform.local.download(modelId);
+    } catch (e) { this.set({ nativeError: e instanceof Error ? e.message : "Download failed." }); }
+  }
+
+  async controlNativeDownload(modelId: string, action: "pause" | "resume" | "cancel" | "delete") {
+    try {
+      this.set({ nativeError: undefined });
+      await this.platform.local[action](modelId);
+      if (action === "delete") {
+        const nativeProgress = { ...this.state.nativeProgress }; delete nativeProgress[modelId];
+        this.set({ nativeProgress });
+        await this.refreshNativeModels();
+      }
+    } catch (e) { this.set({ nativeError: e instanceof Error ? e.message : "Action failed." }); }
+  }
+
+  async selectNativeModel(modelId: string) {
+    if (this.state.nativeInstalled.includes(modelId)) await this.saveSettings({ nativeSelectedModel: modelId });
   }
 
   go = (screen: Screen) => this.set({ screen });

@@ -31,6 +31,13 @@ Legend: **RUN** = executed in the build environment with the result observed. **
 | Independent review of the safety rules (static) and fixes | 12 findings; 11 fixed in code with tests that fail on the old code (policy, loop, page script, sandbox limits, keyring check, upload binding, layout). #1 is partly open on Android (see SECURITY.md gaps 0, 0b) | fixed as described |
 | Merged manifest permissions | inspected merged manifests | INTERNET, POST_NOTIFICATIONS (WorkManager ACCESS_NETWORK_STATE / RECEIVE_BOOT_COMPLETED removed). v0.1.12 adds FOREGROUND_SERVICE, FOREGROUND_SERVICE_DATA_SYNC, WAKE_LOCK for `KeepAliveService`: NOT re-inspected in a merged manifest, check after the first CI build |
 
+## Round 12: Android downloader (2026-10-30, work in progress)
+
+- `npm run typecheck`, `npm run lint`, `npm test` (core 289, UI 54, desktop 10), `npm run build:ui` pass locally. Fake-platform tests simulate progress, pause, hash mismatch, storage error, selection and delete; they do not exercise native hashing, redirects or networking.
+- CI Android Kotlin compile for this commit: pending; local environment has no JDK/Android SDK. Native plugin functionality has not been run. `ACCESS_NETWORK_STATE` added for metered warning; inspect merged manifests.
+- NOT BUILT: native inference, local routing, functional API-backup toggle, hiding the API Keys screen, JNI/grammar and NDK CI. No offline answers yet. Do not advertise Phase 1 as complete or enable backup off before the engine exists.
+- NOT RUN: real APK install, actual Hugging Face redirect hosts, actual model download/pause/resume/cancel/hash failure/storage-low or delete, process death/restart, real inference, speed, RAM kills with a WebView open, battery/heat.
+
 ## Round 11: partial local-model work (2026-10-30)
 
 - Run: `npm run typecheck`, `npm run lint`, `npm test` (core 289, UI 52, desktop 10), `npm run build:ui` all pass. Headless Chromium showed the Settings catalog preview at 390×844 using the web demo; this is not a phone test.
