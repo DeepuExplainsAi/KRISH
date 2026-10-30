@@ -24,7 +24,8 @@ import java.util.concurrent.TimeUnit
 @CapacitorPlugin(name = "KrishLocal")
 class KrishLocalPlugin : Plugin() {
     private data class Model(val id: String, val repo: String, val revision: String, val file: String, val size: Long, val hash: String)
-    private class Job(val model: Model, val owner: KrishLocalPlugin) {
+    private class Job(val model: Model) {
+        val lease = "model-download:" + java.util.UUID.randomUUID().toString()
         @Volatile var command: String? = null
         @Volatile var call: Call? = null
     }
@@ -33,15 +34,17 @@ class KrishLocalPlugin : Plugin() {
         private val lock = Any()
         private var active: Job? = null
         private var eventTarget: KrishLocalPlugin? = null
+        private val worker = Executors.newSingleThreadExecutor()
     }
+    private lateinit var appContext: Context
     override fun load() {
+        appContext = context.applicationContext
         synchronized(lock) { eventTarget = this }
         super.load()
     }
-    private val worker = Executors.newSingleThreadExecutor()
     private val client = OkHttpClient.Builder().followRedirects(false).followSslRedirects(false)
         .connectTimeout(30, TimeUnit.SECONDS).readTimeout(45, TimeUnit.SECONDS).build() // default NO_COOKIES
-    private val dir: File get() = File(context.filesDir, "local-models").also { check(it.isDirectory || it.mkdirs()) }
+    private val dir: File get() = File(appContext.filesDir, "local-models").also { check(it.isDirectory || it.mkdirs()) }
 
     private fun models(): List<Model> {
         val json = JSONArray(context.assets.open("local-models.json").bufferedReader().use { it.readText() })
@@ -80,9 +83,10 @@ class KrishLocalPlugin : Plugin() {
         val m = try { model(call.getString("modelId")) } catch (_: Exception) { return call.reject("Unknown model") }
         if (!m.hash.matches(Regex("[0-9a-f]{64}")) || m.size <= 0) return call.reject("Model checksum or size is missing")
         if (installed(m).isFile) return call.reject("Model is already installed")
-        val job = Job(m, this)
+        val job = Job(m)
         synchronized(lock) {
             if (active != null) return call.reject("Another download is still running")
+            if (!KeepAliveService.acquire(context, job.lease)) return call.reject("Could not start background download. Open the app and try again.")
             active = job
         }
         worker.execute { runDownload(job) }
@@ -117,16 +121,10 @@ class KrishLocalPlugin : Plugin() {
         call.resolve()
     }
 
-    /** Reject everything except HTTPS default port and the explicit HF download hosts; never forward cookies or auth. */
-    private fun allowed(url: String): Boolean {
-        val uri = try { URI(url) } catch (_: Exception) { return false }
-        val hosts = setOf("huggingface.co", "cas-bridge.xethub.hf.co", "us.aws.cdn.hf.co")
-        return uri.scheme == "https" && uri.host in hosts && (uri.port == -1 || uri.port == 443) && uri.userInfo == null && uri.fragment == null
-    }
     private fun response(job: Job, initial: String, offset: Long): okhttp3.Response {
         var url = initial
         repeat(4) {
-            if (!allowed(url)) throw IllegalStateException("Download redirect host is not allowed")
+            if (!LocalDownloadPolicy.allowed(url)) throw IllegalStateException("Download redirect host is not allowed")
             if (job.command != null) throw InterruptedException()
             val builder = Request.Builder().url(url).header("Accept-Encoding", "identity")
             if (offset > 0) builder.header("Range", "bytes=$offset-")
@@ -146,9 +144,7 @@ class KrishLocalPlugin : Plugin() {
     override fun handleOnDestroy() {
         synchronized(lock) {
             if (eventTarget === this) eventTarget = null
-            active?.takeIf { it.owner === this }?.let { it.command = "pause"; it.call?.cancel() }
         }
-        worker.shutdown()
         super.handleOnDestroy()
     }
     private fun runDownload(job: Job) {
@@ -223,6 +219,9 @@ class KrishLocalPlugin : Plugin() {
                     else -> emit(m, "error", tmp.length(), if (e is IllegalStateException) e.message ?: "Download failed" else "Download failed. Check your connection and try again.")
                 }
             }
-        } finally { job.call = null }
+        } finally {
+            job.call = null
+            KeepAliveService.release(appContext, job.lease)
+        }
     }
 }
