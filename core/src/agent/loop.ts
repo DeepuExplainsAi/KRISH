@@ -17,6 +17,8 @@ export interface AgentOptions {
   /** Persistent memory text (data, not instructions). Used only when `deps.memory` is absent. */
   memory?: string;
   screenshots?: boolean;
+  /** Start with smaller page, history and chat limits for an on-device model. The same redaction/fence pipeline applies. */
+  compactPrompt?: boolean;
   /** Files the user attached to this task (picked in the system picker). The model sees names and sizes only. */
   files?: SelectedFile[];
   /** True when the app opened a page for this task (saved task, panel). Otherwise the agent starts without a page and opens one itself, so a plain chat never touches the browser. */
@@ -171,7 +173,7 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
   const pointerMs = opts.pointerMs ?? DEFAULTS.agent.pointerMs;
   const notes: string[] = [];
   /** Share of the page, history and chat sent to the AI. Halved each time an AI refuses a request as too big and kept for the rest of the run, so it is not refused again at every step. */
-  let size = 1;
+  let size = opts.compactPrompt ? 0.25 : 1;
   /** False until the task needs a page: the app's page (maybe an old tab) is neither read nor shown to the model before that. */
   let pageLive = Boolean(opts.startOnPage);
   /** Login steps already handled in this run: one try per page and step, so a wrong password is never retried in a loop. */

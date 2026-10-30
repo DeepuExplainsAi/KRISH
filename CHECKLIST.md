@@ -33,8 +33,9 @@ Legend: **RUN** = executed in the build environment with the result observed. **
 
 ## Round 13: downloader redirect and foreground changes (2026-10-30)
 
-- Local typecheck, lint, tests (core 289, UI 54, desktop 10), and UI build pass. Android Kotlin CI pending; new `LocalDownloadPolicyTest` not run (no local JDK/SDK; existing CI compiles Kotlin only).
+- Local typecheck, lint, tests (core 290, UI 54, desktop 10), and UI build pass. CI JS and both-flavor Kotlin compilation passed on 3a40d94; new `LocalDownloadPolicyTest` not run (no local JDK/SDK; existing CI compiles Kotlin only).
 - **NOT RUN:** real phone APK install, actual CDN redirects, real model download, screen-off/background continuation, agent and download overlapping, pause/resume/cancel, storage-low, hash mismatch, process kill, service timeout, battery/heat, WebView RAM kills.
+- Compact prompt option is tested but not connected to a native engine.
 - **NOT BUILT:** Phase 2 native inference, llama.cpp/JNI/grammar, NDK CI, local-first router or working backup toggle. The app still cannot answer offline.
 
 ## Round 12: Android downloader (2026-10-30, work in progress; see Round 13)

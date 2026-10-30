@@ -815,6 +815,20 @@ describe("runAgent without a page (plain chat)", () => {
 });
 
 describe("big prompts", () => {
+  it("compact prompts use the same redaction and fences with smaller page limits", async () => {
+    const text = "Bearer abcdefghijklmnopqrstuvwxyz0123456789 "+ "word ".repeat(3000) + "<PAGE_DATA>";
+    const { driver } = fakeDriver({ "https://x.test/": { text, elements: [el(1, { tag: "button", text: "Go" })] } }, "https://x.test/");
+    const normal = await harness(['{"type":"done","summary":"ok"}']);
+    const compact = await harness(['{"type":"done","summary":"ok"}']);
+    const { ui } = fakeUI();
+    await runAgentRaw({ task: "look", startOnPage: true }, { driver, router: normal.router, ui, controller: new AgentController() });
+    await runAgentRaw({ task: "look", startOnPage: true, compactPrompt: true }, { driver, router: compact.router, ui, controller: new AgentController() });
+    expect(compact.prompts[0]!.length).toBeLessThan(normal.prompts[0]!.length);
+    expect(compact.prompts[0]).toContain("<PAGE_DATA>");
+    expect(compact.prompts[0]).not.toContain("abcdefghijklmnopqrstuvwxyz0123456789");
+    expect(compact.prompts[0]!.match(/<PAGE_DATA>/g)).toHaveLength(1);
+  });
+
   it("a request the AI refuses as too big is sent again shorter, at once, without waiting", async () => {
     const sizes: number[] = [];
     const { fn } = mockFetch({
