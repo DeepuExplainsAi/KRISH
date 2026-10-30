@@ -43,6 +43,17 @@ function setup(script: object[]) {
 const tick = () => new Promise((r) => setTimeout(r, 10));
 
 describe("AppStore", () => {
+  it("retains Android RAM for the model preview but not a browser demo value", async () => {
+    const { store, platform } = setup([]);
+    platform.kind = "android";
+    await store.init();
+    expect(store.getState().deviceTotalRamMB).toBe(4096);
+    store.dispose();
+    const demo = setup([]).store;
+    await demo.init();
+    expect(demo.getState().deviceTotalRamMB).toBe(0);
+    demo.dispose();
+  });
   it("adds a provider with one automatic model fetch, key kept out of kv", async () => {
     const { store, platform } = setup([]);
     await store.init();

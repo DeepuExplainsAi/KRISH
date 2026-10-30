@@ -1,3 +1,4 @@
+import { LOCAL_MODEL_CATALOG, recommendedLocalModel, type LocalModelCatalogEntry } from "@krish/core";
 import { LANG_NAMES, type Lang, type LangPref } from "../i18n";
 import { useT } from "../i18n/useT";
 import type { ThemePref } from "../theme";
@@ -13,6 +14,11 @@ export function Settings() {
   const { t } = useT();
   const toggle = (k: "liteMode" | "autoOpenWindow" | "screenshots" | "desktopLayout" | "freeFallback" | "linuxSandbox" | "localModel") => (e: React.ChangeEvent<HTMLInputElement>) =>
     void app.saveSettings({ [k]: e.target.checked });
+  const recommended = recommendedLocalModel(s.deviceTotalRamMB);
+  const modelRow = (model: LocalModelCatalogEntry) => (
+    <li key={model.id}><div><strong>{model.name}</strong>{recommended?.id === model.id && <> · {t("nativeModelRecommended")}</>}
+      <div className="muted">{model.label} · {(model.sizeBytes / 1e9).toFixed(2)} GB</div></div></li>
+  );
   return (
     <section>
       <h2>{t("settings")}</h2>
@@ -50,6 +56,11 @@ export function Settings() {
         <input type="checkbox" checked={st.linuxSandbox && s.linuxAvailable} disabled={!s.linuxAvailable} onChange={toggle("linuxSandbox")} /> {t("linuxSandbox")}
       </label>
       {!s.linuxAvailable && <p className="muted">{s.deviceLowRam ? t("linuxLowRam") : t("linuxNotIncluded")}</p>}
+      <h3>{t("nativeModelPreview")}</h3>
+      <p>{t("nativeModelUnavailable")}</p>
+      <p className="muted">{s.deviceTotalRamMB > 0 ? t("nativeModelRam", { ram: (s.deviceTotalRamMB / 1024).toFixed(1) }) : t("nativeModelRamUnknown")}</p>
+      <ul className="list">{LOCAL_MODEL_CATALOG.slice(0, 3).map(modelRow)}</ul>
+      <details className="more"><summary>{t("nativeModelMore")}</summary><ul className="list">{LOCAL_MODEL_CATALOG.slice(3).map(modelRow)}</ul></details>
       <h3>{t("experimental")}</h3>
       <label><input type="checkbox" checked={st.localModel} disabled={!webgpuAvailable()}
         onChange={(e) => {

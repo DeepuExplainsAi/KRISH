@@ -134,6 +134,8 @@ export interface State {
   tabs: TabInfo[];
   status: "idle" | "running" | "action_required";
   deviceLowRam: boolean;
+  /** Android reports actual physical RAM in MiB, or zero when unavailable. */
+  deviceTotalRamMB: number;
   linuxAvailable: boolean;
   notice?: string;
   localModels: ModelInfo[];
@@ -163,7 +165,7 @@ export class AppStore {
   state: State = {
     ready: false, screen: "home", settings: DEFAULT_SETTINGS, providers: [], freeProviders: BUILTIN_PROVIDERS, items: [], attachments: [], prompts: [],
     running: false, queue: [], checking: [], windowOpen: false, windowExpanded: false,
-    page: { url: "", title: "", loading: false }, tabs: [], status: "idle", deviceLowRam: false, linuxAvailable: false,
+    page: { url: "", title: "", loading: false }, tabs: [], status: "idle", deviceLowRam: false, deviceTotalRamMB: 0, linuxAvailable: false,
     localModels: [], localStatus: "",
   };
   private listeners = new Set<() => void>();
@@ -287,7 +289,7 @@ export class AppStore {
     const thread = await this.platform.kv.get(THREAD_KEY).then((t) => (t ? (JSON.parse(t) as ChatItem[]) : [])).catch(() => []);
     this.seq = thread.reduce((m, i) => Math.max(m, i.id), this.seq);
     this.set({
-      ready: true, settings, providers: p ? JSON.parse(p) : [], freeProviders, deviceLowRam: info.lowRam, items: thread,
+      ready: true, settings, providers: p ? JSON.parse(p) : [], freeProviders, deviceLowRam: info.lowRam, deviceTotalRamMB: this.platform.kind === "android" ? info.totalMemMb : 0, items: thread,
       linuxAvailable: info.linuxSandbox && !info.lowRam,
     });
     void this.platform.browser.setDesktopLayout(settings.desktopLayout).catch(() => undefined); // the saved choice reaches the native view at start, not only when changed

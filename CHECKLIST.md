@@ -31,6 +31,12 @@ Legend: **RUN** = executed in the build environment with the result observed. **
 | Independent review of the safety rules (static) and fixes | 12 findings; 11 fixed in code with tests that fail on the old code (policy, loop, page script, sandbox limits, keyring check, upload binding, layout). #1 is partly open on Android (see SECURITY.md gaps 0, 0b) | fixed as described |
 | Merged manifest permissions | inspected merged manifests | INTERNET, POST_NOTIFICATIONS (WorkManager ACCESS_NETWORK_STATE / RECEIVE_BOOT_COMPLETED removed). v0.1.12 adds FOREGROUND_SERVICE, FOREGROUND_SERVICE_DATA_SYNC, WAKE_LOCK for `KeepAliveService`: NOT re-inspected in a merged manifest, check after the first CI build |
 
+## Round 11: partial local-model work (2026-10-30)
+
+- Run: `npm run typecheck`, `npm run lint`, `npm test` (core 289, UI 52, desktop 10), `npm run build:ui` all pass. Headless Chromium showed the Settings catalog preview at 390×844 using the web demo; this is not a phone test.
+- NOT BUILT: native download manager, consent and storage/metered checks, checksum verification, model selection/deletion, API backup toggle, native inference, grammar, JNI/NDK or offline routing. Existing API routing is unchanged. This is not a working offline model or a complete Phase 1.
+- NOT RUN: real APK install, real model download, real inference, speed, RAM kills with a WebView open, battery/heat, or Android build for these changes. CI on this branch has not been checked yet.
+
 ## NOT RUN: needs a real device or display (please test)
 - **(new 2026-10-29, Round 10)** Kotlin `KrishBrowserPlugin` with a map of tabs compiles (CI `android-compile` green on a80e616), never run. Not run anywhere real: 2-4 WebViews / WebContentsViews at once (memory, touches reach the active one, chips switch the view), `findCode` on real inbox sites (smailpro, emailnator, 22.do, Gmail), generated password accepted by real sign-up forms, sign-up card on a phone.
 - **(new 2026-10-27)** Kotlin `KrishSystemPlugin.openExternal` not compiled; vault on real Android Keystore / Electron safeStorage; "Get key" opening the real browser; vault autofill on a real login page.

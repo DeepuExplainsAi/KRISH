@@ -3,6 +3,14 @@
 Project: KRISH, source-only personal agent (Android + desktop). Spec: `docs/SPEC.md`.
 Rule: update this file at the end of every work session (status table + "Next"). Layout backup and restore: `LAYOUT-RESTORE.md`.
 
+## ROUND 11 (2026-10-30): local-model catalog preview — INCOMPLETE
+
+- Built only a read-only catalog and RAM-tier picker. `core/src/local/catalog.ts` pins Unsloth Qwen3.5 Q4_K_M file names, revisions, exact bytes and SHA-256s from the Hugging Face tree API (0.8B `6ab461498e2023f6e3c1baea90a8f0fe38ab64d0`, 2B `1c466474d208da1a7c4b8cb87ebcdac78f160e34`, 4B `e87f176479d0855a907a41277aca2f8ee7a09523`, 9B `3885219b6810b007914f3a7950a8d1b469d598a5`). RAM thresholds are 3584 / 7168 / 11264 MiB; unknown RAM has no recommendation. The RAM fields are advisory, not hard limits.
+- Settings shows an explicitly unavailable preview, the existing Android `KrishSystem.deviceInfo` total RAM, and the first three models; 9B is under More models. No downloads or inference exist. No provider or WebGPU code was changed. Files: catalog + core index + catalog tests; `ui/src/{state/store.ts,screens/Settings.tsx,i18n/en.ts,i18n/hi.ts}`, `ui/test/store.test.ts`; docs.
+- Verified locally: npm ci, typecheck, lint, tests (core 289, UI 52, desktop 10), build:ui; headless Chromium web-demo screenshot at 390x844. This did not test real Android RAM or a phone. npm ci reports 3 moderate audit findings, not investigated here.
+- NOT BUILT: remaining Phase 1 (native downloader, progress, pause/resume, verification, storage/network checks, consent, install/delete/select, API-backup toggle and UI state/tests), all Phase 2 (JNI llama.cpp, grammar, template, lifecycle/memory safety, router integration and CI). Do not present this branch as offline-ready. No download, real APK install/inference, speed, WebView RAM kill, battery/heat, or Android build run.
+- **Next:** finish Phase 1 following the platform method checklist, and test all failure paths before enabling downloads. Hugging Face may redirect weight downloads to another host; reconcile the requested strict host pin with real redirects safely, without accepting arbitrary hosts or forwarding cookies/auth. Make checksum validation mandatory. Then implement Phase 2 separately with the existing redaction/fence pipeline, and actually test on phone. Only once ready: install APK, download Qwen3.5 2B, disable online backup, ask “open example.com and tell me the title”; measure memory with a WebView open, speed, heat and battery.
+
 ## ROUND 10 (2026-10-29): several tabs, email-code sign-up, app-made passwords (branch `round10-multitab-signup`)
 
 Owner (Hinglish): "temporary Gmail se is site pe signup/login kar do, phir yahan jao, ye kaam karo" - the agent should do a multi-site job step by step, like the reference agent. READ THIS BEFORE TOUCHING TABS, `read_code`, `sign_up` OR THE SIGN-IN CARD.

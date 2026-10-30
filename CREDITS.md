@@ -34,3 +34,8 @@ article. Their apps, binaries and private APIs were not examined. All names, UI,
 | Electron | 45.0.0 | MIT | desktop |
 
 GPL/LGPL source offer: `SOURCE-OFFER.md`.
+
+## Planned model catalog
+
+- Qwen team: Qwen3.5 model weights, Apache 2.0, https://huggingface.co/Qwen .
+- Unsloth: GGUF quantizations, repositories and model cards linked by `core/src/local/catalog.ts`; model cards list Apache 2.0. We include metadata only, not weights.

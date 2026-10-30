@@ -44,6 +44,11 @@ hostile files, a curious provider, and bugs of ours**. Not in scope: a rooted/co
 - **Limits enforced in code:** one account per site per user command; a site that refuses the email stops the run for the user (no automatic retry with another address: typing another address on that site is blocked until the user answers); CAPTCHA / bot checks are only ever done by the user (Done card); no payment step is part of this flow. Temporary inboxes are used only when the user names one.
 - Known limit: code extraction is a heuristic on page text; a cross-origin message frame cannot be read (then "not found"). Masking is pattern based like the rest of redaction.
 
+### Native model catalog preview (round 11, incomplete)
+- The catalog contains only metadata, not model files or executable code. GGUF weights are data, but any future native parser must still treat model files as untrusted input. Nothing in this preview downloads weights, runs native inference, or changes the provider pipeline.
+- Before downloads are enabled: explicit consent must explain the file size and host; enforce HTTPS and a narrowly pinned host/redirect policy, no cookies/auth, and verify the exact pinned SHA-256 before making a file available. Hugging Face may redirect file downloads to a separate storage host; safely resolving that conflict with a huggingface.co-only rule is still an open design/test item. No telemetry should be added.
+- A future local engine must receive only the existing fenced, redacted agent prompt; do not bypass the current password, OTP, payment-detail and page-injection protections. Existing online providers remain active and unchanged.
+
 ## Sandbox tiers
 
 - **Tier 0 (always on):** a fresh Web Worker per task. Bundled JS/WASM only: fflate (zip/unzip) and QuickJS compiled to WebAssembly for scripts.

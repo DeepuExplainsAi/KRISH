@@ -17,3 +17,5 @@ export * from "./memory/stores";
 export * from "./memory/schedule";
 export * from "./providers/local";
 export * from "./vault/vault";
+
+export * from "./local/catalog";
