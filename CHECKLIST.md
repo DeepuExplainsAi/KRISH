@@ -31,6 +31,12 @@ Legend: **RUN** = executed in the build environment with the result observed. **
 | Independent review of the safety rules (static) and fixes | 12 findings; 11 fixed in code with tests that fail on the old code (policy, loop, page script, sandbox limits, keyring check, upload binding, layout). #1 is partly open on Android (see SECURITY.md gaps 0, 0b) | fixed as described |
 | Merged manifest permissions | inspected merged manifests | INTERNET, POST_NOTIFICATIONS (WorkManager ACCESS_NETWORK_STATE / RECEIVE_BOOT_COMPLETED removed). v0.1.12 adds FOREGROUND_SERVICE, FOREGROUND_SERVICE_DATA_SYNC, WAKE_LOCK for `KeepAliveService`: NOT re-inspected in a merged manifest, check after the first CI build |
 
+## Round 17: local-first integration (2026-10-30)
+
+- Step 2 CI `41032308054`: JS and Android Kotlin/NDK compile passed; not an APK/device test. Local step 3 checks: typecheck, lint, 297 core / 56 UI / 10 desktop tests and UI build passed. Android integration changes require final PR CI.
+- Added selected-native-first routing, online backup opt-in, API Keys gated by toggle, per-provider compact/redacted prompt, strict native action validation, and stop propagation. Tests use fake engine/network; host parsed schema-derived grammar and rendered a Qwen test template, not actual inference.
+- **NOT RUN on phone:** install, model download, inference, JSON quality, native process crash/restart, stop, background unload, OOM with WebView, speed, battery or heat. `:llm` isolates native crashes but cannot prevent system-wide memory kills.
+
 ## Round 16: isolated native engine, not integrated (2026-10-30)
 
 - Implemented `:llm` bound service and JNI operations, schema-derived first-filter grammar and strict post-validation; provider registration and backup toggle remain pending. Host build and Qwen template render only; Android compilation subject to CI, native inference **NOT RUN**.

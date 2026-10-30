@@ -60,8 +60,8 @@ class LlmService : Service() {
                         }
                     } catch (_: OutOfMemoryError) {
                         response.putString("error", "Not enough memory for the on-device model")
-                    } catch (_: Throwable) {
-                        response.putString("error", "On-device model failed or was stopped")
+                    } catch (e: Throwable) {
+                        response.putString("error", if (e.message == "On-device prompt is too long") "On-device prompt is too long" else "On-device model failed or was stopped")
                     }
                     try { reply?.send(Message.obtain(null, COMPLETE).apply { arg1 = requestId; this.data = response }) } catch (_: Exception) { }
                 }

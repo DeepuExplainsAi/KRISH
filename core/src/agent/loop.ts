@@ -4,7 +4,7 @@ import type { PageElement, PageObservation } from "../page/types";
 import { maskCodes, redactChat, redactText, secretKind, type SecretKind } from "../privacy/redact";
 import { AbortedError } from "../providers/types";
 import { AllProvidersFailedError, type ProviderRouter } from "../providers/router";
-import { isHttpsUrl, parseReply, type Action } from "../schema/actions";
+import { isHttpsUrl, parseAction, parseReply, type Action } from "../schema/actions";
 import { AgentController, raceStop, StoppedError } from "./controller";
 import { findLoginFields, findLoginWall, findSignInButton } from "../vault/vault";
 import { gate, sandboxWrites, siteOf } from "./policy";
@@ -19,6 +19,8 @@ export interface AgentOptions {
   screenshots?: boolean;
   /** Start with smaller page, history and chat limits for an on-device model. The same redaction/fence pipeline applies. */
   compactPrompt?: boolean;
+  /** Compact text for the local provider only; online fallbacks retain their normal prompt. */
+  localCompactPrompt?: boolean;
   /** Files the user attached to this task (picked in the system picker). The model sees names and sizes only. */
   files?: SelectedFile[];
   /** True when the app opened a page for this task (saved task, panel). Otherwise the agent starts without a page and opens one itself, so a plain chat never touches the browser. */
@@ -644,7 +646,8 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
       const chatText = (opts.chat ?? []).map((m) => `${m.role === "user" ? "user" : "krish"}: ${clip(m.text.replace(/\s+/g, " ").trim(), 500)}`).join("\n");
       const note = appNote;
       const reply = userReply;
-      const buildPrompt = () => {
+      const buildPrompt = (promptSize = size) => {
+        const size = promptSize;
         const text = pageLive
           ? formatObservation(obs, Math.round(lim.observationMaxChars * size), Math.max(10, Math.round(lim.observationMaxElements * size)))
           : noPageText(opts.openTab ? redactText(opts.openTab) : undefined);
@@ -675,8 +678,11 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
               { role: "system", content: SYSTEM_PROMPT },
               { role: "user", content: buildPrompt(), imageDataUrl: opts.screenshots && typed.size === 0 && size === 1 ? obs.screenshotDataUrl : undefined },
             ],
-            (raw) => parseReply(raw, step === 0),
-            { signal },
+            (raw, provider) => provider.kind === "webgpu-local" && opts.localCompactPrompt ? parseAction(raw) : parseReply(raw, step === 0),
+            { signal, localMessages: opts.localCompactPrompt ? [
+              { role: "system", content: SYSTEM_PROMPT },
+              { role: "user", content: buildPrompt(Math.min(size, 0.25)) },
+            ] : undefined },
           );
           action = run.value;
           ui.emit({ type: "provider", providerId: run.providerId, model: run.model });

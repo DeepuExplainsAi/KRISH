@@ -73,6 +73,8 @@ export class AllProvidersFailedError extends Error {
 
 export interface RunOptions {
   signal?: AbortSignal;
+  /** A separately redacted compact prompt for the on-device provider only. */
+  localMessages?: ChatMessage[];
 }
 
 export interface RunResult<T> {
@@ -208,11 +210,12 @@ export class ProviderRouter {
    * spent; only then (or when it is down, refused, or still failing after a retry) the next provider is used. A provider that
    * hit its daily quota is skipped for hours, so the next steps do not wait on it. `parse` throwing counts as invalid output.
    */
-  async run<T>(messages: ChatMessage[], parse: (text: string) => T, opts: RunOptions = {}): Promise<RunResult<T>> {
+  async run<T>(messages: ChatMessage[], parse: (text: string, provider: ProviderConfig) => T, opts: RunOptions = {}): Promise<RunResult<T>> {
     const attempts: Attempt[] = [];
-    const size = messages.reduce((n, m) => n + m.content.length + (m.imageDataUrl?.length ?? 0), 0);
     for (const configured of this.deps.providers()) {
       const p = withAutoModels(configured);
+      const providerMessages = p.kind === "webgpu-local" && opts.localMessages ? opts.localMessages : messages;
+      const size = providerMessages.reduce((n, m) => n + m.content.length + (m.imageDataUrl?.length ?? 0), 0);
       if (opts.signal?.aborted) throw new AbortedError();
       const needsKey = p.kind !== "webgpu-local" && !p.keyless;
       const apiKey = needsKey ? await this.deps.keys.get(p.id) : (p.anonymousKey ?? "");
@@ -231,11 +234,11 @@ export class ProviderRouter {
           const text = await adapters[p.kind].complete(
             { config: p, apiKey: apiKey ?? "", fetch: this.deps.fetch, timeoutMs: this.cfg.requestTimeoutMs, signal: opts.signal, memo: this.variants },
             model,
-            { messages },
+            { messages: providerMessages },
           );
           let value: T;
           try {
-            value = parse(text);
+            value = parse(text, p);
           } catch {
             throw new ProviderError("bad_output", "model output rejected by schema");
           }

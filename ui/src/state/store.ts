@@ -9,6 +9,7 @@ import type { Platform } from "../platform";
 import type { LocalDeviceInfo, LocalProgress } from "../platform/types";
 import { Tier0Sandbox } from "../sandbox/tier0";
 import { createWebGpuEngine, webgpuAvailable } from "../local/webgpu";
+import { createNativeEngine } from "../local/native";
 import type { LangPref } from "../i18n";
 import type { ThemePref } from "../theme";
 
@@ -40,6 +41,8 @@ export interface Settings {
   localModelId?: string;
   nativeModelConsent?: boolean;
   nativeSelectedModel?: string;
+  /** Defaults off when a native model is installed; APIs remain available otherwise. */
+  nativeBackup?: boolean;
   activeProjectId?: string;
 }
 
@@ -222,21 +225,28 @@ export class AppStore {
     });
   }
 
-  /** The on-device model goes first when enabled; then the user's own providers in the order the user set; the built-in free services are the last resort. */
+  private nativeActive(): boolean {
+    const selected = this.state.settings.nativeSelectedModel;
+    return this.platform.kind === "android" && this.platform.local.supported && !!selected && this.state.nativeInstalled.includes(selected);
+  }
+
+  onlineAllowed(): boolean { return !this.nativeActive() || this.state.settings.nativeBackup === true; }
+
+  /** The native model takes priority; online providers are opt-in backup while it is installed. */
   private routerProviders(): ProviderConfig[] {
-    const { localModel, localModelConsent, localModelId } = this.state.settings;
-    const mine = this.state.providers;
-    const free = this.state.settings.freeFallback ? this.state.freeProviders : [];
-    const all = [...mine, ...free];
+    const { localModel, localModelConsent, localModelId, nativeSelectedModel } = this.state.settings;
+    const all = this.onlineAllowed() ? [...this.state.providers, ...(this.state.settings.freeFallback ? this.state.freeProviders : [])] : [];
+    if (this.nativeActive()) return [{ id: "native-local", name: "On-device", kind: "webgpu-local", baseUrl: "local:", enabled: true, defaultModel: nativeSelectedModel }, ...all];
     if (!localModel || !localModelConsent || !localModelId || !webgpuAvailable()) return all;
-    const local: ProviderConfig = {
-      id: "local", name: "On-device", kind: "webgpu-local", baseUrl: "local:", enabled: true, defaultModel: localModelId,
-    };
-    return [local, ...all];
+    return [{ id: "local", name: "On-device", kind: "webgpu-local", baseUrl: "local:", enabled: true, defaultModel: localModelId }, ...all];
   }
 
   /** Called when the experimental flag changes. Registers or removes the engine; nothing loads until a task needs it. */
   async applyLocalModel() {
+    if (this.nativeActive()) {
+      setLocalEngine(createNativeEngine(this.platform.local));
+      return this.set({ localModels: [], localStatus: "" });
+    }
     const { localModel, localModelConsent } = this.state.settings;
     if (!localModel || !localModelConsent || !webgpuAvailable()) {
       setLocalEngine(undefined);
@@ -349,6 +359,7 @@ export class AppStore {
       const next = recommended && installed.includes(recommended) ? recommended : installed[0];
       if (selected !== next) await this.saveSettings({ nativeSelectedModel: next });
     }
+    await this.applyLocalModel();
   }
 
   async startNativeDownload(modelId: string, consentAccepted: boolean) {
@@ -394,7 +405,7 @@ export class AppStore {
     await this.platform.kv.set(SETTINGS_KEY, JSON.stringify(settings));
     if (patch.desktopLayout !== undefined) await this.platform.browser.setDesktopLayout(patch.desktopLayout);
     if (patch.brief) await this.rearmSchedules();
-    if (patch.localModel !== undefined || patch.localModelConsent !== undefined) await this.applyLocalModel();
+    if ("nativeSelectedModel" in patch || patch.localModel !== undefined || patch.localModelConsent !== undefined) await this.applyLocalModel();
   }
 
   private async saveProviders(providers: ProviderConfig[]) {
@@ -430,8 +441,12 @@ export class AppStore {
    * day get a fresh model list and a real test. Free model lists change often, so a saved model may be gone by now.
    */
   private async checkUntested() {
+    if (!this.onlineAllowed()) return;
     const stale = (x: ProviderConfig) => !x.health || !x.health.ok || Date.now() - x.health.at > 864e5;
-    for (const p of this.state.providers.filter((x) => x.enabled && stale(x))) await this.testProvider(p.id).catch(() => undefined);
+    for (const p of this.state.providers.filter((x) => x.enabled && stale(x))) {
+      if (!this.onlineAllowed()) break;
+      await this.testProvider(p.id).catch(() => undefined);
+    }
   }
 
   /** "Test" button: refetch the list and probe again. Replaces models the user did not pick by hand only when none works. */
@@ -448,10 +463,12 @@ export class AppStore {
    * appear, retired ones disappear (`modelsChanged` says which), and a default that is gone is replaced. Runs at start and every few hours.
    */
   async syncLists() {
+    if (!this.onlineAllowed()) return;
     const mine = this.state.providers; // a provider added while the free lists load is checked by its own add flow
     await this.syncFree();
     const old = (x: ProviderConfig) => Date.now() - (x.models?.fetchedAt ?? 0) >= LIST_REFRESH_MS;
     for (const p of mine.filter((x) => x.enabled && old(x))) {
+      if (!this.onlineAllowed()) break;
       if (await this.platform.keys.get(p.id)) await this.refreshProviderModels(p.id).catch(() => undefined);
     }
   }
@@ -459,6 +476,7 @@ export class AppStore {
   private async syncFree() {
     const next: ProviderConfig[] = [];
     for (const p of this.state.freeProviders) {
+      if (!this.onlineAllowed()) return;
       const r = await refreshModels(p, p.anonymousKey ?? "", { fetch: this.platform.fetch });
       const items = r.models?.items ?? [];
       if (r.modelsError || !items.length) { next.push(p); continue; } // the service is down: keep what worked
@@ -765,7 +783,7 @@ export class AppStore {
       const { url, title } = this.state.page;
       const openTab = url && url !== "about:blank" ? `${title ? `${title} — ` : ""}${url}` : undefined;
       await runAgent(
-        { task, files, screenshots: this.state.settings.screenshots, startOnPage: Boolean(opts.startUrl), openTab, chat, device: this.deviceLine(), providerWaits: this.opts.providerWaits },
+        { task, files, screenshots: this.state.settings.screenshots, localCompactPrompt: this.nativeActive(), startOnPage: Boolean(opts.startUrl), openTab, chat, device: this.deviceLine(), providerWaits: this.opts.providerWaits },
         { driver: this.driver(), router: this.router, ui: this.buildUI(runId), controller, sandbox: this.sandbox, memory: this.memoryPort(), vault: this.vault },
       );
     } finally {

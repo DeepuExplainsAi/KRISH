@@ -1,4 +1,4 @@
-import { MemoryKeyStore, MemoryKV, type PageObservation, type ProviderConfig } from "@krish/core";
+import { MemoryKeyStore, MemoryKV, parseAction, type PageObservation, type ProviderConfig } from "@krish/core";
 import { describe, expect, it } from "vitest";
 import { unsupportedLocalModel, type Platform, type LocalProgress } from "../src/platform/types";
 import { AppStore, insertByPreset, migrateSettings, SETTINGS_VERSION } from "../src/state/store";
@@ -65,6 +65,52 @@ describe("native model store", () => {
     };
     return { ...result, actions, event: (event: LocalProgress) => emit(event), setInstalled: (ids: string[]) => { installed = ids; }, setError: (msg: string) => { error = msg; } };
   }
+
+  it("prefers installed local, disables online by default, and enables fallback only by consent", async () => {
+    const x = localSetup();
+    x.setInstalled(["qwen3.5-2b"]);
+    const calls: string[] = [];
+    let fails = false;
+    x.platform.local.complete = async (model, messages, schema) => {
+      calls.push(model);
+      expect(JSON.parse(schema).oneOf.length).toBeGreaterThan(15);
+      expect(messages).not.toContain("imageDataUrl");
+      if (fails) throw new Error("process died");
+      return '{"type":"done","summary":"local"}';
+    };
+    let onlineCalls = 0;
+    x.hooks.fetch = () => { onlineCalls++; return reply({ type: "done", summary: "backup" }); };
+    await x.store.init();
+    const messages = [{ role: "user" as const, content: "hello", imageDataUrl: "data:secret" }];
+    expect((await x.store.router.run(messages, parseAction)).providerId).toBe("native-local");
+    expect(calls).toEqual(["qwen3.5-2b"]);
+    expect(onlineCalls).toBe(0);
+    fails = true;
+    await expect(x.store.router.run(messages, parseAction)).rejects.toThrow("No AI provider could answer");
+    expect(onlineCalls).toBe(0);
+    const online: ProviderConfig = { id: "api", name: "API", kind: "openai-compat", baseUrl: "https://api.test", enabled: true, defaultModel: "m" };
+    x.store.state.providers = [online];
+    await x.platform.keys.set("api", "key");
+    await x.store.saveSettings({ nativeBackup: true });
+    const result = await x.store.router.run(messages, parseAction);
+    expect(result.providerId).toBe("api");
+    expect(result.attempts[0]?.outcome).toBe("server");
+    expect(onlineCalls).toBe(1);
+    fails = false;
+    expect((await x.store.router.run(messages, parseAction)).providerId).toBe("native-local");
+    x.store.dispose();
+  });
+
+  it("uses online providers normally when no native model is installed", async () => {
+    const x = localSetup();
+    await x.store.init();
+    const online: ProviderConfig = { id: "api", name: "API", kind: "openai-compat", baseUrl: "https://api.test", enabled: true, defaultModel: "m" };
+    x.store.state.providers = [online];
+    await x.platform.keys.set("api", "key");
+    x.hooks.fetch = () => reply({ type: "done", summary: "online" });
+    expect((await x.store.router.run([{ role: "user", content: "hi" }], parseAction)).providerId).toBe("api");
+    x.store.dispose();
+  });
 
   it("shows progress, pause, checksum mismatch and resumes after consent", async () => {
     const x = localSetup(); await x.store.init();

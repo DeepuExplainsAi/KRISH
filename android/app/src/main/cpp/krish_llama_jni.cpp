@@ -118,5 +118,9 @@ extern "C" JNIEXPORT jbyteArray JNICALL Java_app_krish_agent_NativeLlama_complet
             evaluate(&token, 1);
         }
         throw std::runtime_error("generation limit reached"); // never accept truncated JSON
-    } catch (const std::exception &) { fail(env, "On-device generation failed or was stopped"); return nullptr; }
+    } catch (const std::exception & e) {
+        if (std::string(e.what()) == "prompt is too long") fail(env, "On-device prompt is too long");
+        else fail(env, "On-device generation failed or was stopped");
+        return nullptr;
+    }
 }

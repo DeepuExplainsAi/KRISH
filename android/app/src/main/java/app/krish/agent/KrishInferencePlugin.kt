@@ -31,6 +31,7 @@ class KrishInferencePlugin : Plugin() {
     private val main = Handler(Looper.getMainLooper())
     private var remote: Messenger? = null
     private var bound = false
+    private var connection: ServiceConnection? = null
     private var nextId = 0
     private val pending = mutableMapOf<Int, PluginCall>()
     private val queued = mutableListOf<Message>()
@@ -42,22 +43,26 @@ class KrishInferencePlugin : Plugin() {
         }
         true
     })
-    private val connection = object : ServiceConnection {
+    private fun newConnection() = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, binder: IBinder) {
+            if (connection !== this) return
             remote = Messenger(binder)
             try {
-                binder.linkToDeath({ main.post { lost() } }, 0)
+                binder.linkToDeath({ main.post { if (connection === this && remote?.binder === binder) lost() } }, 0)
                 val requests = queued.toList(); queued.clear()
                 requests.forEach { remote!!.send(it) }
             } catch (_: Exception) { lost() }
         }
-        override fun onServiceDisconnected(name: ComponentName?) { lost() }
-        override fun onBindingDied(name: ComponentName?) { lost() }
-        override fun onNullBinding(name: ComponentName?) { lost() }
+        override fun onServiceDisconnected(name: ComponentName?) { if (connection === this) lost() }
+        override fun onBindingDied(name: ComponentName?) { if (connection === this) lost() }
+        override fun onNullBinding(name: ComponentName?) { if (connection === this) lost() }
     }
     private fun lost() {
         remote = null
-        if (bound) { try { context.applicationContext.unbindService(connection) } catch (_: Exception) { }; bound = false }
+        val old = connection
+        connection = null
+        if (bound && old != null) { try { context.applicationContext.unbindService(old) } catch (_: Exception) { } }
+        bound = false
         queued.clear()
         val calls = pending.values.toList(); pending.clear()
         calls.forEach { it.reject("On-device model process stopped. Try again.") }
@@ -68,7 +73,9 @@ class KrishInferencePlugin : Plugin() {
             else {
                 queued.add(message)
                 if (!bound) {
-                    bound = context.applicationContext.bindService(Intent(context.applicationContext, LlmService::class.java), connection, Context.BIND_AUTO_CREATE)
+                    val next = newConnection()
+                    connection = next
+                    bound = context.applicationContext.bindService(Intent(context.applicationContext, LlmService::class.java), next, Context.BIND_AUTO_CREATE)
                     if (!bound) lost()
                 }
             }

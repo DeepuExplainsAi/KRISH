@@ -841,6 +841,27 @@ describe("big prompts", () => {
     expect(compact.prompts[0]!.match(/<PAGE_DATA>/g)).toHaveLength(1);
   });
 
+  it("keeps only the local prompt compact while preserving redaction on local and online fallback", async () => {
+    const text = "Bearer abcdefghijklmnopqrstuvwxyz0123456789 " + "word ".repeat(3000);
+    const { driver } = fakeDriver({ "https://x.test/": { text } }, "https://x.test/");
+    const local = provider("local", { kind: "webgpu-local", baseUrl: "local:" });
+    const { router, prompts } = await harness(['{"type":"done","summary":"fallback"}'], { providers: [local, provider("a")] });
+    let localPrompt = "";
+    setLocalEngine({ listModels: async () => [], complete: async (_model, messages) => {
+      localPrompt = messages[1]!.content;
+      throw new Error("process lost");
+    } });
+    try {
+      const result = await runAgentRaw({ task: "look", startOnPage: true, localCompactPrompt: true, providerWaits: [] }, { driver, router, ui: fakeUI().ui, controller: new AgentController() });
+      expect(result.summary).toBe("fallback");
+      expect(localPrompt.length).toBeLessThan(prompts[0]!.length);
+      for (const prompt of [localPrompt, prompts[0]!]) {
+        expect(prompt).toContain("<PAGE_DATA>");
+        expect(prompt).not.toContain("abcdefghijklmnopqrstuvwxyz0123456789");
+      }
+    } finally { setLocalEngine(undefined); }
+  });
+
   it("a request the AI refuses as too big is sent again shorter, at once, without waiting", async () => {
     const sizes: number[] = [];
     const { fn } = mockFetch({

@@ -91,8 +91,10 @@ export function Settings() {
       </> : <p className="muted">{t("nativeModelUnsupported")}</p>}
       <ul className="list">{LOCAL_MODEL_CATALOG.slice(0, 3).map(modelRow)}</ul>
       <details className="more"><summary>{t("nativeModelMore")}</summary><ul className="list">{LOCAL_MODEL_CATALOG.slice(3).map(modelRow)}</ul></details>
-      <label><input type="checkbox" checked disabled /> {t("nativeModelBackup")}</label>
-      <p className="muted">{t("nativeModelBackupPending")}</p>
+      <label><input type="checkbox" checked={s.nativeInstalled.length === 0 || st.nativeBackup === true}
+        disabled={s.nativeInstalled.length === 0}
+        onChange={(e) => void app.saveSettings({ nativeBackup: e.target.checked })} /> {t("nativeModelBackup")}</label>
+      {app.onlineAllowed() && <button onClick={() => app.go("providers")}>{t("openApiKeys")}</button>}
       <h3>{t("experimental")}</h3>
       <label><input type="checkbox" checked={st.localModel} disabled={!webgpuAvailable()}
         onChange={(e) => {

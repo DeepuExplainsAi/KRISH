@@ -2,7 +2,7 @@ import { IconChevron, IconClock, IconGear, IconHistory, IconKey, IconPanels, Ico
 import { useT } from "../i18n/useT";
 import type { Key } from "../i18n";
 import type { Screen } from "../state/store";
-import { useApp } from "../state/useStore";
+import { useApp, useAppSelector } from "../state/useStore";
 
 /** Shared with the desktop sidebar so both show the same entries. */
 export const MENU_GROUPS: [Screen, Key, () => React.JSX.Element][][] = [
@@ -13,13 +13,14 @@ export const MENU_GROUPS: [Screen, Key, () => React.JSX.Element][][] = [
 /** Everything that is not a main tab lives here, so no screen or feature is lost. */
 export function Menu() {
   const app = useApp();
+  const showKeys = useAppSelector(() => app.onlineAllowed());
   const { t } = useT();
   return (
     <section className="menu">
       <h1 className="brand">Krish</h1>
       {MENU_GROUPS.map((group, i) => (
         <div className="glass group" key={i}>
-          {group.map(([screen, label, Icon]) => (
+          {group.filter(([screen]) => screen !== "providers" || showKeys).map(([screen, label, Icon]) => (
             <button key={screen} className="row-item" onClick={() => app.go(screen)}>
               <Icon />
               <span>{t(label)}</span>

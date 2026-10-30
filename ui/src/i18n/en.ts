@@ -89,7 +89,7 @@ export const en = {
   linuxLowRam: "Disabled: this device has low RAM.",
   linuxNotIncluded: "Not included in this build (use the full flavor).",
   nativeModelPreview: "On-device model",
-  nativeModelUnavailable: "Offline AI is not ready yet. Downloaded models cannot answer until the engine is added. Keep using online providers.",
+  nativeModelUnavailable: "Download and select a model for on-device answers. Turn on backup if you want online providers to answer when it fails.",
   nativeModelRam: "Phone RAM: {ram} GB",
   nativeModelRamUnknown: "Phone RAM: unavailable",
   nativeModelRecommended: "Recommended",
