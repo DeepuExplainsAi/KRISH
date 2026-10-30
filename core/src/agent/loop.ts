@@ -678,7 +678,7 @@ export async function runAgent(opts: AgentOptions, deps: AgentDeps): Promise<Age
               { role: "system", content: SYSTEM_PROMPT },
               { role: "user", content: buildPrompt(), imageDataUrl: opts.screenshots && typed.size === 0 && size === 1 ? obs.screenshotDataUrl : undefined },
             ],
-            (raw, provider) => provider.kind === "webgpu-local" && opts.localCompactPrompt ? parseAction(raw) : parseReply(raw, step === 0),
+            (raw, provider) => provider.id === "native-local" ? parseAction(raw) : parseReply(raw, step === 0),
             { signal, localMessages: opts.localCompactPrompt ? [
               { role: "system", content: SYSTEM_PROMPT },
               { role: "user", content: buildPrompt(Math.min(size, 0.25)) },

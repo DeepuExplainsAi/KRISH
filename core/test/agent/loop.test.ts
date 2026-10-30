@@ -81,6 +81,17 @@ describe("runAgent", () => {
     } finally { setLocalEngine(undefined); }
   });
 
+  it("requires strict JSON for native output even if compact prompting was not requested", async () => {
+    const local = provider("native-local", { kind: "webgpu-local", baseUrl: "local:" });
+    const { router } = await harness([A({ type: "done", summary: "safe fallback" })], { providers: [local, provider("a")] });
+    const { driver } = fakeDriver({}, home);
+    setLocalEngine({ listModels: async () => [], complete: async () => "This is not JSON" });
+    try {
+      const result = await runAgent({ task: "go" }, { driver, router, ui: fakeUI().ui, controller: new AgentController() });
+      expect(result.summary).toBe("safe fallback");
+    } finally { setLocalEngine(undefined); }
+  });
+
   it("runs read -> click -> done and emits chips", async () => {
     const { router } = await harness([A({ type: "read" }), A({ type: "click", elementId: 1 }), A({ type: "done", summary: "ok" })]);
     const { driver, log } = fakeDriver({ [home]: { elements: [{ id: 1, tag: "a", text: "Docs" }] } }, home);
