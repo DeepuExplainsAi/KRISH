@@ -24,7 +24,7 @@ import java.util.concurrent.TimeUnit
 @CapacitorPlugin(name = "KrishLocal")
 class KrishLocalPlugin : Plugin() {
     private data class Model(val id: String, val repo: String, val revision: String, val file: String, val size: Long, val hash: String)
-    private class Job(val model: Model) {
+    private class Job(val model: Model, val owner: KrishLocalPlugin) {
         @Volatile var command: String? = null
         @Volatile var call: Call? = null
     }
@@ -80,7 +80,7 @@ class KrishLocalPlugin : Plugin() {
         val m = try { model(call.getString("modelId")) } catch (_: Exception) { return call.reject("Unknown model") }
         if (!m.hash.matches(Regex("[0-9a-f]{64}")) || m.size <= 0) return call.reject("Model checksum or size is missing")
         if (installed(m).isFile) return call.reject("Model is already installed")
-        val job = Job(m)
+        val job = Job(m, this)
         synchronized(lock) {
             if (active != null) return call.reject("Another download is still running")
             active = job
@@ -146,7 +146,7 @@ class KrishLocalPlugin : Plugin() {
     override fun handleOnDestroy() {
         synchronized(lock) {
             if (eventTarget === this) eventTarget = null
-            active?.let { it.command = "pause"; it.call?.cancel() }
+            active?.takeIf { it.owner === this }?.let { it.command = "pause"; it.call?.cancel() }
         }
         worker.shutdown()
         super.handleOnDestroy()
