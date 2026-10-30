@@ -22,8 +22,7 @@ set(GGML_LLAMAFILE OFF CACHE BOOL "" FORCE)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 FetchContent_Declare(llama_cpp
   URL https://codeload.github.com/ggml-org/llama.cpp/tar.gz/eb4e244be77a906a183cd4a00fd51d9ad3200955
-  URL_HASH SHA256=bd2f111a77f617614fd58e1202bed7d0249d3ea8949ad8a1a183915d612f0aad
-  DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+  URL_HASH SHA256=bd2f111a77f617614fd58e1202bed7d0249d3ea8949ad8a1a183915d612f0aad)
 FetchContent_MakeAvailable(llama_cpp)
 
 add_library(krish_llama SHARED krish_llama_jni.cpp)
