@@ -41,3 +41,5 @@ GPL/LGPL source offer: `SOURCE-OFFER.md`.
 - Unsloth: GGUF quantizations, repositories and model cards linked by `core/src/local/catalog.ts`; model cards list Apache 2.0. We include metadata only, not weights.
 
 - Square OkHttp 4.12.0, Apache 2.0: https://github.com/square/okhttp (Android model download client).
+
+- ggml authors: llama.cpp b12001, MIT, https://github.com/ggml-org/llama.cpp ; license at `LICENSES/llama.cpp-MIT.txt`. Native build source is pinned and fetched at build time; no model is bundled.

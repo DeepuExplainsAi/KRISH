@@ -31,6 +31,12 @@ Legend: **RUN** = executed in the build environment with the result observed. **
 | Independent review of the safety rules (static) and fixes | 12 findings; 11 fixed in code with tests that fail on the old code (policy, loop, page script, sandbox limits, keyring check, upload binding, layout). #1 is partly open on Android (see SECURITY.md gaps 0, 0b) | fixed as described |
 | Merged manifest permissions | inspected merged manifests | INTERNET, POST_NOTIFICATIONS (WorkManager ACCESS_NETWORK_STATE / RECEIVE_BOOT_COMPLETED removed). v0.1.12 adds FOREGROUND_SERVICE, FOREGROUND_SERVICE_DATA_SYNC, WAKE_LOCK for `KeepAliveService`: NOT re-inspected in a merged manifest, check after the first CI build |
 
+## Round 14: native build probe (2026-10-30)
+
+- Pinned source, CMake, arm64-only Gradle config and JNI link probe added. CI-only dependencies invoke both native build tasks from the existing Android check; **pending CI**, no local Android JDK/SDK/NDK. `ci/workflows/check.yml` is a non-active workflow mirror.
+- **NOT BUILT:** model load/completion, action grammar, template/thinking switch, local engine registration, fallback toggle and lifecycle/memory handling. The app cannot answer offline.
+- **NOT RUN:** actual Android JNI probe, APK installation, download, inference, performance, WebView RAM kills, battery/heat or screen-off lifecycle.
+
 ## Round 13: downloader redirect and foreground changes (2026-10-30)
 
 - Local typecheck, lint, tests (core 290, UI 54, desktop 10), and UI build pass. CI JS and both-flavor Kotlin compilation passed on 3a40d94; new `LocalDownloadPolicyTest` not run (no local JDK/SDK; existing CI compiles Kotlin only).

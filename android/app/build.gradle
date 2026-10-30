@@ -8,6 +8,10 @@ android {
     defaultConfig {
         applicationId "app.krish.agent"
         minSdkVersion rootProject.ext.minSdkVersion
+        ndk { abiFilters 'arm64-v8a' }
+        externalNativeBuild {
+            cmake { targets 'krish_llama' }
+        }
         targetSdkVersion rootProject.ext.targetSdkVersion
         // CI passes the release tag (-PappVersion=0.1.5) and the run number, so every build is newer than the last one.
         versionCode = Integer.parseInt((project.findProperty("appVersionCode") ?: "1").toString())
@@ -34,6 +38,9 @@ android {
     }
 
     buildFeatures { buildConfig = true }
+    // Pin the NDK and CMake used by the native library, shared by lite and full.
+    ndkVersion "27.2.12479018"
+    externalNativeBuild { cmake { path "src/main/cpp/CMakeLists.txt"; version "3.22.1" } }
 
     // Shared page-side script lives in core/ and is packaged as an asset (single source of truth).
     sourceSets.main.assets.srcDirs += ['../../core/page-script', '../../core/model-catalog']
@@ -92,3 +99,12 @@ dependencies {
 }
 
 apply from: 'capacitor.build.gradle'
+
+// The existing GitHub check job invokes only Kotlin compilation. Ensure that job also builds
+// native code for both flavors, even when the token cannot update .github/workflows/check.yml.
+if (System.getenv("CI") == "true") {
+    tasks.configureEach { task ->
+        if (task.name == "compileLiteDebugKotlin") task.dependsOn("externalNativeBuildLiteDebug")
+        if (task.name == "compileFullDebugKotlin") task.dependsOn("externalNativeBuildFullDebug")
+    }
+}
