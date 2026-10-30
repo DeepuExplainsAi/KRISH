@@ -33,7 +33,7 @@ Legend: **RUN** = executed in the build environment with the result observed. **
 
 ## Round 14: native build probe (2026-10-30)
 
-- Pinned source, CMake, arm64-only Gradle config and JNI link probe added. CI-only dependencies invoke both native build tasks from the existing Android check; **pending CI**, no local Android JDK/SDK/NDK. `ci/workflows/check.yml` is a non-active workflow mirror.
+- Pinned source, CMake, arm64-only Gradle config and JNI link probe added. CI-only dependencies invoke both native build tasks from the existing Android check; **CI passed on 0616dff** (run 41029080188), no local Android JDK/SDK/NDK. Local typecheck, lint, tests (290 core, 54 UI, 10 desktop), and UI build passed. `ci/workflows/check.yml` is a non-active workflow mirror.
 - **NOT BUILT:** model load/completion, action grammar, template/thinking switch, local engine registration, fallback toggle and lifecycle/memory handling. The app cannot answer offline.
 - **NOT RUN:** actual Android JNI probe, APK installation, download, inference, performance, WebView RAM kills, battery/heat or screen-off lifecycle.
 
