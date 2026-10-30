@@ -10,7 +10,7 @@ export function Home() {
   const [fact, setFact] = useState("");
   const [facts, setFacts] = useState<{ id: string; text: string }[]>([]);
   useEffect(() => void app.memory.list().then(setFacts), [app]);
-  const noProvider = s.providers.length === 0;
+  const noProvider = s.providers.length === 0 && app.onlineAllowed();
 
   const open = (e: React.FormEvent) => {
     e.preventDefault();

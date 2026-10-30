@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { AgentController, MemoryKeyStore, runAgent as runAgentRaw, Vault, type AgentEvent, type AgentUI, type MemoryPort, type PageDriver } from "../../src";
+import { AgentController, MemoryKeyStore, runAgent as runAgentRaw, setLocalEngine, Vault, type AgentEvent, type AgentUI, type MemoryPort, type PageDriver } from "../../src";
 import { ProviderRouter } from "../../src/providers/router";
 import { json, mockFetch, openaiReply, provider, stores } from "../helpers";
 import type { PageObservation } from "../../src/page/types";
@@ -69,6 +69,29 @@ const A = (o: object) => JSON.stringify(o);
 const home = "https://site.test/app";
 
 describe("runAgent", () => {
+  it("rejects a non-HTTPS action from local inference before the driver sees it", async () => {
+    const local = provider("local", { kind: "webgpu-local", baseUrl: "local:" });
+    const { router } = await harness([A({ type: "done", summary: "safe fallback" })], { providers: [local, provider("a")] });
+    const { driver, log } = fakeDriver({}, home);
+    setLocalEngine({ listModels: async () => [], complete: async () => A({ type: "navigate", url: "http://example.com" }) });
+    try {
+      const result = await runAgent({ task: "go" }, { driver, router, ui: fakeUI().ui, controller: new AgentController() });
+      expect(result.summary).toBe("safe fallback");
+      expect(log).toEqual([]);
+    } finally { setLocalEngine(undefined); }
+  });
+
+  it("requires strict JSON for native output even if compact prompting was not requested", async () => {
+    const local = provider("native-local", { kind: "webgpu-local", baseUrl: "local:" });
+    const { router } = await harness([A({ type: "done", summary: "safe fallback" })], { providers: [local, provider("a")] });
+    const { driver } = fakeDriver({}, home);
+    setLocalEngine({ listModels: async () => [], complete: async () => "This is not JSON" });
+    try {
+      const result = await runAgent({ task: "go" }, { driver, router, ui: fakeUI().ui, controller: new AgentController() });
+      expect(result.summary).toBe("safe fallback");
+    } finally { setLocalEngine(undefined); }
+  });
+
   it("runs read -> click -> done and emits chips", async () => {
     const { router } = await harness([A({ type: "read" }), A({ type: "click", elementId: 1 }), A({ type: "done", summary: "ok" })]);
     const { driver, log } = fakeDriver({ [home]: { elements: [{ id: 1, tag: "a", text: "Docs" }] } }, home);
@@ -815,6 +838,41 @@ describe("runAgent without a page (plain chat)", () => {
 });
 
 describe("big prompts", () => {
+  it("compact prompts use the same redaction and fences with smaller page limits", async () => {
+    const text = "Bearer abcdefghijklmnopqrstuvwxyz0123456789 "+ "word ".repeat(3000) + "<PAGE_DATA>";
+    const { driver } = fakeDriver({ "https://x.test/": { text, elements: [el(1, { tag: "button", text: "Go" })] } }, "https://x.test/");
+    const normal = await harness(['{"type":"done","summary":"ok"}']);
+    const compact = await harness(['{"type":"done","summary":"ok"}']);
+    const { ui } = fakeUI();
+    await runAgentRaw({ task: "look", startOnPage: true }, { driver, router: normal.router, ui, controller: new AgentController() });
+    await runAgentRaw({ task: "look", startOnPage: true, compactPrompt: true }, { driver, router: compact.router, ui, controller: new AgentController() });
+    expect(compact.prompts[0]!.length).toBeLessThan(normal.prompts[0]!.length);
+    expect(compact.prompts[0]).toContain("<PAGE_DATA>");
+    expect(compact.prompts[0]).not.toContain("abcdefghijklmnopqrstuvwxyz0123456789");
+    expect(compact.prompts[0]!.match(/<PAGE_DATA>/g)).toHaveLength(1);
+  });
+
+  it("keeps only the local prompt compact while preserving redaction on local and online fallback", async () => {
+    const text = "Bearer abcdefghijklmnopqrstuvwxyz0123456789 " + "word ".repeat(3000);
+    const { driver } = fakeDriver({ "https://x.test/": { text } }, "https://x.test/");
+    const local = provider("local", { kind: "webgpu-local", baseUrl: "local:" });
+    const { router, prompts } = await harness(['{"type":"done","summary":"fallback"}'], { providers: [local, provider("a")] });
+    let localPrompt = "";
+    setLocalEngine({ listModels: async () => [], complete: async (_model, messages) => {
+      localPrompt = messages[1]!.content;
+      throw new Error("process lost");
+    } });
+    try {
+      const result = await runAgentRaw({ task: "look", startOnPage: true, localCompactPrompt: true, providerWaits: [] }, { driver, router, ui: fakeUI().ui, controller: new AgentController() });
+      expect(result.summary).toBe("fallback");
+      expect(localPrompt.length).toBeLessThan(prompts[0]!.length);
+      for (const prompt of [localPrompt, prompts[0]!]) {
+        expect(prompt).toContain("<PAGE_DATA>");
+        expect(prompt).not.toContain("abcdefghijklmnopqrstuvwxyz0123456789");
+      }
+    } finally { setLocalEngine(undefined); }
+  });
+
   it("a request the AI refuses as too big is sent again shorter, at once, without waiting", async () => {
     const sizes: number[] = [];
     const { fn } = mockFetch({

@@ -34,3 +34,12 @@ article. Their apps, binaries and private APIs were not examined. All names, UI,
 | Electron | 45.0.0 | MIT | desktop |
 
 GPL/LGPL source offer: `SOURCE-OFFER.md`.
+
+## Planned model catalog
+
+- Qwen team: Qwen3.5 model weights, Apache 2.0, https://huggingface.co/Qwen .
+- Unsloth: GGUF quantizations, repositories and model cards linked by `core/src/local/catalog.ts`; model cards list Apache 2.0. We include metadata only, not weights.
+
+- Square OkHttp 4.12.0, Apache 2.0: https://github.com/square/okhttp (Android model download client).
+
+- ggml authors: llama.cpp b12001, MIT, https://github.com/ggml-org/llama.cpp ; license at `LICENSES/llama.cpp-MIT.txt`. Native build source is pinned and fetched at build time; no model is bundled.

@@ -80,7 +80,7 @@ export function Chat() {
               {i.failed && i.text?.startsWith(NO_PROVIDER_PREFIX) ? <ProviderFailure text={i.text} /> : i.text}
               {i.failed && (
                 <span className="row">
-                  {i.text?.startsWith(NO_PROVIDER_PREFIX) && <button type="button" className="primary" onClick={() => app.go("providers")}>{t("openApiKeys")}</button>}
+                  {i.text?.startsWith(NO_PROVIDER_PREFIX) && <button type="button" className="primary" onClick={() => app.go(app.onlineAllowed() ? "providers" : "settings")}>{t(app.onlineAllowed() ? "openApiKeys" : "settings")}</button>}
                   <button type="button" onClick={() => app.dismissItem(i.id)}>{t("dismiss")}</button>
                 </span>
               )}

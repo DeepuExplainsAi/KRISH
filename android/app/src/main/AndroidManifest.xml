@@ -29,6 +29,8 @@
             </intent-filter>
         </activity>
 
+        <service android:name=".LlmService" android:process=":llm" android:exported="false" />
+
         <!-- Keeps the app alive while tasks run with the screen off or another app in front. Started only by a task run, stopped when the queue is empty. -->
         <service android:name=".KeepAliveService" android:exported="false" android:foregroundServiceType="dataSync" />
 
@@ -50,7 +52,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
-    <!-- WorkManager's library manifest adds these two. We use neither (no network constraints, no boot start). -->
-    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" tools:node="remove" />
+    <!-- ACCESS_NETWORK_STATE is used only to warn about metered model downloads. No boot start. -->
+    <!-- Read whether the connection is metered before a large model download. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" tools:node="remove" />
 </manifest>

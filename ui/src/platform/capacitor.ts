@@ -1,6 +1,6 @@
 import { registerPlugin } from "@capacitor/core";
 import type { CodeFound, KeyStore, KVStore, PageObservation, TabInfo } from "@krish/core";
-import type { Bounds, BrowserHost, DeviceInfo, PageEvent, Platform } from "./types";
+import type { Bounds, BrowserHost, DeviceInfo, PageEvent, Platform, LocalDeviceInfo, LocalProgress } from "./types";
 
 type Listener = { remove(): Promise<void> };
 interface Browser {
@@ -25,6 +25,22 @@ interface Browser {
   switchTab(a: { tabId: number }): Promise<void>;
   closeTab(a: { tabId: number }): Promise<void>;
   findCode(a: { tabId: number; from?: string; subject?: string }): Promise<{ value: string }>;
+}
+interface Local {
+  deviceInfo(): Promise<LocalDeviceInfo>;
+  listInstalled(): Promise<{ installed: string[]; partial: { modelId: string; bytes: number }[]; active?: string }>;
+  download(a: { modelId: string }): Promise<void>;
+  resume(a: { modelId: string }): Promise<void>;
+  pause(a: { modelId: string }): Promise<void>;
+  cancel(a: { modelId: string }): Promise<void>;
+  delete(a: { modelId: string }): Promise<void>;
+  addListener(event: "progress", cb: (event: LocalProgress) => void): Promise<Listener>;
+}
+interface Inference {
+  loadModel(a: { modelId: string }): Promise<void>;
+  complete(a: { modelId: string; messages: string; schema: string }): Promise<{ text: string }>;
+  stop(): Promise<void>;
+  unload(): Promise<void>;
 }
 interface Files {
   pickFile(): Promise<{ name?: string; size?: number; token?: string }>;
@@ -61,6 +77,8 @@ export function createCapacitorPlatform(): Platform {
   const S = registerPlugin<Secure>("KrishSecure");
   const Sys = registerPlugin<System>("KrishSystem");
   const L = registerPlugin<Linux>("KrishLinux");
+  const Local = registerPlugin<Local>("KrishLocal");
+  const Inference = registerPlugin<Inference>("KrishInference");
 
   const kv: KVStore = {
     get: async (k) => localStorage.getItem(`krish:${k}`) ?? undefined,
@@ -105,6 +123,18 @@ export function createCapacitorPlatform(): Platform {
     keys,
     fetch: (input, init) => fetch(input, init), // CapacitorHttp patches fetch -> native HTTP (no CORS limits)
     browser,
+    local: {
+      supported: true,
+      deviceInfo: () => Local.deviceInfo(),
+      listInstalled: () => Local.listInstalled(),
+      download: (modelId) => Local.download({ modelId }), resume: (modelId) => Local.resume({ modelId }),
+      pause: (modelId) => Local.pause({ modelId }), cancel: (modelId) => Local.cancel({ modelId }),
+      delete: (modelId) => Local.delete({ modelId }),
+      loadModel: (modelId) => Inference.loadModel({ modelId }),
+      complete: async (modelId, messages, schema) => (await Inference.complete({ modelId, messages, schema })).text,
+      stop: () => Inference.stop(), unload: () => Inference.unload(),
+      onProgress: (cb) => { const h = Local.addListener("progress", cb); return () => void h.then((listener) => listener.remove()); },
+    },
     files: {
       pick: async () => {
         const r = await F.pickFile();

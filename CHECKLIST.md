@@ -31,6 +31,49 @@ Legend: **RUN** = executed in the build environment with the result observed. **
 | Independent review of the safety rules (static) and fixes | 12 findings; 11 fixed in code with tests that fail on the old code (policy, loop, page script, sandbox limits, keyring check, upload binding, layout). #1 is partly open on Android (see SECURITY.md gaps 0, 0b) | fixed as described |
 | Merged manifest permissions | inspected merged manifests | INTERNET, POST_NOTIFICATIONS (WorkManager ACCESS_NETWORK_STATE / RECEIVE_BOOT_COMPLETED removed). v0.1.12 adds FOREGROUND_SERVICE, FOREGROUND_SERVICE_DATA_SYNC, WAKE_LOCK for `KeepAliveService`: NOT re-inspected in a merged manifest, check after the first CI build |
 
+## Round 17: local-first integration (2026-10-30)
+
+- Step 2 CI `41032308054`: JS and Android Kotlin/NDK compile passed; not an APK/device test. Local step 3 checks: typecheck, lint, 297 core / 56 UI / 10 desktop tests and UI build passed. Step 3 PR run `41033360016` passed JS and both-flavor Android Kotlin/NDK compile; strict-JSON follow-up run `41033973986` also passed JS and both-flavor Android Kotlin/NDK compile. Native log suppression was host-compiled; its Android build is subject to final CI.
+- Added selected-native-first routing, online backup opt-in, API Keys gated by toggle, per-provider compact/redacted prompt, strict native action validation, and stop propagation. Tests use fake engine/network; host parsed schema-derived grammar and rendered a Qwen test template, not actual inference.
+- **NOT RUN on phone:** install, model download, inference, JSON quality, native process crash/restart, stop, background unload, OOM with WebView, speed, battery or heat. `:llm` isolates native crashes but cannot prevent system-wide memory kills.
+
+## Round 16: isolated native engine, not integrated (2026-10-30)
+
+- Implemented `:llm` bound service and JNI operations, schema-derived first-filter grammar and strict post-validation; provider registration and backup toggle remain pending. Host build and Qwen template render only; Android compilation subject to CI, native inference **NOT RUN**.
+- **NOT RUN on phone:** installation, download, inference, native process death/restart, OOM recovery, background unload, stop, performance, RAM with WebView, battery and heat. Isolation cannot guarantee the UI survives Android system-wide memory pressure.
+
+## Round 15: native inference investigation (2026-10-30)
+
+- **NOT BUILT:** step 2 JNI load/complete/stop/unload, schema-equivalent grammar, Qwen template application, isolation/OOM handling, background unload; step 3 engine registration, local-first routing and working backup toggle. The existing native library exposes only a link probe.
+- Zod JSON-schema export loses the custom HTTPS URL refinement; llama.cpp converter may weaken unsupported regex patterns. Model output must still pass `ActionSchema` and policy checks. llama.cpp includes native abort paths, so a language-level exception catch is not sufficient crash isolation.
+- **NOT RUN:** native inference, APK installation, real model download, real-device OOM, speed, RAM with WebView open, battery/heat, background unload, or phone fallback. Existing local-router fallback tests use fake engines only.
+
+## Round 14: native build probe (2026-10-30)
+
+- Pinned source, CMake, arm64-only Gradle config and JNI link probe added. CI-only dependencies invoke both native build tasks from the existing Android check; **CI passed on 0616dff** (run 41029080188), no local Android JDK/SDK/NDK. Local typecheck, lint, tests (290 core, 54 UI, 10 desktop), and UI build passed. `ci/workflows/check.yml` is a non-active workflow mirror.
+- **NOT BUILT:** model load/completion, action grammar, template/thinking switch, local engine registration, fallback toggle and lifecycle/memory handling. The app cannot answer offline.
+- **NOT RUN:** actual Android JNI probe, APK installation, download, inference, performance, WebView RAM kills, battery/heat or screen-off lifecycle.
+
+## Round 13: downloader redirect and foreground changes (2026-10-30)
+
+- Local typecheck, lint, tests (core 290, UI 54, desktop 10), and UI build pass. CI JS and both-flavor Kotlin compilation passed on 3a40d94; new `LocalDownloadPolicyTest` not run (no local JDK/SDK; existing CI compiles Kotlin only).
+- **NOT RUN:** real phone APK install, actual CDN redirects, real model download, screen-off/background continuation, agent and download overlapping, pause/resume/cancel, storage-low, hash mismatch, process kill, service timeout, battery/heat, WebView RAM kills.
+- Compact prompt option is tested but not connected to a native engine.
+- **NOT BUILT:** Phase 2 native inference, llama.cpp/JNI/grammar, NDK CI, local-first router or working backup toggle. The app still cannot answer offline.
+
+## Round 12: Android downloader (2026-10-30, work in progress; see Round 13)
+
+- `npm run typecheck`, `npm run lint`, `npm test` (core 289, UI 54, desktop 10), `npm run build:ui` pass locally. Fake-platform tests simulate progress, pause, hash mismatch, storage error, selection and delete; they do not exercise native hashing, redirects or networking.
+- CI Android Kotlin compile passed for both flavors on 982762e, including activity-recreation locking; CI JS also passed. Local environment has no JDK/Android SDK. Native plugin functionality has not been run. `ACCESS_NETWORK_STATE` added for metered warning; inspect merged manifests.
+- NOT BUILT: native inference, local routing, functional API-backup toggle, hiding the API Keys screen, JNI/grammar and NDK CI. No offline answers yet. Do not advertise Phase 1 as complete or enable backup off before the engine exists.
+- NOT RUN: real APK install, actual Hugging Face redirect hosts, actual model download/pause/resume/cancel/hash failure/storage-low or delete, process death/restart, real inference, speed, RAM kills with a WebView open, battery/heat.
+
+## Round 11: partial local-model work (2026-10-30; superseded by Round 12)
+
+- Run: `npm run typecheck`, `npm run lint`, `npm test` (core 289, UI 52, desktop 10), `npm run build:ui` all pass. Headless Chromium showed the Settings catalog preview at 390×844 using the web demo; this is not a phone test.
+- NOT BUILT: native download manager, consent and storage/metered checks, checksum verification, model selection/deletion, API backup toggle, native inference, grammar, JNI/NDK or offline routing. Existing API routing is unchanged. This is not a working offline model or a complete Phase 1.
+- NOT RUN: real APK install, real model download, real inference, speed, RAM kills with a WebView open, battery/heat, or Android build for these changes. CI on this branch has not been checked yet.
+
 ## NOT RUN: needs a real device or display (please test)
 - **(new 2026-10-29, Round 10)** Kotlin `KrishBrowserPlugin` with a map of tabs compiles (CI `android-compile` green on a80e616), never run. Not run anywhere real: 2-4 WebViews / WebContentsViews at once (memory, touches reach the active one, chips switch the view), `findCode` on real inbox sites (smailpro, emailnator, 22.do, Gmail), generated password accepted by real sign-up forms, sign-up card on a phone.
 - **(new 2026-10-27)** Kotlin `KrishSystemPlugin.openExternal` not compiled; vault on real Android Keystore / Electron safeStorage; "Get key" opening the real browser; vault autofill on a real login page.

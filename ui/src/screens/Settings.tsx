@@ -1,3 +1,4 @@
+import { LOCAL_MODEL_CATALOG, recommendedLocalModel, type LocalModelCatalogEntry } from "@krish/core";
 import { LANG_NAMES, type Lang, type LangPref } from "../i18n";
 import { useT } from "../i18n/useT";
 import type { ThemePref } from "../theme";
@@ -13,6 +14,36 @@ export function Settings() {
   const { t } = useT();
   const toggle = (k: "liteMode" | "autoOpenWindow" | "screenshots" | "desktopLayout" | "freeFallback" | "linuxSandbox" | "localModel") => (e: React.ChangeEvent<HTMLInputElement>) =>
     void app.saveSettings({ [k]: e.target.checked });
+  const recommended = recommendedLocalModel(s.deviceTotalRamMB);
+  const startDownload = async (model: LocalModelCatalogEntry) => {
+    try {
+      const info = await app.platform.local.deviceInfo();
+      if (info.metered && !confirm(t("nativeModelMetered"))) return;
+      if (!st.nativeModelConsent && !confirm(t("nativeModelConsent", { name: model.name, size: (model.sizeBytes / 1e9).toFixed(2) }))) return;
+      await app.startNativeDownload(model.id, true);
+    } catch { app.notify(t("nativeModelUnsupported")); }
+  };
+  const modelRow = (model: LocalModelCatalogEntry) => {
+    const done = s.nativeInstalled.includes(model.id);
+    const progress = s.nativeProgress[model.id];
+    const busy = progress?.status === "downloading" || progress?.status === "verifying";
+    const paused = progress?.status === "paused" || (progress?.status === "error" && progress.bytes > 0);
+    return <li key={model.id}><div>
+      <strong>{model.name}</strong>{recommended?.id === model.id && <> · {t("nativeModelRecommended")}</>}
+      <div className="muted">{model.label} · {(model.sizeBytes / 1e9).toFixed(2)} GB</div>
+      {s.deviceTotalRamMB > 0 && s.deviceTotalRamMB < model.minRamMB && <p className="error">{t("nativeModelWarning")}</p>}
+      {progress && (busy || paused) && <div><progress value={progress.bytes} max={progress.total} /> {Math.floor(progress.bytes / progress.total * 100)}% {progress.status === "verifying" && t("nativeModelVerifying")}</div>}
+      {app.platform.local.supported && <div className="row">
+        {done ? <><button onClick={() => void app.selectNativeModel(model.id)} disabled={st.nativeSelectedModel === model.id}>{st.nativeSelectedModel === model.id ? t("nativeModelSelected") : t("nativeModelSelect")}</button>
+          <button onClick={() => void app.controlNativeDownload(model.id, "delete")}>{t("delete")}</button></> : <>
+          {!busy && !paused && <button onClick={() => void startDownload(model)}>{t("nativeModelDownload")}</button>}
+          {progress?.status === "downloading" && <button onClick={() => void app.controlNativeDownload(model.id, "pause")}>{t("nativeModelPause")}</button>}
+          {paused && <button onClick={() => void startDownload(model)}>{t("nativeModelResume")}</button>}
+          {(busy || paused) && <button onClick={() => void app.controlNativeDownload(model.id, "cancel")}>{t("nativeModelCancel")}</button>}
+        </>}
+      </div>}
+    </div></li>;
+  };
   return (
     <section>
       <h2>{t("settings")}</h2>
@@ -50,6 +81,20 @@ export function Settings() {
         <input type="checkbox" checked={st.linuxSandbox && s.linuxAvailable} disabled={!s.linuxAvailable} onChange={toggle("linuxSandbox")} /> {t("linuxSandbox")}
       </label>
       {!s.linuxAvailable && <p className="muted">{s.deviceLowRam ? t("linuxLowRam") : t("linuxNotIncluded")}</p>}
+      <h3>{t("nativeModelPreview")}</h3>
+      <p>{t("nativeModelUnavailable")}</p>
+      <p className="muted">{s.deviceTotalRamMB > 0 ? t("nativeModelRam", { ram: (s.deviceTotalRamMB / 1024).toFixed(1) }) : t("nativeModelRamUnknown")}</p>
+      {app.platform.local.supported ? <>
+        {s.nativeDevice && <p className="muted">{t("nativeModelStorage", { storage: (s.nativeDevice.freeStorageMB / 1024).toFixed(1) })}</p>}
+        <p className="muted">{t("nativeModelWifi")}</p>
+        {s.nativeError && <p className="error" role="alert">{s.nativeError}</p>}
+      </> : <p className="muted">{t("nativeModelUnsupported")}</p>}
+      <ul className="list">{LOCAL_MODEL_CATALOG.slice(0, 3).map(modelRow)}</ul>
+      <details className="more"><summary>{t("nativeModelMore")}</summary><ul className="list">{LOCAL_MODEL_CATALOG.slice(3).map(modelRow)}</ul></details>
+      <label><input type="checkbox" checked={s.nativeInstalled.length === 0 || st.nativeBackup === true}
+        disabled={s.nativeInstalled.length === 0}
+        onChange={(e) => void app.saveSettings({ nativeBackup: e.target.checked })} /> {t("nativeModelBackup")}</label>
+      {app.onlineAllowed() && <button onClick={() => app.go("providers")}>{t("openApiKeys")}</button>}
       <h3>{t("experimental")}</h3>
       <label><input type="checkbox" checked={st.localModel} disabled={!webgpuAvailable()}
         onChange={(e) => {

@@ -32,5 +32,6 @@ jobs:
       - run: npm ci
       - run: npm run build:ui
       - run: npx cap sync android
-      - run: ./gradlew --no-daemon compileLiteDebugKotlin compileFullDebugKotlin
+      # Explicit NDK targets: this mirror is not the active GitHub workflow.
+      - run: ./gradlew --no-daemon compileLiteDebugKotlin compileFullDebugKotlin externalNativeBuildLiteDebug externalNativeBuildFullDebug
         working-directory: android

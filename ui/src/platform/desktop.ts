@@ -1,3 +1,4 @@
+import { unsupportedLocalModel } from "./types";
 import { type CodeFound, type KeyStore, type PageObservation, type TabInfo } from "@krish/core";
 import type { BrowserHost, DeviceInfo, PageEvent, Platform } from "./types";
 
@@ -59,6 +60,7 @@ export function createDesktopPlatform(bridge: Bridge): Platform {
       return new Response(r.body, { status: r.status, statusText: r.statusText, headers: r.headers });
     },
     browser,
+    local: unsupportedLocalModel(),
     files: {
       pick: async () => (await inv<{ name: string; size: number; token: string } | null>("files:pick")) ?? undefined,
       read: async (token, maxBytes) => new Uint8Array(await inv<Uint8Array>("files:read", { token, maxBytes })),

@@ -41,6 +41,7 @@ export function App() {
   const notice = useAppSelector((x) => x.notice);
   const themePref = useAppSelector((x) => x.settings.theme);
   const lite = useAppSelector((x) => x.settings.liteMode);
+  const showKeys = useAppSelector(() => app.onlineAllowed());
   const { t, lang } = useT();
   const [chatKey, setChatKey] = useState(0); // remounts Chat so an unsent draft does not follow into the new chat
   useEffect(() => () => app.dispose(), [app]);
@@ -82,7 +83,7 @@ export function App() {
       {notice && <div className="notice glass" onClick={() => app.notify(undefined)}>{notice}</div>}
       <div className="body">
       <aside className="side" aria-label={t("menu")}>
-        {MENU_GROUPS.flat().map(([sc, label, Icon]) => (
+        {MENU_GROUPS.flat().filter(([sc]) => sc !== "providers" || showKeys).map(([sc, label, Icon]) => (
           <button key={sc} className={screen === sc ? "on" : ""} onClick={() => app.go(sc)}><Icon />{t(label)}</button>
         ))}
       </aside>
