@@ -36,6 +36,12 @@ interface Local {
   delete(a: { modelId: string }): Promise<void>;
   addListener(event: "progress", cb: (event: LocalProgress) => void): Promise<Listener>;
 }
+interface Inference {
+  loadModel(a: { modelId: string }): Promise<void>;
+  complete(a: { modelId: string; messages: string; schema: string }): Promise<{ text: string }>;
+  stop(): Promise<void>;
+  unload(): Promise<void>;
+}
 interface Files {
   pickFile(): Promise<{ name?: string; size?: number; token?: string }>;
   readFile(a: { token: string; maxBytes?: number }): Promise<{ base64: string }>;
@@ -72,6 +78,7 @@ export function createCapacitorPlatform(): Platform {
   const Sys = registerPlugin<System>("KrishSystem");
   const L = registerPlugin<Linux>("KrishLinux");
   const Local = registerPlugin<Local>("KrishLocal");
+  const Inference = registerPlugin<Inference>("KrishInference");
 
   const kv: KVStore = {
     get: async (k) => localStorage.getItem(`krish:${k}`) ?? undefined,
@@ -123,6 +130,9 @@ export function createCapacitorPlatform(): Platform {
       download: (modelId) => Local.download({ modelId }), resume: (modelId) => Local.resume({ modelId }),
       pause: (modelId) => Local.pause({ modelId }), cancel: (modelId) => Local.cancel({ modelId }),
       delete: (modelId) => Local.delete({ modelId }),
+      loadModel: (modelId) => Inference.loadModel({ modelId }),
+      complete: async (modelId, messages, schema) => (await Inference.complete({ modelId, messages, schema })).text,
+      stop: () => Inference.stop(), unload: () => Inference.unload(),
       onProgress: (cb) => { const h = Local.addListener("progress", cb); return () => void h.then((listener) => listener.remove()); },
     },
     files: {

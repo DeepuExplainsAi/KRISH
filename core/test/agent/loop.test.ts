@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { AgentController, MemoryKeyStore, runAgent as runAgentRaw, Vault, type AgentEvent, type AgentUI, type MemoryPort, type PageDriver } from "../../src";
+import { AgentController, MemoryKeyStore, runAgent as runAgentRaw, setLocalEngine, Vault, type AgentEvent, type AgentUI, type MemoryPort, type PageDriver } from "../../src";
 import { ProviderRouter } from "../../src/providers/router";
 import { json, mockFetch, openaiReply, provider, stores } from "../helpers";
 import type { PageObservation } from "../../src/page/types";
@@ -69,6 +69,18 @@ const A = (o: object) => JSON.stringify(o);
 const home = "https://site.test/app";
 
 describe("runAgent", () => {
+  it("rejects a non-HTTPS action from local inference before the driver sees it", async () => {
+    const local = provider("local", { kind: "webgpu-local", baseUrl: "local:" });
+    const { router } = await harness([A({ type: "done", summary: "safe fallback" })], { providers: [local, provider("a")] });
+    const { driver, log } = fakeDriver({}, home);
+    setLocalEngine({ listModels: async () => [], complete: async () => A({ type: "navigate", url: "http://example.com" }) });
+    try {
+      const result = await runAgent({ task: "go" }, { driver, router, ui: fakeUI().ui, controller: new AgentController() });
+      expect(result.summary).toBe("safe fallback");
+      expect(log).toEqual([]);
+    } finally { setLocalEngine(undefined); }
+  });
+
   it("runs read -> click -> done and emits chips", async () => {
     const { router } = await harness([A({ type: "read" }), A({ type: "click", elementId: 1 }), A({ type: "done", summary: "ok" })]);
     const { driver, log } = fakeDriver({ [home]: { elements: [{ id: 1, tag: "a", text: "Docs" }] } }, home);

@@ -31,6 +31,11 @@ Legend: **RUN** = executed in the build environment with the result observed. **
 | Independent review of the safety rules (static) and fixes | 12 findings; 11 fixed in code with tests that fail on the old code (policy, loop, page script, sandbox limits, keyring check, upload binding, layout). #1 is partly open on Android (see SECURITY.md gaps 0, 0b) | fixed as described |
 | Merged manifest permissions | inspected merged manifests | INTERNET, POST_NOTIFICATIONS (WorkManager ACCESS_NETWORK_STATE / RECEIVE_BOOT_COMPLETED removed). v0.1.12 adds FOREGROUND_SERVICE, FOREGROUND_SERVICE_DATA_SYNC, WAKE_LOCK for `KeepAliveService`: NOT re-inspected in a merged manifest, check after the first CI build |
 
+## Round 16: isolated native engine, not integrated (2026-10-30)
+
+- Implemented `:llm` bound service and JNI operations, schema-derived first-filter grammar and strict post-validation; provider registration and backup toggle remain pending. Host build and Qwen template render only; Android compilation subject to CI, native inference **NOT RUN**.
+- **NOT RUN on phone:** installation, download, inference, native process death/restart, OOM recovery, background unload, stop, performance, RAM with WebView, battery and heat. Isolation cannot guarantee the UI survives Android system-wide memory pressure.
+
 ## Round 15: native inference investigation (2026-10-30)
 
 - **NOT BUILT:** step 2 JNI load/complete/stop/unload, schema-equivalent grammar, Qwen template application, isolation/OOM handling, background unload; step 3 engine registration, local-first routing and working backup toggle. The existing native library exposes only a link probe.

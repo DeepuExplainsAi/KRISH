@@ -29,6 +29,8 @@
             </intent-filter>
         </activity>
 
+        <service android:name=".LlmService" android:process=":llm" android:exported="false" />
+
         <!-- Keeps the app alive while tasks run with the screen off or another app in front. Started only by a task run, stopped when the queue is empty. -->
         <service android:name=".KeepAliveService" android:exported="false" android:foregroundServiceType="dataSync" />
 

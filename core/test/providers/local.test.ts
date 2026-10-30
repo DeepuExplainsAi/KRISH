@@ -31,4 +31,14 @@ describe("on-device model", () => {
     expect((await (await router()).r.run(msgs, parseAction)).providerId).toBe("a");
   });
 
+  it("rejects a non-HTTPS local navigation and falls back without executing it", async () => {
+    setLocalEngine({ listModels: async () => [], complete: async () => '{"type":"navigate","url":"http://example.com"}' });
+    const { r, calls } = await router();
+    const result = await r.run(msgs, parseAction);
+    expect(result.providerId).toBe("a");
+    expect(result.value).toEqual({ type: "done", summary: "ok" });
+    expect(result.attempts[0]?.outcome).toBe("bad_output");
+    expect(calls).toHaveLength(1);
+  });
+
 });

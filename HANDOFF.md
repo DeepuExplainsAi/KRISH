@@ -3,6 +3,13 @@
 Project: KRISH, source-only personal agent (Android + desktop). Spec: `docs/SPEC.md`.
 Rule: update this file at the end of every work session (status table + "Next"). Layout backup and restore: `LAYOUT-RESTORE.md`.
 
+## ROUND 16 (2026-10-30): isolated native engine, integration pending
+
+- Added a non-exported bound `:llm` service, JNI model load/generation/stop/unload, binder failure reporting and reconnect on next call, and 5-minute background unload scheduling. The Capacitor bridge exposes those operations, but the engine is NOT yet registered with the provider router. Context sizes chosen by physical RAM: 4096/6144/8192 tokens at 3.5/7 GiB boundaries; these are initial conservative choices, not measured on phones. Android system-wide low-memory kills can still kill the UI; process isolation cannot prevent those.
+- Native generation renders the GGUF's own Jinja template with thinking disabled and creates a grammar from `z.toJSONSchema(ActionSchema)`. The schema loses custom refinements and the upstream converter warns that `\d` patterns are widened; the existing strict `parseReply`/policy gate stays mandatory. On a host x86_64 build of the same pinned source, the exported schema converted to a 52,804-byte grammar and the bundled Qwen3.5-4B test template rendered an empty thinking block with thinking off. Host build and template rendering are not model inference or Android execution.
+- JS unit tests cover schema-derived export and a non-HTTPS local action rejected before browser execution, falling back to a fake online provider. **NOT RUN:** Android runtime/service crash/restart/OOM, APK, model loading/inference, cancellation, background unload, real download, speed, WebView memory, heat or battery on a phone. Kotlin/NDK compile is subject to PR CI; Java/Android SDK unavailable locally.
+- Next: get both Android flavor native/Kotlin checks green, then register the Android engine with local-first routing, backup toggle and compact prompt; test toggle/default/fallback and cancellation. Verify model templates, ABI compatibility, model grammar/inference, kill recovery and low memory on a real phone before claiming operation.
+
 ## ROUND 15 (2026-10-30): step 2 investigation — NOT IMPLEMENTED
 
 - The requested native model operations and router integration remain unimplemented; the last green functional step is Round 14's Android native build/link probe. No inference code was connected or enabled in this session.

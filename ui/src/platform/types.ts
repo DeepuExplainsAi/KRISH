@@ -78,13 +78,17 @@ export interface LocalModelHost {
   cancel(modelId: string): Promise<void>;
   delete(modelId: string): Promise<void>;
   onProgress(cb: (event: LocalProgress) => void): () => void;
+  loadModel(modelId: string): Promise<void>;
+  complete(modelId: string, messages: string, schema: string): Promise<string>;
+  stop(): Promise<void>;
+  unload(): Promise<void>;
 }
 
 /** Web and desktop do not expose Android's private model storage. */
 export function unsupportedLocalModel(): LocalModelHost {
   const unsupported = async (): Promise<never> => { throw new Error("On-device models are not supported on this platform"); };
   return { supported: false, deviceInfo: unsupported, listInstalled: unsupported, download: unsupported, pause: unsupported,
-    resume: unsupported, cancel: unsupported, delete: unsupported, onProgress: () => () => {} };
+    resume: unsupported, cancel: unsupported, delete: unsupported, onProgress: () => () => {}, loadModel: unsupported, complete: unsupported, stop: unsupported, unload: unsupported };
 }
 
 export interface Platform {

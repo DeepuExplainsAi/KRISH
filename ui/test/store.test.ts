@@ -52,6 +52,7 @@ describe("native model store", () => {
     const actions: string[] = [];
     result.platform.kind = "android";
     result.platform.local = {
+      ...unsupportedLocalModel(),
       supported: true,
       deviceInfo: async () => ({ totalRamMB: 4096, freeStorageMB: 10000, metered: false }),
       listInstalled: async () => ({ installed, partial: [] }),

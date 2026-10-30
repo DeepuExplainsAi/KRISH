@@ -101,6 +101,9 @@ export const ActionSchema = z.discriminatedUnion("type", [
   z.strictObject({ type: z.literal("done"), summary: z.string().max(6000), thought, plan }),
 ]);
 
+/** First-pass native grammar input. Zod refinements (notably HTTPS) still require parseAction/parseReply. */
+export const ACTION_JSON_SCHEMA = z.toJSONSchema(ActionSchema);
+
 export type Action = z.infer<typeof ActionSchema>;
 
 export class ActionParseError extends Error {}
