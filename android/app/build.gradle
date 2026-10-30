@@ -103,6 +103,15 @@ apply from: 'capacitor.build.gradle'
 // The existing GitHub check job invokes only Kotlin compilation. Ensure that job also builds
 // native code for both flavors, even when the token cannot update .github/workflows/check.yml.
 if (System.getenv("CI") == "true") {
+    // Surface nested Gradle/NDK errors as CI annotations when runner logs are unavailable.
+    gradle.buildFinished { result ->
+        def failure = result.failure
+        while (failure != null) {
+            def text = (failure.message ?: failure.toString()).replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+            println("::error::${text}")
+            failure = failure.cause
+        }
+    }
     tasks.configureEach { task ->
         if (task.name == "compileLiteDebugKotlin") task.dependsOn("externalNativeBuildLiteDebug")
         if (task.name == "compileFullDebugKotlin") task.dependsOn("externalNativeBuildFullDebug")
