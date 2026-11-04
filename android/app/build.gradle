@@ -43,7 +43,7 @@ android {
     externalNativeBuild { cmake { path "src/main/cpp/CMakeLists.txt"; version "3.22.1" } }
 
     // Shared page-side script lives in core/ and is packaged as an asset (single source of truth).
-    sourceSets.main.assets.srcDirs += ['../../core/page-script', '../../core/model-catalog']
+    sourceSets.main.assets.srcDirs += ['../../core/page-script', '../../core/model-catalog', '../../core/security-policy']
 
     packaging {
         jniLibs { useLegacyPackaging = true } // extractNativeLibs=true: Tier 1 executables live in the native-library dir
@@ -96,6 +96,7 @@ dependencies {
     implementation project(':capacitor-android')
     implementation project(':capacitor-cordova-android-plugins')
     testImplementation "junit:junit:$junitVersion"
+    testImplementation "org.json:json:20240303" // android.jar stubs org.json in JVM unit tests
 }
 
 apply from: 'capacitor.build.gradle'

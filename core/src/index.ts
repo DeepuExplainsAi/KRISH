@@ -19,3 +19,4 @@ export * from "./providers/local";
 export * from "./vault/vault";
 
 export * from "./local/catalog";
+export * from "./security";

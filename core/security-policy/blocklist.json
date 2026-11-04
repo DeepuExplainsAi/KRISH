@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "note": "Packages the agent may NEVER touch, even if the user allowlists them. Shared by TypeScript (core/src/security) and Android (asset). Match is case-insensitive; a package is blocked if it equals an entry in `packages`, starts with an entry in `prefixes`, contains an entry in `contains`, or has a dot/underscore-separated word in `words`.",
+  "groups": {
+    "finance": {
+      "packages": [
+        "com.phonepe.app", "com.google.android.apps.nbu.paisa.user", "net.one97.paytm", "in.org.npci.upiapp", "com.dreamplug.androidapp",
+        "com.freecharge.android", "com.mobikwik_new", "com.paypal.android.p2pmobile", "com.venmo", "com.squareup.cash", "com.revolut.revolut",
+        "com.google.android.apps.walletnfcrel", "com.samsung.android.spay", "com.coinbase.android", "com.binance.dev",
+        "com.sbi.SBIFreedomPlus", "com.snapwork.hdfc", "com.csam.icici.bank.imobile", "com.axis.mobile", "com.msf.kbank.mobile"
+      ],
+      "prefixes": ["com.phonepe.", "net.one97.paytm", "com.paytm", "com.google.android.apps.nbu.", "com.sbi.", "com.hdfc", "com.icici", "com.axis", "com.kotak"],
+      "contains": ["bank", "paytm", "phonepe", "paisa", "wallet", "bhim", "fintech", "payment"],
+      "words": ["upi", "pay", "bank", "wallet"]
+    },
+    "private_chat_and_mail": {
+      "packages": [
+        "com.google.android.gm", "com.google.android.gm.lite", "com.whatsapp", "com.whatsapp.w4b", "org.telegram.messenger", "org.telegram.messenger.web",
+        "org.thoughtcrime.securesms", "com.google.android.apps.messaging", "com.android.mms", "com.samsung.android.messaging", "com.facebook.orca",
+        "com.discord", "com.snapchat.android", "com.viber.voip", "jp.naver.line.android", "com.skype.raider", "com.microsoft.teams", "com.Slack",
+        "com.google.android.apps.dynamite", "com.google.android.talk", "com.android.email", "com.microsoft.office.outlook",
+        "com.yahoo.mobile.client.android.mail", "ch.protonmail.android", "com.android.dialer", "com.google.android.dialer",
+        "com.google.android.contacts", "com.android.contacts", "com.samsung.android.dialer", "com.samsung.android.app.contacts"
+      ],
+      "prefixes": ["com.whatsapp", "org.telegram.", "com.android.mms", "com.android.messaging", "com.android.email"],
+      "contains": ["messenger", "whatsapp", "telegram", "signal.private"],
+      "words": []
+    },
+    "auth_and_passwords": {
+      "packages": [
+        "com.google.android.apps.authenticator2", "com.azure.authenticator", "com.authy.authy", "com.twofasapp", "org.fedorahosted.freeotp",
+        "com.lastpass.lpandroid", "com.x8bit.bitwarden", "com.agilebits.onepassword", "com.onepassword.android", "com.callpod.android_apps.keeper",
+        "com.dashlane", "me.proton.android.pass", "org.keepassdroid", "keepass2android.keepass2android", "com.yubico.yubioath"
+      ],
+      "prefixes": [],
+      "contains": ["authenticator", "password", "keepass", "bitwarden", "lastpass", "onepassword", "totp"],
+      "words": ["otp", "2fa", "vault"]
+    },
+    "system_and_accounts": {
+      "packages": [
+        "com.android.settings", "com.android.vending", "com.google.android.gms", "com.google.android.gsf", "com.google.android.packageinstaller",
+        "com.android.packageinstaller", "com.google.android.permissioncontroller", "com.android.permissioncontroller", "com.android.systemui",
+        "com.android.keyguard", "com.miui.securitycenter", "com.coloros.safecenter", "com.samsung.android.settings"
+      ],
+      "prefixes": ["com.android.settings", "com.android.vending", "com.google.android.gms", "com.google.android.setupwizard", "com.android.setupwizard", "com.android.providers."],
+      "contains": [],
+      "words": []
+    }
+  }
+}
