@@ -21,8 +21,8 @@ Environment: no JDK in the cloud sandbox. TypeScript is tested locally (`npm run
 | 1 | `core/src/security/packages.ts` + `PackagePolicy.kt`: allowlist + hard blocklist (shared `core/security-policy/blocklist.json`, also an Android asset), fail-closed `checkPackage` | DONE. 24 TS tests pass; Kotlin compiles in CI (run 41903803080). `PackagePolicyTest.kt` is NOT run by CI (workflow only compiles; token lacks `workflow` scope, so `.github/workflows/check.yml` cannot be edited by me) |
 | 2 | `core/src/security/screen.ts`: `sanitizeScreen(RawScreen, {allowlist, approvedWords})` is the ONLY door from screen to model. Order: package -> FLAG_SECURE -> blank screenshot -> blocked host (`hosts` in blocklist.json) -> password/secret-hint fields -> sensitive words -> `redactForModel` (phone, email, card, OTP, tokens). Hard words (otp, pin, cvv, password, login, sign in) can never be approved; soft word `pay` can be approved per task | DONE. 32 tests. Native side (Kotlin) must build `RawScreen` and never put text of `isPassword` nodes in it (part 6) |
 | 3 | `core/src/security/actions.ts`: `PhoneActionSchema` (open_app, read_screen, tap, type, scroll, back, wait, ask_user, done; strict), `consentKindOf(label)`, `TaskPlan` (`createPlan` -> user taps Start -> `approvePlan`), `gatePhoneAction` -> allow/confirm/block, `TaskSession` (steps, opened apps, stale node ids). Node ids and labels come from the sanitized screen, never from the model. Confirm: send/post/pay/delete/submit/install/share, first open of each app, unlabeled controls, typed line breaks | DONE. 36 tests |
-| 4 | Rate limits + random delay for social apps, Instagram warning | todo |
-| 5 | On-device activity log (view/delete), no server storage | todo |
+| 4 | `core/src/security/pacing.ts`: `Pacer` (rolling minute/hour/day caps per app, random 1.2-4.5 s delay in social apps, reads not counted), `isSocialApp`, `INSTAGRAM_WARNING` (UI must show it before the first Instagram task) | DONE. 6 tests |
+| 5 | `core/src/security/activity-log.ts`: `ActivityLog` over `KVStore` (redacts every entry, `list`, `deleteTask`, `clear`, size cap; asks native to delete screenshots via `deleteShots`). Screenshots themselves: native, app-private files, opaque names (part 6/7) | DONE. 5 tests |
 | 6 | Kotlin: AccessibilityService (package-restricted xml + runtime check), foreground pause, lock/leave-allowlist stop, volume-key stop | todo |
 | 7 | Kotlin: overlay Stop button, confirmation popups, consent screen, privacy policy/terms | todo |
 | 8 | Delete WebView browser system (AgentWebView, KrishBrowserPlugin, page script, tabs, vault autofill) and UI that depends on it | todo |
@@ -30,7 +30,7 @@ Environment: no JDK in the cloud sandbox. TypeScript is tested locally (`npm run
 | 10 | Schedule/macro replay (AlarmManager), docs rewrite (SECURITY.md, CHECKLIST.md, README) | todo |
 
 ### Log
-- 2026-11-04: repo cloned (`DeepuExplainsAi/KRISH`, gh logged in as DeepuExplainsAi). Baseline green. Part 1 done and pushed. Part 2 done. Part 3 done.
+- 2026-11-04: repo cloned (`DeepuExplainsAi/KRISH`, gh logged in as DeepuExplainsAi). Baseline green. Part 1 done and pushed. Part 2 done. Part 3 done. Parts 4 and 5 done (TS side). UI screens for log/consent are part 7.
 - Note: `.github/workflows/` differs from `ci/workflows/` (the latter is a mirror). Pushing workflow files needs the `workflow` token scope.
 
 ## ROUND 17 (2026-10-30): local-first integration — phone NOT RUN
