@@ -3,6 +3,35 @@
 Project: KRISH, source-only personal agent (Android + desktop). Spec: `docs/SPEC.md`.
 Rule: update this file at the end of every work session (status table + "Next"). Layout backup and restore: `LAYOUT-RESTORE.md`.
 
+## PHONE-CONTROL PIVOT (started 2026-11-04) — READ THIS FIRST
+
+Owner's brief (Hinglish, summarised): turn KRISH into the **Android phone-control agent** described in `docs/PHONE-CONTROL-SPEC.md`
+(security layers FIRST, then Mode A = drive the ChatGPT/Gemini app, Mode B = MCP over a Cloudflare relay, shared engine
+`read screen -> act -> check -> next`, schedule/macro flow, safety flow). Work in parts. After EACH part: commit, push, update this file, push again,
+then start the next part without asking. Another AI may continue from here, so keep the table below true.
+**Owner also wants the in-app WebView browser system deleted** (Google sign-in says "this browser is not secure" in a WebView). Login is done by the user in the real apps.
+
+**Conflict to know:** old SECURITY.md/spec said "no confirmation cards, no Accessibility Service, no overlay" (rounds 5-6). The new brief overrides that. Old text is rewritten in part 10.
+
+Environment: no JDK in the cloud sandbox. TypeScript is tested locally (`npm run typecheck && npm run lint && npm test`). Kotlin is only compile-checked by GitHub CI (`.github/workflows/check.yml`) after push. Never claim device-tested.
+
+| # | Part | Status |
+|---|------|--------|
+| 0 | Spec saved, baseline green (298 core / 56 ui / 10 desktop) | done |
+| 1 | `core/src/security/packages.ts`: allowlist + hard blocklist + fail-closed package check | in progress |
+| 2 | `core/src/security/screen.ts`: password nodes, sensitive words, FLAG_SECURE / blank screenshot, blocked hosts, `redactForModel` (phone, email, OTP) | todo |
+| 3 | `core/src/security/actions.ts`: action classes, confirmation rules (send/post/pay/delete/submit/install/share, open new app), task plan + "no action outside plan" | todo |
+| 4 | Rate limits + random delay for social apps, Instagram warning | todo |
+| 5 | On-device activity log (view/delete), no server storage | todo |
+| 6 | Kotlin: AccessibilityService (package-restricted xml + runtime check), foreground pause, lock/leave-allowlist stop, volume-key stop | todo |
+| 7 | Kotlin: overlay Stop button, confirmation popups, consent screen, privacy policy/terms | todo |
+| 8 | Delete WebView browser system (AgentWebView, KrishBrowserPlugin, page script, tabs, vault autofill) and UI that depends on it | todo |
+| 9 | Engine + Mode B (MCP/relay client, tools open_app/read_screen/tap/type) and Mode A (drive ChatGPT/Gemini app), one mode at a time | todo |
+| 10 | Schedule/macro replay (AlarmManager), docs rewrite (SECURITY.md, CHECKLIST.md, README) | todo |
+
+### Log
+- 2026-11-04: repo cloned (`DeepuExplainsAi/KRISH`, gh logged in as DeepuExplainsAi). Baseline green. Part 1 started.
+
 ## ROUND 17 (2026-10-30): local-first integration — phone NOT RUN
 
 - Step 2 commit `677aae7`: PR run `41032308054` passed JS and both-flavor Android Kotlin/NDK compile. Compile is not an APK or a runtime test. Step 3 commit `3ec3e06`: PR run `41033360016` passed JS and both-flavor Android Kotlin/NDK compile. Strict native-JSON follow-up `a26c295` passed PR CI `41033973986` (JS and Android compile). Step 3 adds the native `LocalEngine` bridge and registration, native-first routing, a backup toggle defaulting OFF while a native model is selected and ON otherwise, and API Keys behind that toggle. Explicitly enabled online fallback keeps its normal full prompt; only native gets the existing compact page/history treatment. Automatic online provider refresh is suppressed while backup is off; explicit user provider tests/additions can still use the network. Existing WebGPU remains untouched and is used only when no native model is active.
