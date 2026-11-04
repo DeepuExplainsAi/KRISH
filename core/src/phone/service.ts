@@ -2,6 +2,7 @@ import type { KeyStore } from "../storage";
 import type { ActivityLog } from "../security/activity-log";
 import type { TaskPlan } from "../security/actions";
 import type { PhoneDevice } from "./device";
+import { ChatDriver, type PhoneRunResult } from "./chat-driver";
 import { PhoneEngine, type EngineOptions } from "./engine";
 import { createMcpHandler } from "./mcp";
 import { isPairingToken, newPairingToken, RelayClient, type RelayStatus, type SocketLike } from "./relay-client";
@@ -30,6 +31,7 @@ export class PhoneService {
   private relay?: RelayClient;
   private mode: Mode = "off";
   private relayStatus: RelayStatus = "off";
+  private abort?: AbortController;
 
   constructor(
     device: PhoneDevice,
@@ -40,7 +42,11 @@ export class PhoneService {
     private readonly onChange: () => void = () => {},
   ) {
     this.engine = new PhoneEngine(device, log, opts);
+    this.device = device;
+    this.log = log;
   }
+  private readonly device: PhoneDevice;
+  private readonly log: ActivityLog;
 
   get current() {
     return { mode: this.mode, relay: this.relayStatus, taskActive: this.engine.active };
@@ -73,15 +79,24 @@ export class PhoneService {
     return { ok: true, connectorUrl: `https://${base.host}/mcp/${token}` };
   }
 
-  /** Mode A hands the engine to the chat driver. */
-  async enableChat() {
+  /** Mode A: the app drives a chat app (ChatGPT / Gemini / Claude) on this phone as the brain. Resolves when the task ends. */
+  async runChat(plan: TaskPlan, chatPkg: string, ask?: (q: string) => Promise<string | undefined>): Promise<PhoneRunResult> {
     await this.disable();
     this.mode = "chat";
+    this.abort = new AbortController();
     this.onChange();
+    try {
+      return await new ChatDriver(this.engine, this.device, this.log, { chatPkg, ask, signal: this.abort.signal }).run(plan);
+    } finally {
+      this.abort = undefined;
+      this.mode = "off";
+      this.onChange();
+    }
   }
 
   /** Ends the running task and closes the relay. */
   async disable() {
+    this.abort?.abort();
     await this.engine.end("mode_change");
     this.relay?.stop();
     this.relay = undefined;

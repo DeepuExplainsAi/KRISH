@@ -4,3 +4,4 @@ export * from "./mcp";
 export * from "./relay-client";
 export * from "./relay-hub";
 export * from "./service";
+export * from "./chat-driver";

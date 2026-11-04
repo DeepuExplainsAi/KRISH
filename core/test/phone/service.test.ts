@@ -62,9 +62,15 @@ describe("PhoneService", () => {
     await svc.enableMcp("https://k.workers.dev");
     await svc.begin(approvePlan(createPlan("t", ["com.android.chrome"])));
     expect(svc.current.taskActive).toBe(true);
-    await svc.enableChat();
-    expect(svc.current).toMatchObject({ mode: "chat", taskActive: false, relay: "off" });
+    await svc.disable();
+    expect(svc.current).toMatchObject({ mode: "off", taskActive: false, relay: "off" });
     expect(stops).toEqual(["mode_change"]);
+  });
+  it("Mode A refuses to start when the chat app is not approved, and leaves no mode behind", async () => {
+    const { svc } = setup();
+    const r = await svc.runChat(approvePlan(createPlan("t", ["com.android.chrome"])), "com.openai.chatgpt");
+    expect(r.status).toBe("failed");
+    expect(svc.current.mode).toBe("off");
   });
   it("the token lives in the key store, never in the activity log", async () => {
     const { svc, keys } = setup();

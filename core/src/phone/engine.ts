@@ -67,6 +67,15 @@ export class PhoneEngine {
     return this.session !== undefined;
   }
 
+  /** Package of the last screen that passed the gate (the app the task is working in). */
+  get foreground() {
+    return this.lastPkg;
+  }
+
+  get currentTaskId() {
+    return this.taskId;
+  }
+
   /** Starts a task from a plan the user approved. */
   async begin(plan: TaskPlan, taskId: string = newId()): Promise<{ ok: true; taskId: string } | { ok: false; reason: string }> {
     if (this.session) return { ok: false, reason: "a task is already running" };

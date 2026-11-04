@@ -1,4 +1,4 @@
-import { approvePlan, createPlan, describePlan, SOCIAL_PREFIXES, type LogEntry } from "@krish/core";
+import { approvePlan, createPlan, describePlan, SOCIAL_PREFIXES, SUGGESTED_AI_APPS, type LogEntry } from "@krish/core";
 import { useCallback, useEffect, useState } from "react";
 import { useT } from "../i18n/useT";
 import type { LaunchableApp, PhoneStatus } from "../platform/types";
@@ -87,7 +87,7 @@ function Controls({ onRevoke }: { onRevoke: () => void }) {
       </ul>
       {[...allowed].some(isSocial) && <p className="muted">{t("phoneRisk")}</p>}
 
-      <Session allowed={[...allowed]} reload={reload} />
+      <Session allowed={[...allowed]} installed={new Set(apps.map((a) => a.pkg.toLowerCase()))} reload={reload} />
 
       <h3>{t("phoneLog")}</h3>
       {log.length === 0 ? <p className="muted">{t("phoneLogEmpty")}</p> : (
@@ -104,7 +104,7 @@ function Controls({ onRevoke }: { onRevoke: () => void }) {
 }
 
 /** Mode B (AI client through the relay) and starting a task: the user approves the plan here, on the phone. */
-function Session({ allowed, reload }: { allowed: string[]; reload: () => void }) {
+function Session({ allowed, installed, reload }: { allowed: string[]; installed: Set<string>; reload: () => void }) {
   const app = useApp();
   const { t } = useT();
   const svc = app.phoneService;
@@ -118,6 +118,12 @@ function Session({ allowed, reload }: { allowed: string[]; reload: () => void })
 
   const enable = () => void svc.enableMcp(relay).then((r) => { setError(r.ok ? "" : r.reason); setConnector(r.ok ? r.connectorUrl : ""); reload(); });
   const start = () => void svc.begin(plan).then((r) => { setError(r.ok ? "" : r.reason); reload(); });
+  const chatApps = SUGGESTED_AI_APPS.filter((p) => allowed.includes(p) && installed.has(p));
+  const runChat = (pkg: string) => {
+    setError("");
+    void svc.runChat(plan, pkg, async (q) => window.prompt(q) ?? undefined).then((r) => { setError(r.summary); reload(); });
+    reload();
+  };
 
   return (
     <>
@@ -141,7 +147,10 @@ function Session({ allowed, reload }: { allowed: string[]; reload: () => void })
       <h3>{t("phonePlan")}</h3>
       <input value={task} onChange={(e) => setTask(e.target.value)} placeholder={t("phoneTaskPlaceholder")} />
       <ul className="list plain">{describePlan(plan).map((l) => <li key={l}>{l}</li>)}</ul>
-      <button className="primary" disabled={cur.taskActive || allowed.length === 0} onClick={start}>{t("phoneApproveStart")}</button>
+      <button className="primary" disabled={cur.taskActive || allowed.length === 0 || cur.mode !== "mcp"} onClick={start}>{t("phoneApproveStart")}</button>
+      <h3>{t("phoneModeA")}</h3>
+      <p className="muted">{chatApps.length ? t("phoneModeAHelp") : t("phoneModeANone")}</p>
+      {chatApps.map((pkg) => <button key={pkg} disabled={cur.taskActive || !task || allowed.length < 2} onClick={() => runChat(pkg)}>{t("phoneRunWith", { app: pkg })}</button>)}
     </>
   );
 }
