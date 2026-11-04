@@ -114,9 +114,3 @@ class KrishPhonePlugin : Plugin() {
         call.resolve()
     }
 }
-
-/** One parsed blocklist per process. */
-object PackagePolicyHolder {
-    @Volatile private var policy: PackagePolicy? = null
-    fun get(context: android.content.Context): PackagePolicy = policy ?: synchronized(this) { policy ?: PackagePolicy.load(context.applicationContext).also { policy = it } }
-}
