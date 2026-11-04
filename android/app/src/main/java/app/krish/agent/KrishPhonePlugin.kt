@@ -38,7 +38,6 @@ class KrishPhonePlugin : Plugin() {
         call.resolve(
             state()
                 .put("accessibility", serviceEnabled() && AgentAccessibilityService.instance != null)
-                .put("overlay", Settings.canDrawOverlays(context))
                 .put("allowlist", JSArray(session.allowlist.toList())),
         )
     }
@@ -104,13 +103,20 @@ class KrishPhonePlugin : Plugin() {
         call.resolve()
     }
 
+    /** Shows the confirmation popup over the current app. Resolves `{allowed}`; anything but an explicit Allow is false. */
+    @PluginMethod fun confirm(call: PluginCall) {
+        val svc = AgentAccessibilityService.instance ?: return call.resolve(JSObject().put("allowed", false))
+        svc.confirm(call.getString("title") ?: "Allow this?", call.getString("detail").orEmpty().take(300)) { call.resolve(JSObject().put("allowed", it)) }
+    }
+
     @PluginMethod fun openAccessibilitySettings(call: PluginCall) {
         context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         call.resolve()
     }
 
-    @PluginMethod fun openOverlaySettings(call: PluginCall) {
-        context.startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, android.net.Uri.parse("package:${context.packageName}")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    /** The system list of battery-optimization exemptions (needs no permission). The user picks Krish there. */
+    @PluginMethod fun openBatterySettings(call: PluginCall) {
+        context.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         call.resolve()
     }
 }

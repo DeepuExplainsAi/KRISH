@@ -13,7 +13,7 @@ import { useApp, useAppSelector } from "./state/useStore";
 
 /** Main tabs. Every other screen is reached from the Menu (avatar button). */
 const TABS: [Screen, Key][] = [["home", "home"], ["chat", "chat"], ["projects", "projects"]];
-const SUB = new Set<Screen>(["vault", "panels", "tasks", "history", "providers", "settings", "security"]);
+const SUB = new Set<Screen>(["phone", "vault", "panels", "tasks", "history", "providers", "settings", "security"]);
 
 /** Home and Chat load with the app; every other screen is its own small file, fetched (from the device) when first opened. */
 const screenOf = (load: () => Promise<Record<string, unknown>>, name: string) => lazy(() => load().then((m) => ({ default: m[name] as React.ComponentType })));
@@ -27,6 +27,7 @@ const SCREENS: Record<Screen, React.ComponentType> = {
   settings: screenOf(() => import("./screens/Settings"), "Settings"),
   security: screenOf(() => import("./screens/Security"), "Security"),
   vault: screenOf(() => import("./screens/Vault"), "Vault"),
+  phone: screenOf(() => import("./screens/Phone"), "Phone"),
 };
 
 const STATUS_KEY = { idle: "statusIdle", running: "statusWorking", action_required: "actionRequired" } as const;

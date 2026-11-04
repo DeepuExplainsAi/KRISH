@@ -91,6 +91,37 @@ export function unsupportedLocalModel(): LocalModelHost {
     resume: unsupported, cancel: unsupported, delete: unsupported, onProgress: () => () => {}, loadModel: unsupported, complete: unsupported, stop: unsupported, unload: unsupported };
 }
 
+export interface PhoneStatus {
+  state: "idle" | "running" | "paused";
+  reason?: string | null;
+  taskId?: string | null;
+  /** The Accessibility Service is switched on in Android settings and connected. */
+  accessibility: boolean;
+  allowlist: string[];
+}
+export interface LaunchableApp { pkg: string; label: string; blocked: boolean; group?: string | null }
+
+/** Phone control (Android only). Every method that touches another app is re-checked natively against the allowlist and hard blocklist. */
+export interface PhoneHost {
+  supported: boolean;
+  status(): Promise<PhoneStatus>;
+  launchableApps(): Promise<LaunchableApp[]>;
+  setAllowlist(packages: string[]): Promise<{ allowlist: string[]; rejected: string[] }>;
+  start(taskId: string): Promise<void>;
+  resume(): Promise<void>;
+  stop(reason?: string): Promise<void>;
+  confirm(title: string, detail: string): Promise<boolean>;
+  openAccessibilitySettings(): Promise<void>;
+  openBatterySettings(): Promise<void>;
+  onState(cb: (s: Pick<PhoneStatus, "state" | "reason" | "taskId">) => void): () => void;
+}
+
+export function unsupportedPhone(): PhoneHost {
+  const no = async (): Promise<never> => { throw new Error("Phone control needs the Android app"); };
+  return { supported: false, status: async () => ({ state: "idle", accessibility: false, allowlist: [] }), launchableApps: async () => [], setAllowlist: no, start: no,
+    resume: no, stop: async () => {}, confirm: async () => false, openAccessibilitySettings: no, openBatterySettings: no, onState: () => () => {} };
+}
+
 export interface Platform {
   kind: "android" | "desktop" | "web";
   /** Non-secret app data (redacted history, memory, settings). */
@@ -100,6 +131,8 @@ export interface Platform {
   fetch: FetchLike;
   browser: BrowserHost;
   local: LocalModelHost;
+  /** Absent on web and desktop. */
+  phone?: PhoneHost;
   files: {
     pick(): Promise<SelectedFile | undefined>;
     read(token: string, maxBytes?: number): Promise<Uint8Array>;

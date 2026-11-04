@@ -1,6 +1,6 @@
 import { registerPlugin } from "@capacitor/core";
 import type { CodeFound, KeyStore, KVStore, PageObservation, TabInfo } from "@krish/core";
-import type { Bounds, BrowserHost, DeviceInfo, PageEvent, Platform, LocalDeviceInfo, LocalProgress } from "./types";
+import type { Bounds, BrowserHost, DeviceInfo, LaunchableApp, PageEvent, PhoneHost, PhoneStatus, Platform, LocalDeviceInfo, LocalProgress } from "./types";
 
 type Listener = { remove(): Promise<void> };
 interface Browser {
@@ -25,6 +25,18 @@ interface Browser {
   switchTab(a: { tabId: number }): Promise<void>;
   closeTab(a: { tabId: number }): Promise<void>;
   findCode(a: { tabId: number; from?: string; subject?: string }): Promise<{ value: string }>;
+}
+interface Phone {
+  status(): Promise<PhoneStatus>;
+  launchableApps(): Promise<{ apps: LaunchableApp[] }>;
+  setAllowlist(a: { packages: string[] }): Promise<{ allowlist: string[]; rejected: string[] }>;
+  start(a: { taskId: string }): Promise<unknown>;
+  resume(): Promise<unknown>;
+  stop(a: { reason?: string }): Promise<unknown>;
+  confirm(a: { title: string; detail: string }): Promise<{ allowed: boolean }>;
+  openAccessibilitySettings(): Promise<void>;
+  openBatterySettings(): Promise<void>;
+  addListener(event: "phoneState", cb: (e: Pick<PhoneStatus, "state" | "reason" | "taskId">) => void): Promise<Listener>;
 }
 interface Local {
   deviceInfo(): Promise<LocalDeviceInfo>;
@@ -79,6 +91,7 @@ export function createCapacitorPlatform(): Platform {
   const L = registerPlugin<Linux>("KrishLinux");
   const Local = registerPlugin<Local>("KrishLocal");
   const Inference = registerPlugin<Inference>("KrishInference");
+  const P = registerPlugin<Phone>("KrishPhone");
 
   const kv: KVStore = {
     get: async (k) => localStorage.getItem(`krish:${k}`) ?? undefined,
@@ -135,6 +148,19 @@ export function createCapacitorPlatform(): Platform {
       stop: () => Inference.stop(), unload: () => Inference.unload(),
       onProgress: (cb) => { const h = Local.addListener("progress", cb); return () => void h.then((listener) => listener.remove()); },
     },
+    phone: {
+      supported: true,
+      status: () => P.status(),
+      launchableApps: async () => (await P.launchableApps()).apps,
+      setAllowlist: (packages) => P.setAllowlist({ packages }),
+      start: async (taskId) => void (await P.start({ taskId })),
+      resume: async () => void (await P.resume()),
+      stop: async (reason) => void (await P.stop({ reason })),
+      confirm: async (title, detail) => (await P.confirm({ title, detail })).allowed,
+      openAccessibilitySettings: () => P.openAccessibilitySettings(),
+      openBatterySettings: () => P.openBatterySettings(),
+      onState: (cb) => { const h = P.addListener("phoneState", cb); return () => void h.then((l) => l.remove()); },
+    } satisfies PhoneHost,
     files: {
       pick: async () => {
         const r = await F.pickFile();

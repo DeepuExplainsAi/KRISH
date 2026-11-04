@@ -3,3 +3,4 @@ export * from "./screen";
 export * from "./actions";
 export * from "./pacing";
 export * from "./activity-log";
+export * from "./consent";

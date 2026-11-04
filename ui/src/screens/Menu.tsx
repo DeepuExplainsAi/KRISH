@@ -6,7 +6,7 @@ import { useApp, useAppSelector } from "../state/useStore";
 
 /** Shared with the desktop sidebar so both show the same entries. */
 export const MENU_GROUPS: [Screen, Key, () => React.JSX.Element][][] = [
-  [["vault", "vault", IconVault], ["providers", "providers", IconKey], ["panels", "panels", IconPanels], ["tasks", "tasks", IconClock]],
+  [["phone", "phone", IconShield], ["vault", "vault", IconVault], ["providers", "providers", IconKey], ["panels", "panels", IconPanels], ["tasks", "tasks", IconClock]],
   [["settings", "settings", IconGear], ["history", "history", IconHistory], ["security", "security", IconShield]],
 ];
 

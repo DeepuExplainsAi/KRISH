@@ -1,6 +1,6 @@
 import {
   AgentController, DEFAULTS, redactChat, autoFetchOnce, cleanLabel, friendlyReason, DEFAULT_BRIEF, History, Memory, newId, Panels, ProviderRouter, Projects, refreshModels, probeModels, withAutoModels,
-  runAgent, Scheduler, nextRun, nextBriefAt, briefCommand, Vault,
+  runAgent, Scheduler, nextRun, nextBriefAt, briefCommand, Vault, ConsentStore, ActivityLog,
   type AgentEvent, type AgentUI, type BriefSettings, type ChipState, type PageDriver, type ProviderConfig,
   type LoginAnswer, type LoginRequest, type MemoryPort, type SecureKind, type SelectedFile, type TabInfo, type Sandbox, setLocalEngine, type ModelInfo,
   BUILTIN_PROVIDERS, rankModels, LOCAL_MODEL_CATALOG, recommendedLocalModel,
@@ -86,7 +86,7 @@ export function migrateSettings(saved: Partial<Settings>): Partial<Settings> {
   return rest as Partial<Settings>;
 }
 
-export type Screen = "home" | "chat" | "menu" | "vault" | "panels" | "projects" | "tasks" | "history" | "providers" | "settings" | "security";
+export type Screen = "home" | "chat" | "menu" | "vault" | "panels" | "projects" | "tasks" | "history" | "providers" | "settings" | "security" | "phone";
 
 export type Prompt =
   | { id: number; type: "ask"; question: string; resolve: (v: string | undefined) => void }
@@ -207,11 +207,16 @@ export class AppStore {
   readonly panels: Panels;
   readonly scheduler: Scheduler;
   readonly router: ProviderRouter;
+  /** Phone control: the user's recorded consent and the on-device activity log. */
+  readonly consent: ConsentStore;
+  readonly activity: ActivityLog;
   /** KrishVault: saved logins, kept for good in the platform key store (Android Keystore / OS keychain). */
   readonly vault: Vault;
 
   constructor(readonly platform: Platform, private readonly opts: { providerWaits?: number[]; sleep?: (ms: number) => Promise<void> } = {}) {
     this.vault = new Vault(platform.keys);
+    this.consent = new ConsentStore(platform.kv);
+    this.activity = new ActivityLog(platform.kv);
     this.vault.onChange(() => this.set({}));
     this.memory = new Memory(platform.kv);
     this.history = new History(platform.kv);

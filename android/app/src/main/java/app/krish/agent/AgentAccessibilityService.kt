@@ -33,6 +33,7 @@ class AgentAccessibilityService : AccessibilityService() {
     private val io = Executors.newSingleThreadExecutor()
     private var lastPkg: String? = null
     private var unlisten: (() -> Unit)? = null
+    private lateinit var overlay: SafetyOverlay
 
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -42,7 +43,12 @@ class AgentAccessibilityService : AccessibilityService() {
 
     override fun onServiceConnected() {
         instance = this
-        unlisten = session.listen { applyAllowlist() }
+        overlay = SafetyOverlay(this)
+        // Stop button is visible whenever a task is running or paused, and gone the moment it ends. A task's end also drops any open question.
+        unlisten = session.listen { s ->
+            applyAllowlist()
+            if (s.state == PhoneSession.State.IDLE) overlay.destroy() else overlay.showStop { session.stop("user_stop") }
+        }
         applyAllowlist()
         // Locking turns the screen off, so SCREEN_OFF is the lock signal (unlock must not stop anything).
         registerReceiver(screenReceiver, IntentFilter(Intent.ACTION_SCREEN_OFF), Context.RECEIVER_NOT_EXPORTED)
@@ -88,6 +94,12 @@ class AgentAccessibilityService : AccessibilityService() {
         if (event.keyCode != KeyEvent.KEYCODE_VOLUME_DOWN && event.keyCode != KeyEvent.KEYCODE_VOLUME_UP) return false
         if (event.action == KeyEvent.ACTION_DOWN) session.stop("volume_key")
         return true
+    }
+
+    /** Popup over the current app. Calls back `false` on Deny, timeout, a task that ended, or while another question is open. */
+    fun confirm(title: String, detail: String, callback: (Boolean) -> Unit) {
+        if (!session.running) return callback(false)
+        overlay.confirm(title, detail, callback)
     }
 
     /**
@@ -190,6 +202,7 @@ class AgentAccessibilityService : AccessibilityService() {
         runCatching { unregisterReceiver(screenReceiver) }
         clearHandles()
         if (session.snapshot.state != PhoneSession.State.IDLE) session.stop("service_stopped")
+        if (::overlay.isInitialized) overlay.destroy()
         io.shutdown()
         super.onDestroy()
     }
