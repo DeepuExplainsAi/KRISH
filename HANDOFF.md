@@ -18,7 +18,7 @@ Environment: no JDK in the cloud sandbox. TypeScript is tested locally (`npm run
 | # | Part | Status |
 |---|------|--------|
 | 0 | Spec saved, baseline green (298 core / 56 ui / 10 desktop) | done |
-| 1 | `core/src/security/packages.ts`: allowlist + hard blocklist + fail-closed package check | in progress |
+| 1 | `core/src/security/packages.ts` + `PackagePolicy.kt`: allowlist + hard blocklist (shared `core/security-policy/blocklist.json`, also an Android asset), fail-closed `checkPackage` | DONE. 24 TS tests pass; Kotlin compiles in CI (run 41903803080). `PackagePolicyTest.kt` is NOT run by CI (workflow only compiles; token lacks `workflow` scope, so `.github/workflows/check.yml` cannot be edited by me) |
 | 2 | `core/src/security/screen.ts`: password nodes, sensitive words, FLAG_SECURE / blank screenshot, blocked hosts, `redactForModel` (phone, email, OTP) | todo |
 | 3 | `core/src/security/actions.ts`: action classes, confirmation rules (send/post/pay/delete/submit/install/share, open new app), task plan + "no action outside plan" | todo |
 | 4 | Rate limits + random delay for social apps, Instagram warning | todo |
@@ -30,7 +30,8 @@ Environment: no JDK in the cloud sandbox. TypeScript is tested locally (`npm run
 | 10 | Schedule/macro replay (AlarmManager), docs rewrite (SECURITY.md, CHECKLIST.md, README) | todo |
 
 ### Log
-- 2026-11-04: repo cloned (`DeepuExplainsAi/KRISH`, gh logged in as DeepuExplainsAi). Baseline green. Part 1 started.
+- 2026-11-04: repo cloned (`DeepuExplainsAi/KRISH`, gh logged in as DeepuExplainsAi). Baseline green. Part 1 done and pushed.
+- Note: `.github/workflows/` differs from `ci/workflows/` (the latter is a mirror). Pushing workflow files needs the `workflow` token scope.
 
 ## ROUND 17 (2026-10-30): local-first integration — phone NOT RUN
 
