@@ -16,6 +16,7 @@ class MainActivity : BridgeActivity() {
         registerPlugin(KrishSystemPlugin::class.java)
         registerPlugin(KrishLocalPlugin::class.java)
         registerPlugin(KrishInferencePlugin::class.java)
+        registerPlugin(KrishPhonePlugin::class.java)
         linuxPlugins().forEach { registerPlugin(it) }
         super.onCreate(savedInstanceState)
         // The agent loop runs in this page; it must keep running while the user's own browser is in front.

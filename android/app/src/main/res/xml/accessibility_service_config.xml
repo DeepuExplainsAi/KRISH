@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Minimal on purpose. packageNames lists only Krish itself; AgentAccessibilityService.applyAllowlist() replaces it at runtime with the apps the
+  user allowed (never a hard-blocked one), and every read and action re-checks the foreground package again (PackagePolicy).
+  Nothing else is requested: no gestures, no touch exploration, no web-content scripts.
+-->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:description="@string/accessibility_service_description"
+    android:packageNames="app.krish.agent,app.krish.agent.lite"
+    android:accessibilityEventTypes="typeWindowStateChanged"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagReportViewIds|flagRequestFilterKeyEvents"
+    android:canRetrieveWindowContent="true"
+    android:canRequestFilterKeyEvents="true"
+    android:canTakeScreenshot="true"
+    android:notificationTimeout="200" />

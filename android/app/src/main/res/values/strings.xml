@@ -4,4 +4,5 @@
     <string name="title_activity_main">Krish</string>
     <string name="package_name">app.krish.agent</string>
     <string name="custom_url_scheme">app.krish.agent</string>
+    <string name="accessibility_service_description">Lets Krish read the screen text and tap or type in ONLY the apps you allow, while a task you approved is running. It never reads password fields, banking, chat, mail or settings screens, and stops when you press Stop, press a volume key, lock the phone or leave the allowed apps.</string>
 </resources>

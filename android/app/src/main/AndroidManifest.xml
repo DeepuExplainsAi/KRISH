@@ -34,10 +34,27 @@
         <!-- Keeps the app alive while tasks run with the screen off or another app in front. Started only by a task run, stopped when the queue is empty. -->
         <service android:name=".KeepAliveService" android:exported="false" android:foregroundServiceType="dataSync" />
 
+        <!-- Phone control. Bound by the system only; the user turns it on in Android Settings. Scope is narrowed at runtime to the user's allowlist. -->
+        <service
+            android:name=".AgentAccessibilityService"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data android:name="android.accessibilityservice" android:resource="@xml/accessibility_service_config" />
+        </service>
+
     </application>
 
     <!-- Lets the app see which browser opens https links (to open pages in the user's default browser). -->
     <queries>
+        <!-- Apps with a launcher icon: the allowlist picker and open_app. Not QUERY_ALL_PACKAGES. -->
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
         <intent>
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="https" />
