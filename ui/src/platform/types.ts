@@ -1,4 +1,4 @@
-import type { CodeFound, FetchLike, KeyStore, KVStore, PageObservation, SelectedFile, TabInfo } from "@krish/core";
+import type { DeviceScreen, PhoneAction, CodeFound, FetchLike, KeyStore, KVStore, PageObservation, SelectedFile, TabInfo } from "@krish/core";
 
 export interface PageEvent {
   url: string;
@@ -110,6 +110,10 @@ export interface PhoneHost {
   start(taskId: string): Promise<void>;
   resume(): Promise<void>;
   stop(reason?: string): Promise<void>;
+  pause(reason: string): Promise<void>;
+  readScreen(screenshot: boolean): Promise<DeviceScreen>;
+  perform(action: PhoneAction): Promise<{ ok: boolean; error?: string }>;
+  openApp(pkg: string): Promise<void>;
   confirm(title: string, detail: string): Promise<boolean>;
   openAccessibilitySettings(): Promise<void>;
   openBatterySettings(): Promise<void>;
@@ -119,7 +123,7 @@ export interface PhoneHost {
 export function unsupportedPhone(): PhoneHost {
   const no = async (): Promise<never> => { throw new Error("Phone control needs the Android app"); };
   return { supported: false, status: async () => ({ state: "idle", accessibility: false, allowlist: [] }), launchableApps: async () => [], setAllowlist: no, start: no,
-    resume: no, stop: async () => {}, confirm: async () => false, openAccessibilitySettings: no, openBatterySettings: no, onState: () => () => {} };
+    resume: no, stop: async () => {}, pause: async () => {}, readScreen: no, perform: no, openApp: no, confirm: async () => false, openAccessibilitySettings: no, openBatterySettings: no, onState: () => () => {} };
 }
 
 export interface Platform {

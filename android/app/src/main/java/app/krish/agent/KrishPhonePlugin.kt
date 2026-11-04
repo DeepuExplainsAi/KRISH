@@ -76,6 +76,11 @@ class KrishPhonePlugin : Plugin() {
         call.resolve(state())
     }
 
+    @PluginMethod fun pause(call: PluginCall) {
+        session.pause(call.getString("reason") ?: "paused")
+        call.resolve(state())
+    }
+
     @PluginMethod fun stop(call: PluginCall) {
         session.stop(call.getString("reason") ?: "user_stop")
         call.resolve(state())

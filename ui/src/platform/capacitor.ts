@@ -1,5 +1,5 @@
 import { registerPlugin } from "@capacitor/core";
-import type { CodeFound, KeyStore, KVStore, PageObservation, TabInfo } from "@krish/core";
+import type { DeviceScreen, PhoneAction, CodeFound, KeyStore, KVStore, PageObservation, TabInfo } from "@krish/core";
 import type { Bounds, BrowserHost, DeviceInfo, LaunchableApp, PageEvent, PhoneHost, PhoneStatus, Platform, LocalDeviceInfo, LocalProgress } from "./types";
 
 type Listener = { remove(): Promise<void> };
@@ -33,6 +33,10 @@ interface Phone {
   start(a: { taskId: string }): Promise<unknown>;
   resume(): Promise<unknown>;
   stop(a: { reason?: string }): Promise<unknown>;
+  pause(a: { reason: string }): Promise<unknown>;
+  readScreen(a: { screenshot: boolean }): Promise<DeviceScreen>;
+  perform(a: PhoneAction): Promise<{ ok: boolean; error?: string }>;
+  openApp(a: { package: string }): Promise<void>;
   confirm(a: { title: string; detail: string }): Promise<{ allowed: boolean }>;
   openAccessibilitySettings(): Promise<void>;
   openBatterySettings(): Promise<void>;
@@ -156,6 +160,10 @@ export function createCapacitorPlatform(): Platform {
       start: async (taskId) => void (await P.start({ taskId })),
       resume: async () => void (await P.resume()),
       stop: async (reason) => void (await P.stop({ reason })),
+      pause: async (reason) => void (await P.pause({ reason })),
+      readScreen: (screenshot) => P.readScreen({ screenshot }),
+      perform: (action) => P.perform(action),
+      openApp: (pkg) => P.openApp({ package: pkg }),
       confirm: async (title, detail) => (await P.confirm({ title, detail })).allowed,
       openAccessibilitySettings: () => P.openAccessibilitySettings(),
       openBatterySettings: () => P.openBatterySettings(),

@@ -20,3 +20,4 @@ export * from "./vault/vault";
 
 export * from "./local/catalog";
 export * from "./security";
+export * from "./phone";
