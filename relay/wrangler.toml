@@ -1,0 +1,14 @@
+name = "krish-relay"
+main = "src/worker.ts"
+compatibility_date = "2026-01-01"
+
+[[durable_objects.bindings]]
+name = "HUB"
+class_name = "Hub"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Hub"]
+
+# No KV, R2, D1 or analytics bindings on purpose: the relay stores nothing.
+# Deploy:  cd relay && npx wrangler deploy      (needs a free Cloudflare account)

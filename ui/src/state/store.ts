@@ -1,11 +1,12 @@
 import {
   AgentController, DEFAULTS, redactChat, autoFetchOnce, cleanLabel, friendlyReason, DEFAULT_BRIEF, History, Memory, newId, Panels, ProviderRouter, Projects, refreshModels, probeModels, withAutoModels,
-  runAgent, Scheduler, nextRun, nextBriefAt, briefCommand, Vault, ConsentStore, ActivityLog,
+  runAgent, Scheduler, nextRun, nextBriefAt, briefCommand, Vault, ConsentStore, ActivityLog, PhoneService,
   type AgentEvent, type AgentUI, type BriefSettings, type ChipState, type PageDriver, type ProviderConfig,
   type LoginAnswer, type LoginRequest, type MemoryPort, type SecureKind, type SelectedFile, type TabInfo, type Sandbox, setLocalEngine, type ModelInfo,
   BUILTIN_PROVIDERS, rankModels, LOCAL_MODEL_CATALOG, recommendedLocalModel,
 } from "@krish/core";
 import type { Platform } from "../platform";
+import { phoneDevice } from "../platform/phone-device";
 import type { LocalDeviceInfo, LocalProgress } from "../platform/types";
 import { Tier0Sandbox } from "../sandbox/tier0";
 import { createWebGpuEngine, webgpuAvailable } from "../local/webgpu";
@@ -210,6 +211,8 @@ export class AppStore {
   /** Phone control: the user's recorded consent and the on-device activity log. */
   readonly consent: ConsentStore;
   readonly activity: ActivityLog;
+  /** Phone control engine and mode (Android only). */
+  readonly phoneService?: PhoneService;
   /** KrishVault: saved logins, kept for good in the platform key store (Android Keystore / OS keychain). */
   readonly vault: Vault;
 
@@ -217,6 +220,11 @@ export class AppStore {
     this.vault = new Vault(platform.keys);
     this.consent = new ConsentStore(platform.kv);
     this.activity = new ActivityLog(platform.kv);
+    if (platform.phone?.supported) {
+      this.phoneService = new PhoneService(phoneDevice(platform.phone), this.activity, platform.keys, (url) => new WebSocket(url) as never, {
+        consent: () => this.consent.accepted(),
+      }, () => this.set({}));
+    }
     this.vault.onChange(() => this.set({}));
     this.memory = new Memory(platform.kv);
     this.history = new History(platform.kv);
