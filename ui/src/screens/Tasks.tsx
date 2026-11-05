@@ -1,4 +1,4 @@
-import { nextRun, type Repeat, type ScheduledTask } from "@krish/core";
+import { nextRun, isDue, type Macro, type Repeat, type ScheduledTask } from "@krish/core";
 import { useEffect, useState } from "react";
 import { useT } from "../i18n/useT";
 import { useApp, useAppState } from "../state/useStore";
@@ -11,8 +11,19 @@ export function Tasks() {
   const { t: tr } = useT();
   const [tasks, setTasks] = useState<ScheduledTask[]>([]);
   const [f, setF] = useState({ title: "", command: "", every: "daily", time: "09:00", minutes: 60 });
-  const reload = () => void app.scheduler.list().then(setTasks);
+  const [macros, setMacros] = useState<Macro[]>([]);
+  const [msg, setMsg] = useState("");
+  const [busy, setBusy] = useState(false);
+  const reload = () => {
+    void app.scheduler.list().then(setTasks);
+    void app.macros.list().then(setMacros);
+  };
   useEffect(reload, [app]);
+  const runMacro = (id: string) => {
+    setBusy(true);
+    setMsg("");
+    void app.runMacro(id).then(setMsg).finally(() => { setBusy(false); reload(); });
+  };
 
   const create = (e: React.FormEvent) => {
     e.preventDefault();
@@ -34,6 +45,19 @@ export function Tasks() {
           onChange={(e) => { const [h = 8, m = 0] = e.target.value.split(":").map(Number); void app.saveSettings({ brief: { ...s.settings.brief, hour: h, minute: m } }); }} /></label>
         <button disabled={s.running} onClick={() => void app.runBrief()}>{tr("runBriefNow")}</button>
       </div>
+      <h3>{tr("macros")}</h3>
+      <p className="muted">{tr("macrosIntro")}</p>
+      {msg && <p>{msg}</p>}
+      {macros.length === 0 && <p className="muted">{tr("macrosNone")}</p>}
+      {macros.map((m) => (
+        <div className="card" key={m.id}>
+          <div className="row between"><strong>{m.title}</strong><button onClick={() => void app.macros.remove(m.id).then(() => app.rearmSchedules()).then(reload)}>{tr("delete")}</button></div>
+          <p className="muted">{m.apps.join(", ")} · {tr("macroSteps", { n: String(m.steps.length) })}</p>
+          <p className="muted">{isDue(m, Date.now()) ? tr("macroDue") : tr("nextRun", { time: fmt(nextRun(m, m.lastRunAt ?? Date.now())) })}</p>
+          <button className="primary" disabled={busy || s.running} onClick={() => runMacro(m.id)}>{tr("runNow")}</button>
+        </div>
+      ))}
+      <h3>{tr("tasks")}</h3>
       {tasks.map((t) => (
         <div className="card" key={t.id}>
           <div className="row between"><strong>{t.title}</strong><button onClick={() => void app.scheduler.remove(t.id).then(() => app.rearmSchedules()).then(reload)}>{tr("delete")}</button></div>

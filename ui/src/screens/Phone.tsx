@@ -150,7 +150,38 @@ function Session({ allowed, installed, reload }: { allowed: string[]; installed:
       <button className="primary" disabled={cur.taskActive || allowed.length === 0 || cur.mode !== "mcp"} onClick={start}>{t("phoneApproveStart")}</button>
       <h3>{t("phoneModeA")}</h3>
       <p className="muted">{chatApps.length ? t("phoneModeAHelp") : t("phoneModeANone")}</p>
+      <SaveMacro />
       {chatApps.map((pkg) => <button key={pkg} disabled={cur.taskActive || !task || allowed.length < 2} onClick={() => runChat(pkg)}>{t("phoneRunWith", { app: pkg })}</button>)}
+    </>
+  );
+}
+
+/** After a task: saves its steps as a macro that can be replayed on a schedule, without an AI. */
+function SaveMacro() {
+  const app = useApp();
+  const { t } = useT();
+  const [title, setTitle] = useState("");
+  const [time, setTime] = useState("18:00");
+  const [every, setEvery] = useState<"once" | "daily">("daily");
+  const [msg, setMsg] = useState("");
+  const rec = app.phoneService?.engine.recording;
+  if (!rec || rec.steps.length === 0) return null;
+  const save = () => {
+    const [hour = 18, minute = 0] = time.split(":").map(Number);
+    const at = new Date().setHours(hour, minute, 0, 0);
+    void app.saveLastTaskAsMacro(title, { repeat: { every }, hour, minute, at: every === "once" ? (at < Date.now() ? at + 86_400_000 : at) : undefined }).then(setMsg);
+  };
+  return (
+    <>
+      <h3>{t("macroSave")}</h3>
+      <p className="muted">{t("macroSaveHelp", { n: String(rec.steps.length), apps: rec.plan.apps.join(", ") })}</p>
+      <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={t("title")} />
+      <div className="row">
+        <select value={every} onChange={(e) => setEvery(e.target.value as "once" | "daily")}><option value="daily">{t("everyDay")}</option><option value="once">{t("once")}</option></select>
+        <input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
+      </div>
+      <button disabled={!title.trim()} onClick={save}>{t("macroSaveBtn")}</button>
+      {msg && <p>{msg}</p>}
     </>
   );
 }

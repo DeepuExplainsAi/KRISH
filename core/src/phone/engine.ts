@@ -4,6 +4,7 @@ import { Pacer } from "../security/pacing";
 import { sanitizeScreen, type ScreenResult } from "../security/screen";
 import { newId } from "../memory/stores";
 import type { PhoneDevice } from "./device";
+import { stepFromAction, type MacroStep } from "./macro";
 
 /** What the AI (or the macro replayer) gets back for one step. Never contains text from a screen that was refused. */
 export type StepOutcome =
@@ -51,6 +52,7 @@ export class PhoneEngine {
   private session?: TaskSession;
   private taskId = "";
   private lastPkg = "";
+  private rec?: { plan: TaskPlan; steps: MacroStep[] };
   private readonly pacer: Pacer;
   private readonly sleep: (ms: number) => Promise<void>;
 
@@ -72,6 +74,16 @@ export class PhoneEngine {
     return this.lastPkg;
   }
 
+  /** Nodes of the last screen that passed the gate (none after an action or a refused screen). */
+  get screenNodes() {
+    return this.session?.nodes ?? [];
+  }
+
+  /** Steps that ran in the current or most recent task, for "save as macro". Kept in memory only, until the next task starts. */
+  get recording() {
+    return this.rec && { plan: this.rec.plan, steps: [...this.rec.steps] };
+  }
+
   get currentTaskId() {
     return this.taskId;
   }
@@ -90,6 +102,7 @@ export class PhoneEngine {
     this.session = new TaskSession(plan);
     this.taskId = taskId;
     this.lastPkg = "";
+    this.rec = { plan, steps: [] };
     await this.log.add(taskId, "task_start", describePlan(plan).join(" | "));
     return { ok: true, taskId };
   }
@@ -169,6 +182,7 @@ export class PhoneEngine {
         return this.observe(s);
       case "wait":
         await this.sleep(action.ms);
+        this.record(action, s);
         return { status: "ok" };
       case "ask_user":
         await this.log.add(this.taskId, "pause", `Asked the user: ${action.question}`);
@@ -195,12 +209,18 @@ export class PhoneEngine {
       await this.log.add(this.taskId, "error", `${label} failed: ${error ?? "unknown"}`, { pkg: pkg || undefined });
       return st.state === "idle" ? { status: "stopped", reason: st.reason ?? "stopped" } : { status: "refused", reason: `action failed: ${error ?? "unknown"}` };
     }
+    this.record(action, s);
     s.executed(action);
     this.pacer.record(pkg, action);
     await this.log.add(this.taskId, "action", label, { pkg: pkg || undefined });
     if (!ACTING.has(action.type)) return { status: "ok" };
     await this.sleep(this.opts.settleMs ?? 600);
     return this.observe(s);
+  }
+
+  private record(action: PhoneAction, s: TaskSession) {
+    const step = stepFromAction(action, s.nodes);
+    if (step) this.rec?.steps.push(step);
   }
 
   private describe(s: TaskSession, a: PhoneAction): string {

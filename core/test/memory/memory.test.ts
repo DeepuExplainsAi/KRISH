@@ -37,7 +37,7 @@ describe("History", () => {
 describe("Projects and Panels", () => {
   it("creates projects", async () => {
     const p = new Projects(new MemoryKV());
-    const x = await p.create("Work", "be brief", "https://a.test");
+    const x = await p.create("Work", "be brief");
     expect((await p.list())[0]?.id).toBe(x.id);
   });
   it("panels extract fields and render", async () => {

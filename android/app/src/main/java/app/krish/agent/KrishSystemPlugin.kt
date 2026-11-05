@@ -2,15 +2,13 @@ package app.krish.agent
 
 import android.Manifest
 import android.app.ActivityManager
+import android.app.AlarmManager
+import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.content.pm.PackageManager
 import android.os.Build
-import androidx.work.Data
-import androidx.work.ExistingWorkPolicy
-import androidx.work.OneTimeWorkRequestBuilder
-import androidx.work.WorkManager
 import com.getcapacitor.JSObject
 import com.getcapacitor.PermissionState
 import com.getcapacitor.Plugin
@@ -19,11 +17,10 @@ import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.CapacitorPlugin
 import com.getcapacitor.annotation.Permission
 import com.getcapacitor.annotation.PermissionCallback
-import java.util.concurrent.TimeUnit
 
 /**
- * Device facts, WorkManager scheduling and the opt-in notification permission.
- * The JS side computes next-run times (core/memory/schedule.ts) and asks for one OneTime job per item,
+ * Device facts, AlarmManager scheduling and the opt-in notification permission.
+ * The JS side computes next-run times (core/memory/schedule.ts) and asks for one alarm per item,
  * re-arming after each run, so exact schedule logic stays in one tested place.
  */
 @CapacitorPlugin(
@@ -72,20 +69,30 @@ class KrishSystemPlugin : Plugin() {
         call.resolve(JSObject().put("granted", granted))
     }
 
+    private fun dueIntent(id: String, title: String? = null, flags: Int = PendingIntent.FLAG_UPDATE_CURRENT): PendingIntent? {
+        val i = Intent(context, DueReceiver::class.java).setAction("app.krish.agent.DUE").putExtra(DueReceiver.KEY_ID, id)
+        if (title != null) i.putExtra(DueReceiver.KEY_TITLE, title)
+        return PendingIntent.getBroadcast(context, id.hashCode(), i, flags or PendingIntent.FLAG_IMMUTABLE)
+    }
+
+    /** One alarm per item id; scheduling again replaces it. Exact when Android allows it, otherwise a few minutes late. Alarms do not survive a reboot: the app re-arms them when opened. */
     @PluginMethod fun scheduleDue(call: PluginCall) {
         val id = call.getString("id") ?: return call.reject("id required")
         val at = call.getLong("at") ?: return call.reject("at required")
-        val delay = (at - System.currentTimeMillis()).coerceAtLeast(0)
-        val req = OneTimeWorkRequestBuilder<DueWorker>()
-            .setInitialDelay(delay, TimeUnit.MILLISECONDS)
-            .setInputData(Data.Builder().putString(DueWorker.KEY_ID, id).putString(DueWorker.KEY_TITLE, call.getString("title").orEmpty()).build())
-            .build()
-        WorkManager.getInstance(context).enqueueUniqueWork("due:$id", ExistingWorkPolicy.REPLACE, req)
+        val pi = dueIntent(id, call.getString("title").orEmpty()) ?: return call.reject("alarm unavailable")
+        val am = context.getSystemService(AlarmManager::class.java)
+        try {
+            if (Build.VERSION.SDK_INT < 31 || am.canScheduleExactAlarms()) am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi)
+            else am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi)
+        } catch (e: SecurityException) {
+            am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi)
+        }
         call.resolve()
     }
 
     @PluginMethod fun cancelDue(call: PluginCall) {
-        WorkManager.getInstance(context).cancelUniqueWork("due:" + (call.getString("id") ?: return call.reject("id required")))
+        val id = call.getString("id") ?: return call.reject("id required")
+        dueIntent(id, null, PendingIntent.FLAG_NO_CREATE)?.let { context.getSystemService(AlarmManager::class.java).cancel(it); it.cancel() }
         call.resolve()
     }
 

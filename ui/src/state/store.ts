@@ -1,6 +1,6 @@
 import {
   DEFAULTS, redactChat, autoFetchOnce, friendlyReason, DEFAULT_BRIEF, History, Memory, newId, Panels, ProviderRouter, Projects, refreshModels, probeModels, withAutoModels,
-  Scheduler, nextRun, nextBriefAt, briefCommand, ConsentStore, ActivityLog, PhoneService, AbortedError,
+  Scheduler, Macros, type Repeat, nextRun, nextBriefAt, briefCommand, ConsentStore, ActivityLog, PhoneService, AbortedError,
   type BriefSettings, type ChatMessage, type ProviderConfig, setLocalEngine, type ModelInfo,
   BUILTIN_PROVIDERS, rankModels, LOCAL_MODEL_CATALOG, recommendedLocalModel,
 } from "@krish/core";
@@ -153,6 +153,8 @@ export class AppStore {
   readonly projects: Projects;
   readonly panels: Panels;
   readonly scheduler: Scheduler;
+  /** Saved phone-task macros: replayed without an AI, through the same safety gates. */
+  readonly macros: Macros;
   readonly router: ProviderRouter;
   /** Phone control: the user's recorded consent and the on-device activity log. */
   readonly consent: ConsentStore;
@@ -173,6 +175,7 @@ export class AppStore {
     this.projects = new Projects(platform.kv);
     this.panels = new Panels(platform.kv);
     this.scheduler = new Scheduler(platform.kv);
+    this.macros = new Macros(platform.kv);
     this.router = new ProviderRouter({
       keys: platform.keys, kv: platform.kv, fetch: platform.fetch,
       providers: () => this.routerProviders(), sleep: opts.sleep,
@@ -553,6 +556,11 @@ export class AppStore {
       if (at !== undefined) await system.scheduleDue(t.id, at, t.title);
       else await system.cancelDue(t.id);
     }
+    for (const m of await this.macros.list()) {
+      const at = nextRun(m, m.lastRunAt ?? now);
+      if (at !== undefined) await system.scheduleDue(`macro:${m.id}`, at, m.title);
+      else await system.cancelDue(`macro:${m.id}`);
+    }
     const b = this.state.settings.brief;
     const at = nextBriefAt(b, now);
     if (at !== undefined) await system.scheduleDue("brief", at, "Your morning brief");
@@ -569,5 +577,31 @@ export class AppStore {
   /** User opened the app from a "due" notification or the Tasks screen. Runs only after the user taps Run. */
   async runBrief() {
     await this.send(briefCommand(await this.memory.forPrompt(), await this.scheduler.list()));
+  }
+
+  // ---- macros ----
+  /** Runs a saved macro now (the user tapped Run, or opened the app from its notification). A failure after the retries notifies the user. */
+  async runMacro(id: string): Promise<string> {
+    const svc = this.phoneService;
+    const macro = await this.macros.get(id);
+    if (!svc || !macro) return "Macro not found";
+    if (!(await this.consent.accepted())) return "Accept the phone-control consent first";
+    const allow = (await this.platform.phone?.status())?.allowlist ?? [];
+    const r = await svc.runMacro(macro, allow);
+    await this.macros.markRan(id, Date.now());
+    await this.rearmSchedules();
+    if (r.ok) return `Done: ${macro.title}`;
+    await this.platform.system.scheduleDue(`macro-failed:${id}`, Date.now() + 1000, `${macro.title} did not finish: ${r.reason}`).catch(() => undefined);
+    return `${macro.title} did not finish: ${r.reason}`;
+  }
+
+  /** Saves the steps of the last phone task as a macro. The user has just seen and approved this plan's apps on the Phone screen. */
+  async saveLastTaskAsMacro(title: string, when: { repeat: Repeat; hour: number; minute: number; at?: number }): Promise<string> {
+    const rec = this.phoneService?.engine.recording;
+    if (!rec) return "Run a task first";
+    const r = await this.macros.create({ title, task: rec.plan.task, apps: rec.plan.apps, steps: rec.steps, ...when });
+    if (!r.ok) return r.reason;
+    await this.rearmSchedules();
+    return "Saved";
   }
 }

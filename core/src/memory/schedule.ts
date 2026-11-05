@@ -22,8 +22,11 @@ export interface ScheduledTask {
   createdAt: number;
 }
 
+/** The timing fields shared by scheduled tasks and macros. */
+export type Schedulable = Pick<ScheduledTask, "enabled" | "repeat" | "hour" | "minute" | "at" | "lastRunAt" | "createdAt">;
+
 /** Next run time after `from` (for interval: after the last run, else `from`). Pure: tested without a device. */
-export function nextRun(t: ScheduledTask, from: number): number | undefined {
+export function nextRun(t: Schedulable, from: number): number | undefined {
   if (!t.enabled) return undefined;
   const r = t.repeat;
   if (r.every === "once") return t.at !== undefined && t.at > from ? t.at : undefined;
@@ -34,6 +37,13 @@ export function nextRun(t: ScheduledTask, from: number): number | undefined {
     if (c.getTime() > from && (r.every === "daily" || r.days.includes(c.getDay()))) return c.getTime();
   }
   return undefined;
+}
+
+/** Enabled, and its next run (counted from the last run, or creation) has passed. */
+export function isDue(t: Schedulable, now: number): boolean {
+  if (t.repeat.every === "once") return t.enabled && t.lastRunAt === undefined && t.at !== undefined && t.at <= now;
+  const n = nextRun(t, t.lastRunAt ?? t.createdAt);
+  return n !== undefined && n <= now;
 }
 
 export class Scheduler {
@@ -51,11 +61,7 @@ export class Scheduler {
   update = (t: ScheduledTask) => this.items.put(t);
   /** Enabled tasks whose next run, counted from their last run (or creation), has passed. */
   async due(now: number): Promise<ScheduledTask[]> {
-    return (await this.items.all()).filter((t) => {
-      if (t.repeat.every === "once") return t.enabled && t.lastRunAt === undefined && t.at !== undefined && t.at <= now;
-      const n = nextRun(t, t.lastRunAt ?? t.createdAt);
-      return n !== undefined && n <= now;
-    });
+    return (await this.items.all()).filter((t) => isDue(t, now));
   }
   async markRan(id: string, at: number) {
     const t = (await this.items.all()).find((x) => x.id === id);
@@ -79,4 +85,4 @@ export function briefCommand(memoryText: string, tasks: ScheduledTask[]): string
 }
 
 export const nextBriefAt = (b: BriefSettings, from: number): number | undefined =>
-  b.enabled ? nextRun({ id: "brief", title: "brief", command: "", repeat: { every: "daily" }, hour: b.hour, minute: b.minute, enabled: true, requiresConfirmation: true, createdAt: 0 }, from) : undefined;
+  b.enabled ? nextRun({ repeat: { every: "daily" }, hour: b.hour, minute: b.minute, enabled: true, createdAt: 0 }, from) : undefined;

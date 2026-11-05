@@ -29,6 +29,9 @@
             </intent-filter>
         </activity>
 
+        <!-- Alarm for scheduled tasks and macros: posts a "tap to open" notification, runs nothing by itself. -->
+        <receiver android:name=".DueReceiver" android:exported="false" />
+
         <service android:name=".LlmService" android:process=":llm" android:exported="false" />
 
         <!-- Keeps the app alive while tasks run with the screen off or another app in front. Started only by a task run, stopped when the queue is empty. -->
@@ -68,6 +71,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- Lets a scheduled task fire at the chosen minute. Without it Android may delay the notification a few minutes. -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
 
     <!-- ACCESS_NETWORK_STATE is used only to warn about metered model downloads. No boot start. -->
     <!-- Read whether the connection is metered before a large model download. -->

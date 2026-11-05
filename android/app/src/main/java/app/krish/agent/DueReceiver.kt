@@ -4,24 +4,24 @@ import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
-import androidx.work.Worker
-import androidx.work.WorkerParameters
 
 /**
- * Fires when a scheduled task or the morning brief is due. It never runs the agent in the background:
- * tasks need the user's confirmations, so this only posts a "tap to open" notification, and only if the
- * notification permission was already granted (it is requested solely from the morning-brief opt-in).
+ * Fires from AlarmManager when a scheduled task, macro or the morning brief is due (or a macro failed). It never runs anything in the
+ * background: confirmations need the user, so it only posts a "tap to open" notification, and only if the notification permission was
+ * already granted. The app then lists what is due and the user taps Run.
  */
-class DueWorker(private val ctx: Context, params: WorkerParameters) : Worker(ctx, params) {
-    override fun doWork(): Result {
-        val title = inputData.getString(KEY_TITLE).orEmpty()
+class DueReceiver : BroadcastReceiver() {
+    override fun onReceive(ctx: Context, intent: Intent) {
         val granted = ContextCompat.checkSelfPermission(ctx, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
-        if (!granted) return Result.success()
+        if (!granted) return
+        val id = intent.getStringExtra(KEY_ID).orEmpty()
+        val title = intent.getStringExtra(KEY_TITLE).orEmpty()
         val nm = ctx.getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(NotificationChannel(CHANNEL, "Due items", NotificationManager.IMPORTANCE_DEFAULT))
         val open = PendingIntent.getActivity(
@@ -35,8 +35,7 @@ class DueWorker(private val ctx: Context, params: WorkerParameters) : Worker(ctx
             .setContentIntent(open)
             .setAutoCancel(true)
             .build()
-        nm.notify(inputData.getString(KEY_ID).hashCode(), n)
-        return Result.success()
+        nm.notify(id.hashCode(), n)
     }
 
     companion object {

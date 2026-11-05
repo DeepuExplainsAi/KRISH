@@ -4,12 +4,14 @@ import type { TaskPlan } from "../security/actions";
 import type { PhoneDevice } from "./device";
 import { ChatDriver, type PhoneRunResult } from "./chat-driver";
 import { PhoneEngine, type EngineOptions } from "./engine";
+import type { Macro } from "./macro";
+import { replayMacro, replayWithRetry, type MacroResult } from "./replay";
 import { createMcpHandler } from "./mcp";
 import { isPairingToken, newPairingToken, RelayClient, type RelayStatus, type SocketLike } from "./relay-client";
 
 const TOKEN_KEY = "phone-relay-token";
 
-export type Mode = "off" | "mcp" | "chat";
+export type Mode = "off" | "mcp" | "chat" | "macro";
 
 /** `https://host` only: no path, no credentials, no query. Returns the origin, or undefined. */
 export function parseRelayUrl(input: string): URL | undefined {
@@ -87,6 +89,26 @@ export class PhoneService {
     this.onChange();
     try {
       return await new ChatDriver(this.engine, this.device, this.log, { chatPkg, ask, signal: this.abort.signal }).run(plan);
+    } finally {
+      this.abort = undefined;
+      this.mode = "off";
+      this.onChange();
+    }
+  }
+
+  /**
+   * Schedule flow: replays a saved macro without an AI (same engine gates). Retries a failure that may be temporary, then returns the
+   * result so the caller can notify the user. Refuses while another task is running.
+   */
+  async runMacro(macro: Macro, allowlist: readonly string[], o: { retries?: number; delayMs?: number; sleep?: (ms: number) => Promise<void> } = {}): Promise<MacroResult & { attempts: number }> {
+    if (this.engine.active) return { ok: false, reason: "a task is already running", retryable: false, attempts: 0 };
+    await this.disable();
+    this.mode = "macro";
+    this.abort = new AbortController();
+    this.onChange();
+    const signal = this.abort.signal;
+    try {
+      return await replayWithRetry(async () => (signal.aborted ? { ok: false, reason: "stopped", retryable: false } : replayMacro(this.engine, macro, allowlist, { sleep: o.sleep })), { ...o, sleep: o.sleep });
     } finally {
       this.abort = undefined;
       this.mode = "off";

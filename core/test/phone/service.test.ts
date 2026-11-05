@@ -78,3 +78,21 @@ describe("PhoneService", () => {
     expect(await keys.get("phone-relay-token")).toMatch(/^[0-9a-f]{64}$/);
   });
 });
+
+describe("PhoneService.runMacro", () => {
+  const macro = (apps: string[]) => ({
+    id: "m", title: "t", task: "t", apps, steps: [{ type: "back" as const }], repeat: { every: "daily" as const }, hour: 1, minute: 0, enabled: true, createdAt: 0, approvedAt: 1,
+  });
+  it("runs without an AI, ends in mode off, and shuts the relay first (one mode at a time)", async () => {
+    const { svc, socks } = setup();
+    await svc.enableMcp("https://k.workers.dev");
+    const r = await svc.runMacro(macro(["com.android.chrome"]), ["com.android.chrome"], { sleep: async () => {} });
+    expect(r).toMatchObject({ ok: true, attempts: 1 });
+    expect(socks[0]!.closed).toBe(true);
+    expect(svc.current.mode).toBe("off");
+  });
+  it("does not retry a permanent failure", async () => {
+    const { svc } = setup();
+    expect(await svc.runMacro(macro(["com.android.chrome"]), [], { sleep: async () => {} })).toMatchObject({ ok: false, attempts: 1 });
+  });
+});
