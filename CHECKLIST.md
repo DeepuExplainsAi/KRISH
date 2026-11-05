@@ -1,35 +1,23 @@
 # Checklist: what was verified, and what was not
 
 Legend: **RUN** = executed in the build environment with the result observed. **STATIC** = checked by reading output/config. **NOT RUN** = never executed; may be wrong.
+Last updated 2026-11-05 (phone-control pivot, parts 1-13). Older rounds below are kept as history; anything about the removed in-app browser, vault or web agent no longer applies.
 
-## Verified (RUN)
+## Verified (RUN), phone control
 
-| Area | How | Result (2026-10-25) |
+| Area | How | Result |
 |---|---|---|
-| Core logic: provider adapters, fallback (429 + Retry-After, 5xx, timeout, network, invalid JSON, schema-invalid), circuit breaker, daily counter, sensitive-page gating, abort, keys-in-headers, **fetch that ignores AbortSignal, hung error body, body-read reset** | `npm test -w core` (mocked providers) | pass |
-| Live model refresh: Gemini filter + pagination, OpenAI-compatible `/models`, `free` only when provider says so, failed refresh keeps cache, auto-fetch exactly once | same | pass |
-| Strict action schema (allowlist, https only, no creds, extra props) | same | pass |
-| Redaction (cookies, tokens, JWTs, key shapes, cards with Luhn, OTP phrases, secret fields) | same | pass |
-| Agent loop: no confirmation cards, secure-input flow (value never reaches model/history), CAPTCHA card, saved-login autofill and auto-submit, injection fencing, STOP, step limit, stuck handling | same | pass |
-| Memory, history, projects, panels, scheduler math, opt-in brief, **concurrent writes keep every entry, reads see queued writes** | same | pass |
-| Page script (observe, type/fill with native setter, click, highlight, stale ids, spoof resistance) | jsdom | pass |
-| App store flows with a fake platform, Lite mode default on low-RAM | `npm test -w ui` | pass |
-| Tier 0 sandbox: zip, unzip, zip-slip, zip bomb, stored-entry size lie, QuickJS script, no host globals, infinite loop, memory cap, print/output limits | `npm test -w ui` (Node, real QuickJS WASM) | pass |
-| Desktop helper logic (https check, fetch validation, expression quoting, secret store, docker flags) | `npm test -w desktop` | pass |
-| **Real Electron 45 main process + preload + WebContentsView**: layout toggle with and without a page (used to segfault), http/file/unknown-channel refusals, fetch refusals, isolated-world observe/read, stale-fingerprint refusal, snapshot, clear site data. Page's own JS sees no `K` | `npm run smoke -w desktop` under Xvfb (12 checks); also confirmed it crashes on the old code | 12/12 pass |
-| **Login persistence on desktop** (Electron, `persist:krish-agent` partition): app closed and reopened with the same profile. Cookies with an expiry ("remember me") and localStorage survived; session cookies (no expiry) did not, as in any browser | manual script under Xvfb | as described |
-| **Tier 0 worker in real Chrome** (built bundle): script result, infinite loop interrupted at 5 s, `fetch`/`XMLHttpRequest`/`WebSocket`/`importScripts` undefined | agent-browser | pass |
-| **UI layout in real Chrome at 467x922**: nav at the bottom, live window drag writes storage once per drag (0 during, 1 on release or on `pointercancel`; a second pointer and stray moves after cancel are ignored) | agent-browser | pass |
-| **Restyled UI in headless Chrome at 467x922 (2026-10-26)**: chat, secure card, confirm-to-pill collapse, browser card sizes S/M/L/XL/expand (stays on screen, restores position after full), real touch drag + corner resize, Menu, Hindi switch, Lite mode, New chat | CDP script (harness not committed) | pass; found and fixed a UI crash and a dead resize handle |
-| **KrishVault, memory by chat, Auto theme, PC layout, API Keys catalog (2026-10-27)** | `npm test` (core 167, ui 32) + headless-Chrome flow harness `ui/harness` on phone 467x922 and PC 1280x800, light + dark | pass; vault autofill never put the password in a prompt; memory add/update/forget works; every memory change needs a confirm card |
-| **Round 10 (2026-10-29): tabs, read_code/fill_code, sign_up, refused-email stop** | `npm test` (core 277, ui 51, desktop 10): schema, tab routing, code/password never in a prompt or event, one account per site, stop on refused email, `findCode` on sample inbox HTML in jsdom | pass |
-| TypeScript strict type-check, ESLint | `npm run typecheck`, `npm run lint` | clean |
-| UI production build (default and with `KRISH_LOCAL_MODEL=1`) | `npm run build:ui` | builds; local model code absent from default bundle |
-| Kotlin sources compile for both flavors (Gradle 8.14.3, AGP 8.13.0, Kotlin 2.4.21, JDK 21, SDK 36); re-run 2026-10-25 | `./gradlew compileLiteDebugKotlin compileFullDebugKotlin` | BUILD SUCCESSFUL |
-| `cap sync android`; Alpine rootfs and proot `.so` SHA-256 match `SHA256SUMS`; repo scan: no secrets, `eval`, telemetry, `addJavascriptInterface` | shell | clean |
-| `TarGz.kt` extracts the real Alpine rootfs identically to GNU tar (83 files, 335 symlinks, contents equal) | kotlinc + diff | identical |
-| Independent review of the safety rules (static) and fixes | 12 findings; 11 fixed in code with tests that fail on the old code (policy, loop, page script, sandbox limits, keyring check, upload binding, layout). #1 is partly open on Android (see SECURITY.md gaps 0, 0b) | fixed as described |
-| Merged manifest permissions | inspected merged manifests | INTERNET, POST_NOTIFICATIONS (WorkManager ACCESS_NETWORK_STATE / RECEIVE_BOOT_COMPLETED removed). v0.1.12 adds FOREGROUND_SERVICE, FOREGROUND_SERVICE_DATA_SYNC, WAKE_LOCK for `KeepAliveService`: NOT re-inspected in a merged manifest, check after the first CI build |
+| Allowlist + hard blocklist, fail-closed (empty / unknown package refused) | `npm test -w core` (`packages.test.ts`) | pass |
+| Screen gate: package, FLAG_SECURE, blank screenshot, blocked site, password / secret-hint fields, OTP / PIN / CVV / password / login / sign in, "pay" approvable, redaction | `screen.test.ts` | pass |
+| Action schema (strict, unknown fields rejected), task plan, confirmation kinds (send, post, pay, delete, submit, install, share, new app, unlabeled), step limit | `actions.test.ts` | pass |
+| Pacing (social caps and delays, reads not counted), activity log (redacted, capped, delete, clear), consent versioning | `pacing.test.ts`, `activity-log.test.ts`, `consent.test.ts` | pass |
+| `PhoneEngine`: single path, denied popup, stop / pause states, re-check after popup, refused screens return no text | `engine.test.ts` | pass |
+| Mode B: MCP handler, relay client and hub, token handling, one mode at a time | `mcp.test.ts`, `relay.test.ts`, `service.test.ts` | pass |
+| Mode A: nonce marker, first valid action after the last marker, chat app must be in the plan | `chat-driver.test.ts` | pass |
+| Macros: recording by label (never node ids), replay without an AI through the engine (popups still asked, denied popup stops), element missing = retryable failure and no tap, login screen / foreign app stops, removed app refuses, retry then report, `PhoneService.runMacro` | `macro.test.ts`, `service.test.ts` (301 core tests) | pass |
+| UI with a fake platform (35 tests), desktop helpers (7), strict TypeScript, ESLint, UI production build | `npm run typecheck && npm run lint && npm test && npm run build:ui` | clean |
+| Kotlin compiles for both flavors in CI | GitHub Actions `check` | see HANDOFF for the latest run |
+| No in-app browser left | `grep -rIl -i webview` finds only Capacitor's host (`MainActivity.kt`, `activity_main.xml`), comments and proguard text | STATIC |
 
 ## Round 17: local-first integration (2026-10-30)
 
@@ -74,44 +62,34 @@ Legend: **RUN** = executed in the build environment with the result observed. **
 - NOT BUILT: native download manager, consent and storage/metered checks, checksum verification, model selection/deletion, API backup toggle, native inference, grammar, JNI/NDK or offline routing. Existing API routing is unchanged. This is not a working offline model or a complete Phase 1.
 - NOT RUN: real APK install, real model download, real inference, speed, RAM kills with a WebView open, battery/heat, or Android build for these changes. CI on this branch has not been checked yet.
 
-## NOT RUN: needs a real device or display (please test)
-- **(new 2026-10-29, Round 10)** Kotlin `KrishBrowserPlugin` with a map of tabs compiles (CI `android-compile` green on a80e616), never run. Not run anywhere real: 2-4 WebViews / WebContentsViews at once (memory, touches reach the active one, chips switch the view), `findCode` on real inbox sites (smailpro, emailnator, 22.do, Gmail), generated password accepted by real sign-up forms, sign-up card on a phone.
-- **(new 2026-10-27)** Kotlin `KrishSystemPlugin.openExternal` not compiled; vault on real Android Keystore / Electron safeStorage; "Get key" opening the real browser; vault autofill on a real login page.
+## NOT RUN: needs a real device (please test)
 
-1. **Everything on an Android device.** The APK was not installed or launched.
-2. Agent WebView on Android (including: login survives closing and reopening the app; `CookieManager.flush()` was added in `onPageFinished` and NOT recompiled after the change, the JDK was gone): loading sites, `evaluateJavascript` round trip, element highlight, live-window positioning under the UI (native `setBounds` margins), drag/pinch/resize feel, Mini snapshot mode, safe-area insets with Capacitor's SystemBars.
-3. File upload into a web page (real tap + `onShowFileChooser` answer): the riskiest mechanism; some sites may reject it.
-4. Android Keystore plugin (`KrishSecurePlugin`): encrypt/decrypt round trip.
-5. WorkManager notifications (`DueWorker`) and the POST_NOTIFICATIONS opt-in on Android 13+.
-6. **Tier 1 (proot + Alpine) has never been executed.** Android may block executing the bundled binaries on some OS builds (the code reports this and Tier 0 keeps working).
-7. Electron on real hardware: `safeStorage` keychain (refuses to store without a keyring, as designed; verified only that it refuses), file dialogs, `debugger.setFileInputFiles` upload, Docker tier. (Main process, preload, `WebContentsView`, layout emulation and isolated world are RUN, see above.)
-8. Real provider calls (no keys were used). Request shapes follow public API docs and mocks only; confirm Gemini and each OpenAI-compatible host.
-9. Optional WebGPU model (`KRISH_LOCAL_MODEL=1`): never loaded; needs a WebGPU-capable device.
-10. Tier 0 Worker inside the Android WebView and Electron (it ran in desktop Chrome; the memory-cap path was not exercised in a browser).
-11. `ci/workflows/*.yml` were never executed by GitHub (the push token lacked `workflow` scope).
-12. Accessibility, RTL, small screens, landscape.
-13. New UI on a real phone: touch drag/resize of the browser card, native browser view lining up with the card's `.view` box, Hindi/Bengali glyphs, long labels.
-14. Dark theme on a real phone and in the Electron window: Settings -> Theme (System / Light / Dark). Checked only in headless Chrome with an emulated `prefers-color-scheme`. Not checked: the native browser view's own page colors (a web page stays light), Android status/navigation bar colors (`AppTheme` is still the light parent), Electron window background flash before the UI loads.
-15. File attach on a real phone and in Electron: paperclip -> pick a video, an image, a zip -> chip shows -> send -> agent asks upload on a site with a file input (also one whose input is hidden behind a button, e.g. a drag-and-drop area) -> confirm card shows the name -> the site really receives the file. Check Android: `PickedFiles.arm` + tap on the label of a hidden input; Electron: `DOM.setFileInputFiles`. Also try a large file (hundreds of MB) and picking several files.
-
-## Review findings that are only partly addressed
-
-- Android has no isolated JavaScript world: the page script shares the page's JS realm (SECURITY.md gap 0). Desktop uses an isolated world.
-- Network-level enforcement of "stay on the opened site" is not possible with `shouldOverrideUrlLoading`; the policy asks before acting on a page that left the approved site (gap 0b).
-- Layout fix (native view bounds from the real `.view` box, collapse while prompts are open) and the Android upload binding are code-reviewed only.
+1. **Everything on an Android device.** No APK was installed or launched.
+2. **Accessibility Service**: enabling it, runtime `packageNames` narrowing, foreground guard, reading the tree, tap / type / scroll / back, password nodes giving no text.
+3. **Safety overlay**: red STOP while a task runs, Allow / Deny popup, 60 s timeout = No, tapjacking filter, both volume keys, phone lock stopping the task. The overlay is an accessibility window; Android versions differ.
+4. **Screenshot / FLAG_SECURE / blank-screenshot check** (`takeScreenshot`, Android 11+).
+5. **Mode B end to end**: deploy `relay/`, add the connector in ChatGPT or Claude, run `open_app` / `read_screen` / `tap` / `type`, rotate the token.
+6. **Mode A end to end**: the ChatGPT / Gemini / Claude app's screen layout, finding the input and Send button, reading the reply.
+7. **Macros and alarms**: `AlarmManager` notification at the chosen minute (exact vs inexact on Android 12+), tap-to-open, Run, retry, failure notification, alarms after reboot (lost until the app opens).
+8. Android Keystore plugin (`KrishSecurePlugin`) encrypt / decrypt round trip; POST_NOTIFICATIONS opt-in on Android 13+.
+9. Electron on real hardware: `safeStorage` keychain, file dialogs.
+10. Real provider calls (no keys were used). Request shapes follow public API docs and mocks only.
+11. On-device model: see Rounds 11-17 above; none of it was run on a phone.
+12. `.github/workflows/*.yml` still reference `core/page-script/`; `ci/workflows/*` are the cleaned copies (HANDOFF, Part 11).
+13. Accessibility of the app UI itself, RTL, small screens, landscape, Hindi / Bengali glyphs, dark theme on a real phone.
 
 ## Known limitations
 
-- Tier 1 cannot disable network (proot). See SECURITY.md.
-- Redaction and sensitive-page detection are heuristics.
-- `phone-control/` is an empty stub (phase 2).
-- Payments/wallet, Google OAuth email/Drive, cloud background execution and password saving are out of scope and not present.
-- Scheduled tasks notify; they do not run unattended.
-- Binaries committed on purpose: `android/gradle/wrapper/gradle-wrapper.jar` (standard Gradle wrapper), `android/app/src/full/jniLibs/arm64-v8a/*.so` and the Alpine rootfs tarball (pinned, checksummed, licensed; see `SOURCE-OFFER.md`).
+- Redaction and sensitive-word detection are heuristics (SECURITY.md, gaps 2-3).
+- The optional Linux tier (`full` flavor: proot + Alpine) is still in the repository but has no screen that uses it; it was never executed.
+- Payments / wallet apps, Gmail, SMS, WhatsApp and other private chat, authenticators, password managers, Settings, Play Store and Google account screens are blocked on purpose, not missing.
+- Scheduled tasks and macros notify; you tap Run. They do not start by themselves, so every confirmation has a person to answer it.
+- Binaries committed on purpose: `android/gradle/wrapper/gradle-wrapper.jar` (standard Gradle wrapper), `android/app/src/full/jniLibs/arm64-v8a/*.so` and the Alpine rootfs tarball (pinned, checksummed, licensed; see SOURCE-OFFER.md).
 
 ## Reproduce the "no extras" claims
 
 ```sh
 grep -rniE "analytics|telemetry|crashlytics|sentry|firebase|admob|google-services" --include=*.{ts,tsx,kt,gradle,json,xml,cjs} . --exclude-dir=node_modules --exclude-dir=build | grep -v package-lock
-grep -rn "addJavascriptInterface" android/app/src   # expect: only the comment in AgentWebView.kt
+grep -rn "addJavascriptInterface\|AgentWebView" android/app/src   # expect: nothing
+grep -n "uses-permission" android/app/src/main/AndroidManifest.xml   # expect: no contacts, SMS, camera, mic, location, QUERY_ALL_PACKAGES
 ```

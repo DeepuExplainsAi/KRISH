@@ -1,47 +1,57 @@
 # Krish
 
-**Free, open-source AI agent for Android, Windows and Linux.** Krish is an AI browser agent that works inside your own logged-in accounts: you give a plain-language command, it reads pages, fills forms, uploads files you pick and types into AI chat sites, and asks before anything risky. Bring your own API key (Gemini, Groq, OpenRouter and more), no Krish account, no backend server, no telemetry.
+**Free, open-source Android phone-control agent.** Krish lets an AI operate the apps *you* choose on your phone, one visible step at a time:
+it reads the screen, acts, checks the result and repeats. It never touches banking, private chat, mail, password or settings apps, never logs in for you,
+and asks before every send, post, payment, delete, submit, install, share or newly opened app. Everything stays on your phone.
 
-## Download
+Two ways to give it a brain (one at a time):
 
-**[Latest builds: github.com/DeepuExplainsAi/KRISH/releases](https://github.com/DeepuExplainsAi/KRISH/releases)** (always the newest version; unsigned debug builds, not yet tested on every device. Each release page lists the version, the three download links and what changed)
+- **Mode A: your chat app.** Krish types the task into the ChatGPT / Gemini / Claude app on the same phone, reads the reply and does what it says.
+- **Mode B: MCP.** Your phone connects out to your own small Cloudflare relay (`relay/`). You paste the connector URL into ChatGPT or Claude; the chat app calls `open_app`, `read_screen`, `tap`, `type`.
 
-| Platform | File | Install |
-|---|---|---|
-| Android 8.0+ | [`krish-android.apk`](https://github.com/DeepuExplainsAi/KRISH/releases/latest/download/krish-android.apk) | Open the APK and allow "install unknown apps" when asked. One file for every phone. |
-| Windows 10/11 x64 | [`krish-windows-x64.zip`](https://github.com/DeepuExplainsAi/KRISH/releases/latest/download/krish-windows-x64.zip) | Unzip, run `Krish.exe`. SmartScreen: "More info" then "Run anyway" (the app is unsigned). |
-| Linux x64 | [`krish-linux-x64.tar.gz`](https://github.com/DeepuExplainsAi/KRISH/releases/latest/download/krish-linux-x64.tar.gz) | `tar xzf krish-linux-x64.tar.gz && ./Krish-linux-x64/Krish`. KrishVault needs a keyring such as GNOME Keyring. |
+Plus **saved phone tasks**: save the steps of a task and replay them on a schedule without an AI (same safety checks; you get a notification and tap Run).
+The same app also has a plain AI chat, Panels, Projects, History and API Keys.
 
-Check a download against `SHA256SUMS.txt` from the same release. First run: just type a task in Chat (a built-in free AI answers without any key). For faster, steadier answers add free keys under Menu, then API Keys.
+Safety design and honest gaps: [SECURITY.md](SECURITY.md). Spec: [docs/PHONE-CONTROL-SPEC.md](docs/PHONE-CONTROL-SPEC.md).
+**What is verified and what is not:** [CHECKLIST.md](CHECKLIST.md). Working on it? Read [HANDOFF.md](HANDOFF.md) first.
 
-**Prefer to build it yourself?** Source and steps: [BUILD.md](BUILD.md).
-**Current status and what is unverified:** [CHECKLIST.md](CHECKLIST.md). Working on it? Read [HANDOFF.md](HANDOFF.md) first.
+> **Status:** compiled and unit-tested; **not yet run on a real phone.** There is no in-app browser: you sign in yourself in the real apps.
+
+## Set up
+
+1. Install the APK ([releases](https://github.com/DeepuExplainsAi/KRISH/releases); unsigned debug builds, allow "install unknown apps").
+2. Open Menu, then Phone control. Read and accept the consent screen.
+3. Turn on the Accessibility Service in Android Settings (the app has a button), allow notifications, and exempt Krish from battery optimization.
+4. Tick the apps the agent may use. Banking, chat, mail, password and system apps are greyed out and can never be allowed.
+5. Pick Mode A or Mode B, write the task, review the plan (apps and actions), tap Start.
+
+Stop any time: the red STOP button, either volume key, or lock the phone.
 
 ## Layout
 
 | Path | What |
 |---|---|
-| `core/` | Shared TypeScript: provider adapters + fallback, strict action schema, redaction, agent loop, policy gate, memory, history, projects, panels, scheduler. Page-side script in `core/page-script/`. |
-| `ui/` | React + Vite app: Home, Chat (with file attach) with live browser window, Projects (top tabs); Panels, Tasks, History, Providers, Settings, Security (Menu). 7 UI languages (`ui/src/i18n`), light/dark/system theme. Tier 0 sandbox. |
-| `android/` | Capacitor + Kotlin plugins. Hardened agent WebView, Keystore secrets, WorkManager, file picker. Flavors `lite` and `full`. |
-| `desktop/` | Electron shell: agent browser in a separate sandboxed `WebContentsView`, OS-keychain secrets, optional Docker tier. |
-| `LICENSES/`, `CREDITS.md`, `SOURCE-OFFER.md`, `DEPENDENCIES.md` | Licenses, attribution, and why each dependency exists. |
+| `core/` | Shared TypeScript. `security/` (allowlist, blocklist, screen gate, plan and confirmation gate, pacing, activity log, consent), `phone/` (engine, MCP server, relay client, Mode A chat driver, macros and replay, service), `privacy/` (redaction), `providers/` (AI providers for the chat), `memory/`. |
+| `ui/` | React + Vite app. Phone control, Chat, Projects, Panels, Tasks (alarms and saved phone tasks), History, API Keys, Settings, Security. 7 languages, light/dark theme. |
+| `android/` | Capacitor + Kotlin: Accessibility Service, safety overlay, Keystore secrets, AlarmManager, optional on-device model. Flavors `lite` and `full`. |
+| `relay/` | Cloudflare Worker for Mode B. Stores nothing. |
+| `desktop/` | Electron shell for the plain chat (no phone control). |
+| `LICENSES/`, `CREDITS.md`, `SOURCE-OFFER.md`, `DEPENDENCIES.md` | Licenses, attribution, why each dependency exists. |
 
 ## How safety works (short)
 
-- Model output is untrusted strict JSON, validated against a schema and an allowlist. Nothing is evaluated.
-- Page, email, chat-site and sandbox text is wrapped as data. Only the message you type in the app is a command.
-- Passwords, OTPs and card numbers never reach a model: the app shows its own masked card and fills the page itself.
-- KrishVault keeps your logins encrypted with one master passphrase and fills them into a login page after you confirm; the AI never sees them.
-- Tell Krish in chat to remember, update or forget something and it changes its memory.
-- Sends, uploads, deletes, settings changes and shell commands show the exact content first (Confirm / Cancel).
-- Keys live in Android Keystore-backed storage (desktop: OS keychain), only ever in request headers.
-- No analytics, telemetry, ads, crash reporters, remote config or remote code. See [SECURITY.md](SECURITY.md).
+- Allowlist first: only your chosen apps; a foreign app in front pauses the task and nothing is read.
+- A hard blocklist wins over the allowlist (banking, UPI, wallets, Gmail, SMS, WhatsApp, authenticators, password managers, Settings, Play Store, Google account).
+- Password fields are never read. FLAG_SECURE or a blank screenshot stops the task. OTP / PIN / CVV / password / login / sign in pauses it for you.
+- Phone numbers, card numbers, emails and codes are redacted before text goes to any AI.
+- Confirmation popup for send / post / pay / delete / submit / install / share and every new app; no answer in 60 s means No.
+- Rate limits and random delays in social apps, with a warning that automating Instagram can get your account limited.
+- The activity log is on the phone only; you can read and delete it. No analytics, telemetry or ads.
 
 ## Develop
 
 ```sh
 npm ci
 npm run typecheck && npm run lint && npm test
-npm run dev:ui          # browser-only demo with a fake page
+npm run dev:ui          # browser-only UI demo (no phone control)
 ```

@@ -1,6 +1,10 @@
-# phone-control (phase 2 stub — intentionally empty)
+# phone-control
 
-Reserved for controlling other Android apps. Not implemented in v1.
+The phone-control code is not in this folder. It lives in:
 
-v1 must NOT contain: an Accessibility Service, display-over-other-apps, contacts, SMS, camera, mic or location.
-Anything added here needs its own threat model in SECURITY.md first.
+- `core/src/security/`: allowlist, hard blocklist, screen gate, task plan and confirmation gate, pacing, activity log, consent
+- `core/src/phone/`: engine, MCP server, relay client, Mode A chat driver, macros and replay, service
+- `android/app/src/main/java/app/krish/agent/`: `AgentAccessibilityService`, `SafetyOverlay`, `PhoneSession`, `PackagePolicy`, `ScreenChecks`, `KrishPhonePlugin`, `DueReceiver`
+- `relay/`: Cloudflare Worker for Mode B
+
+The threat model and every rule is in `SECURITY.md`. Anything new that touches another app needs a row there first.
