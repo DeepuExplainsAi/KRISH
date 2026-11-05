@@ -35,7 +35,7 @@ OLD NOTE: no JDK in the cloud sandbox by default. TypeScript is tested locally (
 
 ### What is left (nothing is blocking; none of this can be done in the cloud sandbox)
 1. **Device test** (CHECKLIST.md "NOT RUN"): install the APK, enable Accessibility, run a task in Mode B and Mode A, check STOP / volume keys / lock, popups, alarms. Nothing in parts 6-12 has run on a phone.
-2. **CI**: runs `41970133453` and `41969991379` (part 11) failed only on a core test typecheck error that is fixed in part 12. Check the part 12 / 13 run with `gh run list`; if Kotlin fails, fix it first (part 12 touched `KrishSystemPlugin.kt`, `DueReceiver.kt`, manifest, gradle).
+2. **CI**: green for parts 12 and 13 (runs 41974220067 41973924792 ; JS plus Kotlin compile of both flavors). The part 11 runs failed only on a test typecheck error, fixed in part 12. Compile is not a device test.
 3. **Owner action**: copy `ci/workflows/{release,build-desktop}.yml` over `.github/workflows/` (token has no `workflow` scope), then delete `core/page-script/`.
 4. Optional cleanup: the `full` flavor's proot / Alpine Linux tier is unused by any screen now (about 30 MB of binaries, SOURCE-OFFER.md). Removing it would shrink the APK; left alone because it is not part of the brief.
 5. Possible hardening: record a macro step's app (pkg) so replay can verify the foreground app per step; a boot receiver to re-arm alarms (deliberately not added, privacy choice).
