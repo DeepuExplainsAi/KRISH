@@ -41,6 +41,7 @@ OLD NOTE: no JDK in the cloud sandbox by default. TypeScript is tested locally (
 5. Possible hardening: record a macro step's app (pkg) so replay can verify the foreground app per step; a boot receiver to re-arm alarms (deliberately not added, privacy choice).
 
 ### Log
+- 2026-11-05: Released v0.2.0 (APK, Windows zip, Linux tar.gz, SHA256SUMS): https://github.com/DeepuExplainsAi/KRISH/releases/tag/v0.2.0 . Release notes in .github/release-notes.md. Next release: tag v0.2.x and push the tag.
 - 2026-11-05: Part 12 done. Also fixed a core typecheck error left by part 11 (`memory.test.ts` passed a removed start-URL arg to `Projects.create`). Remaining WebView in the repo is only Capacitor's own UI host (`MainActivity`/`activity_main.xml`); it loads local assets only and cannot be removed. Part 13 (docs) done. Parts 0-13 are all done.
 - 2026-11-04: repo cloned (`DeepuExplainsAi/KRISH`, gh logged in as DeepuExplainsAi). Baseline green. Part 1 done and pushed. Part 2 done. Part 3 done. Parts 4 and 5 done (TS side). UI screens for log/consent are part 7.
 - 2026-11-05: Part 11 done. `core/page-script/.gitkeep` is kept ONLY because `.github/workflows/{release,build-desktop}.yml` still `cp -r core/page-script`; `ci/workflows/*` mirrors already dropped that line. **Owner action:** copy `ci/workflows/{release,build-desktop}.yml` over `.github/workflows/` (token has no `workflow` scope), then delete `core/page-script/`.
