@@ -1,6 +1,6 @@
 "use strict";
 // Real-Electron smoke test (needs a display; on Linux run through xvfb-run, see `npm run smoke`).
-// Drives the running app through the same preload bridge the UI uses. Needs network (loads https://example.com).
+// Drives the running app through the same preload bridge the UI uses. 
 const { spawn } = require("node:child_process");
 const http = require("node:http");
 
@@ -30,22 +30,11 @@ const CHECKS = `(async () => {
   const results = {};
   const check = async (name, f) => { try { await f(); results[name] = "ok"; } catch (e) { results[name] = String(e.message || e); } };
 
-  // The agent view has not loaded a page yet: toggling layout used to segfault the whole app.
-  await check("layout toggle before any page", async () => { await inv("browser:setDesktopLayout", { enabled: true }); await inv("browser:setDesktopLayout", { enabled: false }); });
-  await check("http refused", () => refused(inv("browser:open", { url: "http://example.com/" }), "http"));
-  await check("file refused", () => refused(inv("browser:open", { url: "file:///etc/passwd" }), "file"));
   await check("unknown channel blocked", () => refused(window.krishBridge.invoke("shell:evil"), "channel"));
+  await check("browser channels are gone", () => refused(window.krishBridge.invoke("browser:open", { url: "https://example.com/" }), "browser:open"));
   await check("fetch http refused", () => refused(inv("fetch", { url: "http://example.com/" }), "http fetch"));
   await check("fetch DELETE refused", () => refused(inv("fetch", { url: "https://example.com/", init: { method: "DELETE" } }), "DELETE"));
-  await inv("browser:open", { url: "https://example.com/" });
-  await sleep(3000);
-  let obs;
-  await check("observe (isolated world)", async () => { obs = JSON.parse(await inv("browser:observe")); if (obs.title !== "Example Domain") throw new Error("title " + obs.title); });
-  await check("read", async () => { if (!(await inv("browser:read", {})).includes("documentation")) throw new Error("no text"); });
-  await check("stale fingerprint refused", () => refused(inv("browser:click", { elementId: obs.elements[0].id, fp: "wrong" }), "stale fp"));
-  await check("layout toggle with page", async () => { await inv("browser:setDesktopLayout", { enabled: true }); await sleep(1500); await inv("browser:setDesktopLayout", { enabled: false }); });
-  await check("snapshot", async () => { await inv("browser:setBounds", { x: 0, y: 40, width: 800, height: 500 }); await inv("browser:setMode", { mode: "live" }); const s = await inv("browser:snapshot", { maxWidth: 400, quality: 50 }); if (!s.startsWith("data:image/jpeg")) throw new Error("not a jpeg"); });
-  await check("clear site data", () => inv("browser:clearSiteData"));
+  await check("key store round trip or clean refusal", async () => { try { await inv("key:set", { key: "smoke", value: "x" }); await inv("key:delete", { key: "smoke" }); } catch (e) { if (!/keychain/i.test(String(e.message))) throw e; } });
   return JSON.stringify(results);
 })()`;
 

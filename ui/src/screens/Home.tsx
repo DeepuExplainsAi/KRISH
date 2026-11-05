@@ -6,17 +6,11 @@ export function Home() {
   const app = useApp();
   const s = useAppState();
   const { t } = useT();
-  const [url, setUrl] = useState("https://");
   const [fact, setFact] = useState("");
   const [facts, setFacts] = useState<{ id: string; text: string }[]>([]);
   useEffect(() => void app.memory.list().then(setFacts), [app]);
   const noProvider = s.providers.length === 0 && app.onlineAllowed();
 
-  const open = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!url.startsWith("https://")) return app.notify(t("homeOnlyHttps"));
-    void app.platform.browser.open(url).then(app.openWindow, (err: Error) => app.notify(err.message));
-  };
   return (
     <section>
       <h2>{t("home")}</h2>
@@ -26,11 +20,8 @@ export function Home() {
           <button className="primary" onClick={() => app.go("providers")}>{t("addProvider")}</button>
         </div>
       )}
-      <form className="row" onSubmit={open}>
-        <input value={url} onChange={(e) => setUrl(e.target.value)} inputMode="url" aria-label={t("siteAddress")} />
-        <button className="primary" type="submit">{t("open")}</button>
-      </form>
-      <p className="muted">{t("homeLoginNote")}</p>
+      <p className="muted">{t("homePhoneNote")}</p>
+      <button className="primary" onClick={() => app.go("phone")}>{t("phone")}</button>
       <h3>{t("memory")}</h3>
       <form className="row" onSubmit={(e) => { e.preventDefault(); void app.memory.add(fact).then(() => app.memory.list().then(setFacts)); setFact(""); }}>
         <input value={fact} onChange={(e) => setFact(e.target.value)} placeholder={t("memoryPlaceholder")} />

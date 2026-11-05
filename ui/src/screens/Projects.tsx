@@ -8,7 +8,7 @@ export function Projects() {
   const s = useAppState();
   const { t } = useT();
   const [list, setList] = useState<Project[]>([]);
-  const [f, setF] = useState({ name: "", instructions: "", startUrl: "" });
+  const [f, setF] = useState({ name: "", instructions: "" });
   const reload = () => void app.projects.list().then(setList);
   useEffect(reload, [app]);
   const active = s.settings.activeProjectId;
@@ -26,18 +26,15 @@ export function Projects() {
             </span>
           </div>
           <p>{p.instructions}</p>
-          {p.startUrl && <button onClick={() => void app.platform.browser.open(p.startUrl!).then(app.openWindow)}>{t("openHost", { host: new URL(p.startUrl).hostname })}</button>}
         </div>
       ))}
       <form className="card" onSubmit={(e) => {
         e.preventDefault();
-        if (f.startUrl && !f.startUrl.startsWith("https://")) return app.notify(t("startUrlHttps"));
-        void app.projects.create(f.name, f.instructions, f.startUrl || undefined).then(() => (setF({ name: "", instructions: "", startUrl: "" }), reload()));
+        void app.projects.create(f.name, f.instructions).then(() => (setF({ name: "", instructions: "" }), reload()));
       }}>
         <h4>{t("newProject")}</h4>
         <input placeholder={t("name")} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
         <textarea placeholder={t("standingInstructions")} value={f.instructions} onChange={(e) => setF({ ...f, instructions: e.target.value })} />
-        <input placeholder={t("startUrlOptional")} value={f.startUrl} onChange={(e) => setF({ ...f, startUrl: e.target.value })} />
         <button type="submit" disabled={!f.name}>{t("create")}</button>
       </form>
     </section>

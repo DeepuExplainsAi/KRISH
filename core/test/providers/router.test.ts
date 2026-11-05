@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { ProviderRouter, AllProvidersFailedError } from "../../src/providers/router";
 import { classifyStatus, limitInfo } from "../../src/providers/http";
 import { AbortedError } from "../../src/providers/types";
-import { parseAction } from "../../src/schema/actions";
+import { parsePhoneActionOrThrow as parseAction } from "../../src/security/actions";
 import { json, mockFetch, openaiReply, provider, stores } from "../helpers";
 
 const DONE = '{"type":"done","summary":"ok"}';

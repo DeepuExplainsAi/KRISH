@@ -6,8 +6,8 @@ import { DICTS } from "../src/i18n";
 
 const platform = (): Platform => ({
   kind: "web", local: unsupportedLocalModel(), kv: new MemoryKV(), keys: new MemoryKeyStore(), fetch: async () => new Response("{}"),
-  browser: {} as Platform["browser"], files: { pick: async () => undefined, read: async () => new Uint8Array(), save: async () => false },
-  system: { deviceInfo: async () => ({ lowRam: false, totalMemMb: 0, linuxSandbox: false }), requestNotifications: async () => false, scheduleDue: async () => {}, cancelDue: async () => {}, openExternal: async () => {} },
+  files: { pick: async () => undefined, read: async () => new Uint8Array(), save: async () => false },
+  system: { deviceInfo: async () => ({ lowRam: false, totalMemMb: 0 }), requestNotifications: async () => false, scheduleDue: async () => {}, cancelDue: async () => {}, openExternal: async () => {} },
 });
 
 describe("phone control wiring", () => {

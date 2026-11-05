@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatObservation } from "../../src/page/format";
-import { luhn, redactElement, redactText, secretKind } from "../../src/privacy/redact";
+import { luhn, redactText } from "../../src/privacy/redact";
 
 describe("redactText", () => {
   it.each([
@@ -31,39 +30,5 @@ describe("redactText", () => {
   it("luhn", () => {
     expect(luhn("4111111111111111")).toBe(true);
     expect(luhn("4111111111111112")).toBe(false);
-  });
-});
-
-describe("fields and pages", () => {
-  const el = (o: object) => ({ id: 1, tag: "input", ...o });
-  it("detects secret fields", () => {
-    expect(secretKind(el({ type: "password" }))).toBe("password");
-    expect(secretKind(el({ type: "text", name: "otp" }))).toBe("otp");
-    expect(secretKind(el({ type: "text", autocomplete: "one-time-code" }))).toBe("otp");
-    expect(secretKind(el({ type: "text", autocomplete: "cc-number" }))).toBe("card");
-    expect(secretKind(el({ type: "text", placeholder: "Card number" }))).toBe("card");
-    expect(secretKind(el({ type: "text", name: "email" }))).toBeUndefined();
-  });
-
-  it("drops values of secret fields", () => {
-    expect(redactElement(el({ type: "password", value: "hunter2" })).value).toBeUndefined();
-    expect(redactElement(el({ type: "text", name: "q", value: "password: x1" })).value).toContain("[REDACTED");
-  });
-
-  it("formatObservation marks a hidden file input so the model can still target it", () => {
-    const out = formatObservation({ url: "https://x.com/", title: "t", text: "", elements: [el({ tag: "input", type: "file", label: "Add your photo", hidden: true })] });
-    expect(out).toMatch(/input\(file\) "Add your photo".*hidden-input/);
-  });
-
-  it("formatObservation never leaks secrets", () => {
-    const out = formatObservation({
-      url: "https://x.com/a?token=abc12345",
-      title: "t",
-      text: "Your code is fine. password: hunter2",
-      elements: [el({ type: "password", value: "hunter2", label: "Password" })],
-    });
-    expect(out).not.toContain("hunter2");
-    expect(out).not.toContain("abc12345");
-    expect(out).toContain("(secret field)");
   });
 });

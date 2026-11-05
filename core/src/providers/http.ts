@@ -1,5 +1,4 @@
 import { redactText } from "../privacy/redact";
-import { isHttpsUrl } from "../schema/actions";
 import { AbortedError, ProviderError, type AdapterCall } from "./types";
 
 function parseRetryAfter(value: string | null, now = Date.now()): number | undefined {
@@ -134,5 +133,14 @@ export async function request(
   } finally {
     clearTimeout(timer);
     call.signal?.removeEventListener("abort", onAbort);
+  }
+}
+
+export function isHttpsUrl(value: string): boolean {
+  try {
+    const u = new URL(value);
+    return u.protocol === "https:" && !u.username && !u.password;
+  } catch {
+    return false;
   }
 }

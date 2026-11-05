@@ -17,12 +17,21 @@ export const PhoneActionSchema = z.discriminatedUnion("type", [
 ]);
 export type PhoneAction = z.infer<typeof PhoneActionSchema>;
 export type PhoneActionType = PhoneAction["type"];
+/** JSON schema of the phone actions, for the on-device model's grammar. Lengths are dropped (huge grammars); `parsePhoneAction` still enforces them. */
+export const ACTION_JSON_SCHEMA = z.toJSONSchema(PhoneActionSchema);
+export const ACTION_GRAMMAR_SCHEMA_JSON = JSON.stringify(ACTION_JSON_SCHEMA, (key, value: unknown) => (key === "maxLength" ? undefined : value));
 export const PHONE_ACTION_TYPES = PhoneActionSchema.options.map((o) => o.shape.type.value) as PhoneActionType[];
 
 /** Strict JSON in, validated action out. Anything else is `undefined`; model text is never evaluated. */
 export function parsePhoneAction(input: unknown): PhoneAction | undefined {
   const r = PhoneActionSchema.safeParse(typeof input === "string" ? safeJson(input) : input);
   return r.success ? r.data : undefined;
+}
+/** Same as `parsePhoneAction` but throws; for callers (the provider router) that treat a throw as "bad model output". */
+export function parsePhoneActionOrThrow(input: unknown): PhoneAction {
+  const a = parsePhoneAction(input);
+  if (!a) throw new Error("not a valid phone action");
+  return a;
 }
 const safeJson = (s: string): unknown => {
   try {

@@ -9,12 +9,6 @@ describe("desktop lib", () => {
     for (const u of ["http://a.test", "file:///etc/passwd", "javascript:1", "https://u:p@a.test", "nope"]) expect(lib.isHttps(u)).toBe(false);
   });
 
-  it("PC layout width: 1024 in a narrow card, 1280 in a wide one", () => {
-    expect(lib.layoutWidth(360)).toBe(1024);
-    expect(lib.layoutWidth(699)).toBe(1024);
-    expect(lib.layoutWidth(700)).toBe(1280);
-  });
-
   it("validateFetch limits scheme, method, headers", () => {
     expect(lib.validateFetch("https://a.test", { method: "post", headers: { "x-goog-api-key": "k", "bad header": "x" }, body: "{}" })).toEqual({
       method: "POST", headers: { "x-goog-api-key": "k" }, body: "{}",
@@ -24,26 +18,8 @@ describe("desktop lib", () => {
     expect(() => lib.validateFetch("https://a.test", { method: "POST", body: { x: 1 } })).toThrow();
   });
 
-  it("page expressions quote values and require integer ids", () => {
-    expect(lib.expr.type(2, 'he said "hi"\n', true, "fp|1")).toBe('K.type(2,"he said \\"hi\\"\\n",true,"fp|1")');
-    expect(lib.expr.fill(1, "');alert(1);//")).toBe('K.fill(1,"\');alert(1);//",null)');
-    expect(lib.expr.click(3, 'x");evil(//')).toBe('K.click(3,"x\\");evil(//")');
-    expect(() => lib.expr.click("1);evil(")).toThrow();
-    expect(() => lib.expr.click(-1)).toThrow();
-    expect(lib.expr.read(undefined)).toBe("K.read(null)");
-    expect(lib.expr.findCode('Shop"),evil(', undefined)).toBe('K.findCode("Shop\\"),evil(","")');
-    expect(lib.tabId(2)).toBe(2);
-    expect(() => lib.tabId("1);evil(")).toThrow();
-    expect(() => lib.tabId(0)).toThrow();
-  });
-
-  it("call wrapper + result parsing round-trip", () => {
-    const script = "(function(){return {observe:function(){return 'x'}}})()";
-    const code = lib.wrapCall(script, lib.expr.observe());
-    // eslint-disable-next-line no-eval
-    expect(lib.parseCallResult((0, eval)(code))).toBe("x");
-    // eslint-disable-next-line no-eval
-    expect(() => lib.parseCallResult((0, eval)(lib.wrapCall(script, "K.nope()")))).toThrow(/not a function|nope/);
+  it("browser helpers are gone", () => {
+    for (const k of ["expr", "wrapCall", "tapPoint", "tabId", "layoutWidth", "parseCallResult"]) expect(lib[k]).toBeUndefined();
   });
 
   it("file tokens", () => {
@@ -86,13 +62,5 @@ describe("desktop lib", () => {
   it("docker args: offline, unprivileged, no pulls", () => {
     const a = lib.dockerArgs({ image: "alpine:3", workDir: "/w", name: "n" }).join(" ");
     for (const f of ["--network none", "--pull never", "--cap-drop ALL", "--read-only", "no-new-privileges", "--user 65534:65534"]) expect(a).toContain(f);
-  });
-});
-
-describe("tapPoint", () => {
-  it("gives the position for a page shown 1:1 and nothing for a scaled page (the script click is used then)", () => {
-    expect(lib.tapPoint('{"x":100.4,"y":40,"innerWidth":800}', 800)).toEqual({ x: 100, y: 40 });
-    expect(lib.tapPoint({ x: 512, y: 300, innerWidth: 1024 }, 512)).toBeUndefined();
-    expect(lib.tapPoint({ x: 100, y: 40, innerWidth: 0 }, 800)).toBeUndefined();
   });
 });

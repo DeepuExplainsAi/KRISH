@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { AbortedError, ProviderRouter, setLocalEngine, parseAction, type LocalEngine } from "../../src";
+import { AbortedError, ProviderRouter, setLocalEngine, parsePhoneActionOrThrow as parseAction, type LocalEngine } from "../../src";
 import { mockFetch, openaiReply, provider, stores } from "../helpers";
 
 const DONE = '{"type":"done","summary":"ok"}';
@@ -31,8 +31,8 @@ describe("on-device model", () => {
     expect((await (await router()).r.run(msgs, parseAction)).providerId).toBe("a");
   });
 
-  it("rejects a non-HTTPS local navigation and falls back without executing it", async () => {
-    setLocalEngine({ listModels: async () => [], complete: async () => '{"type":"navigate","url":"http://example.com"}' });
+  it("rejects an invalid local action and falls back without executing it", async () => {
+    setLocalEngine({ listModels: async () => [], complete: async () => '{"type":"eval","code":"1"}' });
     const { r, calls } = await router();
     const result = await r.run(msgs, parseAction);
     expect(result.providerId).toBe("a");

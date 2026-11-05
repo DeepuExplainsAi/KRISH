@@ -1,10 +1,9 @@
 import { unsupportedLocalModel } from "./types";
-import { type CodeFound, type KeyStore, type PageObservation, type TabInfo } from "@krish/core";
-import type { BrowserHost, DeviceInfo, PageEvent, Platform } from "./types";
+import type { KeyStore } from "@krish/core";
+import type { DeviceInfo, Platform } from "./types";
 
 interface Bridge {
   invoke(channel: string, arg?: unknown): Promise<unknown>;
-  onPage(cb: (e: PageEvent) => void): () => void;
 }
 
 /** Electron platform. Everything privileged goes through the allowlisted preload bridge into the main process. */
@@ -15,30 +14,6 @@ export function createDesktopPlatform(bridge: Bridge): Platform {
     get: async (key) => (await inv<string | undefined>("key:get", { key })) ?? undefined,
     set: (key, value) => inv("key:set", { key, value }),
     delete: (key) => inv("key:delete", { key }),
-  };
-
-  const browser: BrowserHost = {
-    open: (url) => inv("browser:open", { url }),
-    observe: async () => JSON.parse(await inv<string>("browser:observe")) as PageObservation,
-    read: (elementId) => inv<string>("browser:read", { elementId }),
-    click: (elementId, fp) => inv("browser:click", { elementId, fp }),
-    type: (elementId, text, submit, fp) => inv("browser:type", { elementId, text, submit, fp }),
-    fill: (elementId, value, fp) => inv("browser:fill", { elementId, value, fp }),
-    upload: (elementId, token, fp) => inv("browser:upload", { elementId, token, fp }),
-    highlight: (elementId) => inv("browser:highlight", { elementId }),
-    setBounds: (b) => inv("browser:setBounds", b),
-    setMode: (mode) => inv("browser:setMode", { mode }),
-    setDesktopLayout: (enabled) => inv("browser:setDesktopLayout", { enabled }),
-    snapshot: (maxWidth, quality) => inv<string>("browser:snapshot", { maxWidth, quality }),
-    scroll: (direction) => inv("browser:scroll", { direction }),
-    stopLoading: () => inv("browser:stopLoading"),
-    clearSiteData: () => inv("browser:clearSiteData"),
-    onPage: (cb) => bridge.onPage(cb),
-    tabs: () => inv<TabInfo[]>("browser:tabs"),
-    openTab: (url) => inv<number>("browser:openTab", { url }),
-    switchTab: (tabId) => inv("browser:switchTab", { tabId }),
-    closeTab: (tabId) => inv("browser:closeTab", { tabId }),
-    findCode: async (tabId, from, subject) => JSON.parse(await inv<string>("browser:findCode", { tabId, from, subject })) as CodeFound,
   };
 
   return {
@@ -59,18 +34,11 @@ export function createDesktopPlatform(bridge: Bridge): Platform {
       });
       return new Response(r.body, { status: r.status, statusText: r.statusText, headers: r.headers });
     },
-    browser,
     local: unsupportedLocalModel(),
     files: {
       pick: async () => (await inv<{ name: string; size: number; token: string } | null>("files:pick")) ?? undefined,
       read: async (token, maxBytes) => new Uint8Array(await inv<Uint8Array>("files:read", { token, maxBytes })),
       save: (name, bytes) => inv<boolean>("files:save", { name, bytes }),
-    },
-    linux: {
-      run: async (script, files) => {
-        const r = await inv<{ output: string; files: Record<string, Uint8Array> }>("shell:run", { script, files });
-        return { output: r.output, files: Object.fromEntries(Object.entries(r.files).map(([n, b]) => [n, new Uint8Array(b)])) };
-      },
     },
     system: {
       deviceInfo: () => inv<DeviceInfo>("system:deviceInfo"),

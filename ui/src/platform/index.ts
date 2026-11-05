@@ -17,4 +17,4 @@ export function createPlatform(): Platform {
   return createWebPlatform();
 }
 
-export type { Platform, BrowserHost, DeviceInfo, Bounds, PageEvent } from "./types";
+export type { Platform, DeviceInfo } from "./types";

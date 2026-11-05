@@ -12,7 +12,7 @@ export function Settings() {
   const s = useAppState();
   const st = s.settings;
   const { t } = useT();
-  const toggle = (k: "liteMode" | "autoOpenWindow" | "screenshots" | "desktopLayout" | "freeFallback" | "linuxSandbox" | "localModel") => (e: React.ChangeEvent<HTMLInputElement>) =>
+  const toggle = (k: "liteMode" | "freeFallback" | "localModel") => (e: React.ChangeEvent<HTMLInputElement>) =>
     void app.saveSettings({ [k]: e.target.checked });
   const recommended = recommendedLocalModel(s.deviceTotalRamMB);
   const startDownload = async (model: LocalModelCatalogEntry) => {
@@ -62,25 +62,8 @@ export function Settings() {
         </select>
       </label>
       <label><input type="checkbox" checked={st.liteMode} onChange={toggle("liteMode")} /> {t("liteMode")}</label>
-      <label><input type="checkbox" checked={st.autoOpenWindow} onChange={toggle("autoOpenWindow")} /> {t("autoOpenWindow")}</label>
-      <label><input type="checkbox" checked={st.screenshots} onChange={toggle("screenshots")} /> {t("screenshots")}</label>
       <label><input type="checkbox" checked={st.freeFallback} onChange={toggle("freeFallback")} /> {t("freeFallback")}</label>
       <button onClick={() => void app.saveSettings({ tourDone: false })}>{t("tourAgain")}</button>
-      <label><input type="checkbox" checked={st.desktopLayout} onChange={toggle("desktopLayout")} /> {t("desktopLayout")}</label>
-      <h3>{t("sandbox")}</h3>
-      <p className="muted">{t("sandboxTier0")}</p>
-      <h4>{t("sandboxFiles")}</h4>
-      <ul className="list">
-        {app.sandboxFiles.map((f) => (
-          <li key={f.name}><span>{f.name} · {f.size} B</span>
-            <span className="row"><button onClick={() => void app.saveSandboxFile(f.name)}>{t("saveDots")}</button><button aria-label={t("remove")} title={t("remove")} onClick={() => app.removeSandboxFile(f.name)}>✕</button></span></li>
-        ))}
-      </ul>
-      <button onClick={() => void app.addSandboxFile()}>{t("addFile")}</button>
-      <label>
-        <input type="checkbox" checked={st.linuxSandbox && s.linuxAvailable} disabled={!s.linuxAvailable} onChange={toggle("linuxSandbox")} /> {t("linuxSandbox")}
-      </label>
-      {!s.linuxAvailable && <p className="muted">{s.deviceLowRam ? t("linuxLowRam") : t("linuxNotIncluded")}</p>}
       <h3>{t("nativeModelPreview")}</h3>
       <p>{t("nativeModelUnavailable")}</p>
       <p className="muted">{s.deviceTotalRamMB > 0 ? t("nativeModelRam", { ram: (s.deviceTotalRamMB / 1024).toFixed(1) }) : t("nativeModelRamUnknown")}</p>
@@ -111,7 +94,6 @@ export function Settings() {
       {s.localStatus && <p className="muted">{s.localStatus}</p>}
       <p className="muted">{t("appVersion", { version: typeof __KRISH_VERSION__ === "string" ? __KRISH_VERSION__ : "dev" })}</p>
       <h3>{t("data")}</h3>
-      <button onClick={() => void app.clearAllSiteData()}>{t("clearSiteData")}</button>
       <button onClick={() => void app.memory.clear()}>{t("clearMemory")}</button>
       <button onClick={() => void app.history.clear()}>{t("clearHistory")}</button>
     </section>

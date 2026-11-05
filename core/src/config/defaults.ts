@@ -1,20 +1,5 @@
 // Single editable defaults file. No model names or provider limits live anywhere else.
 export const DEFAULTS = {
-  agent: {
-    maxSteps: 80,
-    /** A step that keeps failing or changes nothing is tried this many times; then the agent is told to use a different method; only a second round asks the user. */
-    maxConsecutiveErrors: 4,
-    maxStalls: 4,
-    observationMaxChars: 8000,
-    observationMaxElements: 120,
-    readMaxChars: 20000,
-    sandboxOutputMaxChars: 4000,
-    historyWindow: 16,
-    /** Results of earlier steps are cut to this (a page that was read 20000 characters long must not be sent again at every later step); the newest result is kept up to `readMaxChars`. */
-    olderResultChars: 500,
-    /** The on-screen pointer is given this long to reach a control before the click, so the user sees it arrive. */
-    pointerMs: 340,
-  },
   router: {
     requestTimeoutMs: 30_000,
     defaultCooldownMs: 30_000,
@@ -61,5 +46,4 @@ export const DEFAULTS = {
 } as const;
 
 type Widen<T> = { -readonly [K in keyof T]: T[K] extends number ? number : T[K] };
-export type AgentLimits = Widen<typeof DEFAULTS.agent>;
 export type RouterConfig = Widen<typeof DEFAULTS.router>;

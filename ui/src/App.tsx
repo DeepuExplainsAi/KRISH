@@ -2,7 +2,6 @@ import { lazy, Suspense, useEffect, useState } from "react";
 import { Chat } from "./screens/Chat";
 import { Home } from "./screens/Home";
 import { Menu, MENU_GROUPS } from "./screens/Menu";
-import { LiveWindow } from "./components/LiveWindow";
 import { Tour } from "./components/Tour";
 import { IconBack, IconPlus, IconStop } from "./components/icons";
 import { useT } from "./i18n/useT";
@@ -13,7 +12,7 @@ import { useApp, useAppSelector } from "./state/useStore";
 
 /** Main tabs. Every other screen is reached from the Menu (avatar button). */
 const TABS: [Screen, Key][] = [["home", "home"], ["chat", "chat"], ["projects", "projects"]];
-const SUB = new Set<Screen>(["phone", "vault", "panels", "tasks", "history", "providers", "settings", "security"]);
+const SUB = new Set<Screen>(["phone", "panels", "tasks", "history", "providers", "settings", "security"]);
 
 /** Home and Chat load with the app; every other screen is its own small file, fetched (from the device) when first opened. */
 const screenOf = (load: () => Promise<Record<string, unknown>>, name: string) => lazy(() => load().then((m) => ({ default: m[name] as React.ComponentType })));
@@ -26,7 +25,6 @@ const SCREENS: Record<Screen, React.ComponentType> = {
   providers: screenOf(() => import("./screens/Providers"), "Providers"),
   settings: screenOf(() => import("./screens/Settings"), "Settings"),
   security: screenOf(() => import("./screens/Security"), "Security"),
-  vault: screenOf(() => import("./screens/Vault"), "Vault"),
   phone: screenOf(() => import("./screens/Phone"), "Phone"),
 };
 
@@ -76,7 +74,7 @@ export function App() {
       </header>
       {status !== "idle" && (
         <div className="statusbar">
-          <button className={`pill ${status}`} onClick={() => (running ? app.openWindow() : app.go("chat"))}>{t(STATUS_KEY[status])}</button>
+          <button className={`pill ${status}`} onClick={() => app.go("chat")}>{t(STATUS_KEY[status])}</button>
           {running && <button className="stop" onClick={app.stop}><IconStop />{t("stop")}</button>}
         </div>
       )}
@@ -93,7 +91,6 @@ export function App() {
         <Suspense fallback={null}><Screen key={screen === "chat" ? `chat${chatKey}` : screen} /></Suspense>
       </main>
       </div>
-      {screen !== "chat" && <LiveWindow compact />}
     </div>
   );
 }

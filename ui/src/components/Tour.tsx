@@ -2,12 +2,12 @@ import { useState } from "react";
 import { useT } from "../i18n/useT";
 import type { Key } from "../i18n";
 import { useApp, useAppSelector } from "../state/useStore";
-import { IconChat, IconKey, IconSend, IconVault } from "./icons";
+import { IconChat, IconKey, IconSend, IconShield } from "./icons";
 
-const STEPS: { icon: () => React.JSX.Element; title: Key; body: Key; go?: "providers" | "vault" }[] = [
+const STEPS: { icon: () => React.JSX.Element; title: Key; body: Key; go?: "providers" | "phone" }[] = [
   { icon: IconChat, title: "tour1Title", body: "tour1Body" },
   { icon: IconSend, title: "tour2Title", body: "tour2Body" },
-  { icon: IconVault, title: "tour3Title", body: "tour3Body", go: "vault" },
+  { icon: IconShield, title: "tour3Title", body: "tour3Body", go: "phone" },
   { icon: IconKey, title: "tour4Title", body: "tour4Body", go: "providers" },
 ];
 
@@ -21,7 +21,7 @@ export function Tour() {
   const step = STEPS[i]!;
   const Icon = step.icon;
   const last = i === STEPS.length - 1;
-  const finish = (go?: "providers" | "vault") => {
+  const finish = (go?: "providers" | "phone") => {
     void app.saveSettings({ tourDone: true });
     setI(0);
     if (go) app.go(go);

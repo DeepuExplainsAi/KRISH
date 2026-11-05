@@ -17,14 +17,13 @@ jobs:
         with: { node-version: 24, cache: npm }
       - run: npm ci
       - run: npm run build:ui
-      # main.cjs reads ../ui/dist and ../core/page-script, so the staged folder keeps that layout.
+      # main.cjs reads ../ui/dist, so the staged folder keeps that layout.
       - name: Stage app files
         shell: bash
         run: |
-          mkdir -p stage/desktop stage/ui stage/core
+          mkdir -p stage/desktop stage/ui
           cp desktop/main.cjs desktop/lib.cjs desktop/preload.cjs stage/desktop/
           cp -r ui/dist stage/ui/dist
-          cp -r core/page-script stage/core/page-script
           echo '{"name":"krish","version":"0.1.0","main":"desktop/main.cjs"}' > stage/package.json
       - run: npx --yes @electron/packager stage Krish --platform=${{ matrix.platform }} --arch=x64 --electron-version=45.0.0 --out=out --overwrite
       - name: Archive (keeps the executable bit on Linux)

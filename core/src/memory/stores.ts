@@ -131,7 +131,6 @@ export interface Project {
   id: string;
   name: string;
   instructions: string;
-  startUrl?: string;
   createdAt: number;
 }
 
@@ -140,8 +139,8 @@ export class Projects {
   constructor(kv: KVStore, private now = Date.now) {
     this.items = new Collection(kv, "projects", 100);
   }
-  async create(name: string, instructions = "", startUrl?: string): Promise<Project> {
-    const p = { id: newId(), name: name.slice(0, 80), instructions: redactText(instructions).slice(0, 2000), startUrl, createdAt: this.now() };
+  async create(name: string, instructions = ""): Promise<Project> {
+    const p = { id: newId(), name: name.slice(0, 80), instructions: redactText(instructions).slice(0, 2000), createdAt: this.now() };
     await this.items.put(p);
     return p;
   }

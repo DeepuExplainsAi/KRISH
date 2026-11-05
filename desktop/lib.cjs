@@ -11,57 +11,6 @@ const isHttps = (u) => {
   }
 };
 
-/** Width (CSS px) a page is laid out at in PC layout: 1024 in a narrow card, 1280 in a wide one. Same rule as AgentWebView.layoutWidth. */
-const layoutWidth = (cardWidth) => (cardWidth < 700 ? 1024 : 1280);
-
-/** Same wrapper as AgentWebView.kt: the page script is evaluated fresh into a local `K` on every call. */
-const wrapCall = (pageScript, expr) =>
-  `(function(){try{var K=${pageScript}\n;return JSON.stringify({ok:true,v:${expr}});}catch(e){return JSON.stringify({ok:false,e:String(e&&e.message||e)});}})()`;
-
-const parseCallResult = (raw) => {
-  const o = JSON.parse(raw);
-  if (!o.ok) throw new Error(o.e || "page error");
-  return o.v === undefined || o.v === null ? "" : typeof o.v === "string" ? o.v : JSON.stringify(o.v);
-};
-
-const quote = (s) => JSON.stringify(String(s));
-const fpArg = (fp) => (typeof fp === "string" ? quote(fp) : "null");
-const int = (n) => {
-  if (!Number.isInteger(n) || n < 0) throw new Error("bad element id");
-  return n;
-};
-
-/** Page-API expressions. Values are JSON-quoted, ids must be integers. */
-const expr = {
-  observe: () => "K.observe()",
-  read: (id) => `K.read(${id == null ? "null" : int(id)})`,
-  click: (id, fp) => `K.click(${int(id)},${fpArg(fp)})`,
-  rect: (id, fp) => `K.rect(${int(id)},${fpArg(fp)})`,
-  type: (id, text, submit, fp) => `K.type(${int(id)},${quote(text)},${Boolean(submit)},${fpArg(fp)})`,
-  fill: (id, value, fp) => `K.fill(${int(id)},${quote(value)},${fpArg(fp)})`,
-  scroll: (dir) => `K.scroll(${quote(dir === "up" ? "up" : "down")})`,
-  highlight: (id) => `K.highlight(${id == null ? "null" : int(id)})`,
-  findCode: (from, subject) => `K.findCode(${quote(String(from ?? "").slice(0, 120))},${quote(String(subject ?? "").slice(0, 120))})`,
-};
-
-/** A tab id from the UI: a small positive integer. */
-const tabId = (v) => {
-  const n = Number(v);
-  if (!Number.isInteger(n) || n < 1 || n > 1e6) throw new Error("bad tab id");
-  return n;
-};
-
-/**
- * Where a real mouse click lands in the view, from the page script's `rect` answer (CSS px of the page and its inner width).
- * Only for a page shown 1:1. When the page is laid out wider than the card and scaled down (PC layout) the mapping through Electron's
- * device emulation is not verified, so it returns undefined and the caller uses the script click instead of risking a click in the wrong place.
- */
-const tapPoint = (rect, viewWidth) => {
-  const r = typeof rect === "string" ? JSON.parse(rect) : rect;
-  if (!(r.innerWidth > 0) || Math.abs(viewWidth / r.innerWidth - 1) > 0.02) return undefined;
-  return { x: Math.round(r.x), y: Math.round(r.y) };
-};
-
 const FETCH_METHODS = new Set(["GET", "POST"]);
 const MAX_BODY = 20 * 1024 * 1024;
 
@@ -151,4 +100,4 @@ function dockerArgs({ image, workDir, name }) {
   ];
 }
 
-module.exports = { isHttps, layoutWidth, tapPoint, wrapCall, parseCallResult, expr, tabId, validateFetch, FileTokens, createSecretStore, dockerArgs };
+module.exports = { isHttps, validateFetch, FileTokens, createSecretStore, dockerArgs };
